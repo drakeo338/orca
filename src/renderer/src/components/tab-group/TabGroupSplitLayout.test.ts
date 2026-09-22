@@ -103,8 +103,8 @@ describe('TabGroupSplitLayout', () => {
       isVisible: boolean
       isFocused: boolean
       hasSplitGroups: boolean
-      reserveClosedExplorerToggleSpace: boolean
-      reserveCollapsedSidebarHeaderSpace: boolean
+      isTopEndCorner: boolean
+      isTopStartCorner: boolean
     }
   }
 
@@ -116,8 +116,8 @@ describe('TabGroupSplitLayout', () => {
         isVisible: false,
         isFocused: false,
         hasSplitGroups: false,
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: true
+        isTopEndCorner: true,
+        isTopStartCorner: true
       })
     )
   })
@@ -130,8 +130,8 @@ describe('TabGroupSplitLayout', () => {
         isVisible: true,
         isFocused: true,
         hasSplitGroups: false,
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: true
+        isTopEndCorner: true,
+        isTopStartCorner: true
       })
     )
   })
@@ -166,24 +166,24 @@ describe('TabGroupSplitLayout', () => {
     const leftChild = asElement(rootChildren[0]).props.children
     const rightChild = asElement(rootChildren[2]).props.children
     const leftPanelProps = asElement(invokeComponent(asElement(leftChild))).props as {
-      reserveClosedExplorerToggleSpace: boolean
-      reserveCollapsedSidebarHeaderSpace: boolean
+      isTopEndCorner: boolean
+      isTopStartCorner: boolean
     }
     const rightPanelProps = asElement(invokeComponent(asElement(rightChild))).props as {
-      reserveClosedExplorerToggleSpace: boolean
-      reserveCollapsedSidebarHeaderSpace: boolean
+      isTopEndCorner: boolean
+      isTopStartCorner: boolean
     }
 
     expect(leftPanelProps).toEqual(
       expect.objectContaining({
-        reserveClosedExplorerToggleSpace: false,
-        reserveCollapsedSidebarHeaderSpace: true
+        isTopEndCorner: false,
+        isTopStartCorner: true
       })
     )
     expect(rightPanelProps).toEqual(
       expect.objectContaining({
-        reserveClosedExplorerToggleSpace: true,
-        reserveCollapsedSidebarHeaderSpace: false
+        isTopEndCorner: true,
+        isTopStartCorner: false
       })
     )
   })

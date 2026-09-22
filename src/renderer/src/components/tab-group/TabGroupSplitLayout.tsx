@@ -195,8 +195,8 @@ function SplitNode({
         suppressLeftBorder={suppressLeftBorder}
         suppressRightBorder={suppressRightBorder}
         suppressBottomBorder={suppressBottomBorder}
-        reserveClosedExplorerToggleSpace={touchesTopEdge && touchesRightEdge}
-        reserveCollapsedSidebarHeaderSpace={touchesTopEdge && touchesLeftEdge}
+        isTopStartCorner={touchesTopEdge && touchesLeftEdge}
+        isTopEndCorner={touchesTopEdge && touchesRightEdge}
         isTabDragActive={isTabDragActive}
         hoveredTabInsertion={
           hoveredTabInsertion?.groupId === node.groupId ? hoveredTabInsertion : null

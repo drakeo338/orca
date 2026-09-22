@@ -18,6 +18,7 @@ import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { resolveGroupTabFromVisibleId } from './tab-group-visible-id'
 import { getTabPaneBodyDroppableId, type HoveredTabInsertion } from './useTabDragSplit'
 import { tabGroupBodyAnchorName } from './tab-group-body-anchor'
+import { useTabGroupHost } from './tab-group-host'
 import { translate } from '@/i18n/i18n'
 import type { TabGroup } from '../../../../shared/tab-types'
 import type { ClientHostedBrowserRow } from '../../../../shared/client-hosted-browser-rows'
@@ -40,8 +41,8 @@ export default function TabGroupPanel({
   suppressLeftBorder = false,
   suppressRightBorder = false,
   suppressBottomBorder = false,
-  reserveClosedExplorerToggleSpace,
-  reserveCollapsedSidebarHeaderSpace,
+  isTopStartCorner,
+  isTopEndCorner,
   isTabDragActive = false,
   hoveredTabInsertion = null
 }: {
@@ -56,13 +57,12 @@ export default function TabGroupPanel({
   suppressLeftBorder?: boolean
   suppressRightBorder?: boolean
   suppressBottomBorder?: boolean
-  reserveClosedExplorerToggleSpace: boolean
-  reserveCollapsedSidebarHeaderSpace: boolean
+  isTopStartCorner: boolean
+  isTopEndCorner: boolean
   isTabDragActive?: boolean
   hoveredTabInsertion?: HoveredTabInsertion | null
 }): React.JSX.Element {
-  const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen)
-  const sidebarOpen = useAppStore((state) => state.sidebarOpen)
+  const host = useTabGroupHost()
   const model = useTabGroupWorkspaceModel({ groupId, worktreeId })
   const {
     activeTab,
@@ -149,6 +149,9 @@ export default function TabGroupPanel({
       onNewSimulatorTab={commands.newSimulatorTab}
       onOpenEntry={commands.openEntry}
       onNewFileTab={commands.newFileTab}
+      // Why last: the host knows where new tabs belong in its workspace; an entry it sets to
+      // undefined removes that entry from the menu.
+      {...host.newTabActions?.(groupId)}
       onSetCustomTitle={commands.setTabCustomTitle}
       onSetTabColor={commands.setTabColor}
       onTogglePaneExpand={commands.toggleTerminalPaneExpand}
@@ -213,6 +216,7 @@ export default function TabGroupPanel({
         commands.pinFile(item.entityId, item.id)
       }}
       tabBarOrder={tabBarOrder}
+      tabStripChrome={host.tabStripChrome}
       hoveredTabInsertion={hoveredTabInsertion}
     />
   )
@@ -246,24 +250,14 @@ export default function TabGroupPanel({
       {/* Why: each split group needs its own tab row because multiple groups can show at once but the titlebar has only one shared center slot. */}
       {/* Why: macOS hiddenInset titleBarStyle makes -webkit-app-region: drag the only way to move the window from this tab row. */}
       <div
-        className="h-[32px] shrink-0 border-b border-border bg-card"
+        className="h-[32px] shrink-0 border-b border-border bg-card data-[tab-strip-chrome=floating-panel]:h-9 data-[tab-strip-chrome=floating-panel]:bg-[var(--bg-titlebar,var(--card))]"
+        data-tab-strip-chrome={host.tabStripChrome ?? 'default'}
         data-tab-group-strip-id={groupId}
         data-terminal-focus-release-surface="true"
         data-worktree-id={worktreeId}
       >
         <div className="flex h-full items-stretch pr-1.5">
-          {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the collapsed left-sidebar's floating toggle clickable. */}
-          {reserveCollapsedSidebarHeaderSpace && !sidebarOpen ? (
-            <div
-              className="shrink-0"
-              style={
-                {
-                  width: 'var(--collapsed-sidebar-header-width)',
-                  WebkitAppRegion: 'no-drag'
-                } as React.CSSProperties
-              }
-            />
-          ) : null}
+          {isTopStartCorner ? host.headerStart : null}
           <div className="min-w-0 flex-1 h-full">{tabBar}</div>
           <div
             className="ml-1.5 flex shrink-0 items-center gap-0.5"
@@ -318,18 +312,7 @@ export default function TabGroupPanel({
               ) : null}
             </div>
           </div>
-          {/* Why: Electron drag hit-test respects no-drag only on DOM descendants, not z-index siblings, so this no-drag spacer keeps the floating right-sidebar toggle + window controls clickable. */}
-          {reserveClosedExplorerToggleSpace && !rightSidebarOpen ? (
-            <div
-              className="shrink-0"
-              style={
-                {
-                  width: 'calc(40px + var(--window-controls-width, 0px))',
-                  WebkitAppRegion: 'no-drag'
-                } as React.CSSProperties
-              }
-            />
-          ) : null}
+          {isTopEndCorner ? host.headerEnd : null}
         </div>
       </div>
 
@@ -369,11 +352,13 @@ export default function TabGroupPanel({
                   activeViewStateId={activeTab.id}
                   isVisible={isVisible}
                   isCmdSaveOwner={isFocused}
+                  markdownAnnotationsEnabled={host.markdownAnnotationsEnabled}
                 />
               </Suspense>
             </div>
           )}
 
+        {activeTab ? null : host.emptyGroupBody}
         {/* Why: terminal/browser/simulator/structured-chat panes render at the worktree level; tab activation only changes overlay visibility and never remounts a live surface. */}
       </div>
     </div>
