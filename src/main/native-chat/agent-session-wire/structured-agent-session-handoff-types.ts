@@ -78,8 +78,8 @@ export type StructuredAgentSessionHandoffDeps = {
   claimKeyId: string
   transport?: StructuredAgentSessionHandoffTransport
   /** The directory a provider launch for this session uses — the same rule native acquisition
-   *  follows. Required for a forward handoff; a host without it refuses rather than guessing. */
-  resolveLaunchDirectory?: (record: AgentSessionRecord) => Promise<string>
+   *  follows. The terminal handoff opens there instead of re-resolving the workspace id. */
+  resolveLaunchDirectory: (record: AgentSessionRecord) => Promise<string>
   session: (sessionId: string) => { journal: AgentSessionJournal; fence: number }
   suspendNative: (sessionId: string) => Promise<StructuredNativeSuspendResult>
   /** Consumes the router's stop proof after `old-owner-stopped` is durable. */

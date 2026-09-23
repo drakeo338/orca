@@ -17,6 +17,7 @@ import {
   createStructuredAgentSessionHostHandoff,
   structuredTuiTranscriptImportOptions
 } from './structured-agent-session-host-handoff'
+import { hostTestLaunchDirectory } from './structured-agent-session-host-test-data'
 
 const journals = createTrackedJournalOpener()
 
@@ -172,7 +173,8 @@ describe('native handoff acquisition', () => {
         store,
         adapter: adapter as never,
         journalRoot: root,
-        claimKeyId: 'key-1'
+        claimKeyId: 'key-1',
+        resolveLaunchDirectory: hostTestLaunchDirectory
       },
       {
         session: () => session,
@@ -271,7 +273,8 @@ describe('native handoff acquisition', () => {
           store,
           adapter: adapter as never,
           journalRoot: root,
-          claimKeyId: 'key-1'
+          claimKeyId: 'key-1',
+          resolveLaunchDirectory: hostTestLaunchDirectory
         },
         {
           session: () => session,
@@ -365,7 +368,8 @@ describe('native handoff acquisition', () => {
           store,
           adapter: adapter as never,
           journalRoot: root,
-          claimKeyId: 'key-1'
+          claimKeyId: 'key-1',
+          resolveLaunchDirectory: hostTestLaunchDirectory
         },
         {
           session: () => session,
@@ -414,7 +418,14 @@ describe('handoff status published for a session the host no longer holds', () =
 
   function detachedHandoff(frames: { fence: number; status: AgentSessionHandoffStatus }[]) {
     return createStructuredAgentSessionHostHandoff(
-      { store, adapter: {} as never, journalRoot: root, claimKeyId: 'key-1' },
+      {
+        store,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: publishing a handoff status never reaches the adapter.
+        adapter: {} as never,
+        journalRoot: root,
+        claimKeyId: 'key-1',
+        resolveLaunchDirectory: hostTestLaunchDirectory
+      },
       {
         // Eviction and host teardown both drop the map entry while a flow is still settling.
         session: () => {

@@ -84,5 +84,5 @@ export type StructuredAgentSessionHostDeps = {
   statusSink?: StructuredAgentSessionStatusSink
   handoffTransport?: StructuredAgentSessionHandoffTransport
   /** See `StructuredAgentSessionHandoffDeps.resolveLaunchDirectory`. */
-  resolveLaunchDirectory?: (record: AgentSessionRecord) => Promise<string>
+  resolveLaunchDirectory: (record: AgentSessionRecord) => Promise<string>
 }

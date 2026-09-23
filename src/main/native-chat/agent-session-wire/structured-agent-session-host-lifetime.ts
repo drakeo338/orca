@@ -22,6 +22,7 @@ import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-ses
 import { resumeHeldStructuredAgentSession } from './structured-agent-session-hold-resume'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
+import { AgentSessionRefusalError } from './structured-agent-session-refusal-error'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -175,7 +176,7 @@ export async function resumeStructuredAgentSessionForHold(
 ): Promise<void> {
   const unreconciled = await context.reconcileLeases(sessionId)
   if (unreconciled) {
-    throw new Error(unreconciled.code)
+    throw new AgentSessionRefusalError(unreconciled)
   }
   await context.runtimeState.resolveRecovery(sessionId)
   await resumeHeldStructuredAgentSession({

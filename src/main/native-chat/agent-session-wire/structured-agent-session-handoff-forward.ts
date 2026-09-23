@@ -29,9 +29,6 @@ export async function handoffStructuredSessionToTui(
   if (retry && record.lease.handoffStage === 'old-owner-stopped') {
     record = await recoverNativeAfterTuiFailure(context, sessionId, operationId)
   }
-  if (!deps.resolveLaunchDirectory) {
-    throw new Error('agent_session_launch_directory_unavailable')
-  }
   // Before the native owner stops: a chat whose folder is gone refuses with the chat still live.
   const cwd = await deps.resolveLaunchDirectory(record)
   if (record.lease.handoffStage === null) {

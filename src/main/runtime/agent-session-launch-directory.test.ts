@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import type * as NodeFsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,6 +11,24 @@ import {
 } from './agent-session-launch-directory'
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
+
+const statFault = vi.hoisted(() => {
+  const fault: { error: Error | null } = { error: null }
+  return fault
+})
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFsPromises>()
+  return {
+    ...actual,
+    stat: async (...args: Parameters<typeof actual.stat>) => {
+      if (statFault.error) {
+        throw statFault.error
+      }
+      return actual.stat(...args)
+    }
+  }
+})
 
 const NOW = 1_800_000_000_000
 const SESSION = 'session-alpha'
@@ -80,6 +99,8 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  statFault.error = null
+  vi.restoreAllMocks()
   await rm(root, { recursive: true, force: true })
 })
 
@@ -151,6 +172,44 @@ describe('agent session launch directory', () => {
     await expect(
       resolveAgentSessionLaunchDirectory({ store, resolveWorkspacePath: async () => root }, record)
     ).rejects.toBeInstanceOf(AgentSessionWorkspaceMissingError)
+  })
+
+  it('reports a pinned folder it cannot read as that failure, not as a missing folder', async () => {
+    const pinned = await directory('floating-locked')
+    const record = await reserve(FLOATING, { workspacePath: pinned })
+    const denied = Object.assign(new Error(`EACCES: permission denied, stat '${pinned}'`), {
+      code: 'EACCES'
+    })
+    statFault.error = denied
+    const resolveWorkspacePath = vi.fn(async () => root)
+
+    const failure = resolveAgentSessionLaunchDirectory({ store, resolveWorkspacePath }, record)
+
+    await expect(failure).rejects.toBe(denied)
+    expect(resolveWorkspacePath).not.toHaveBeenCalled()
+  })
+
+  it('launches in the resolved directory when writing its pin fails', async () => {
+    const configured = await directory('floating-a')
+    const record = await reserve(FLOATING)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const pinFailure = new Error('disk full')
+    const pinWorkspacePath = vi.fn(async () => {
+      throw pinFailure
+    })
+
+    await expect(
+      resolveAgentSessionLaunchDirectory(
+        { store: { pinWorkspacePath }, resolveWorkspacePath: async () => configured },
+        record
+      )
+    ).resolves.toBe(configured)
+    expect(pinWorkspacePath).toHaveBeenCalledExactlyOnceWith(SESSION, configured)
+    expect(warn).toHaveBeenCalledWith(
+      '[agent-session] launch directory pin failed',
+      SESSION,
+      pinFailure
+    )
   })
 
   it.each([

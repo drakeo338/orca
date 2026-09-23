@@ -12,6 +12,7 @@ import type {
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
+import { AgentSessionRefusalError } from './structured-agent-session-refusal-error'
 import {
   structuredAgentSessionResumeOperationId,
   structuredAgentSessionResumeParams
@@ -47,6 +48,6 @@ export async function resumeHeldStructuredAgentSession(input: {
   }
   const attached = await input.attach(params)
   if (!attached.ok) {
-    throw new Error(attached.refusal.code)
+    throw new AgentSessionRefusalError(attached.refusal)
   }
 }
