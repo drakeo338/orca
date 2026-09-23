@@ -6,6 +6,13 @@ import { selectFloatingTerminalPanelInputs } from './floating-terminal-panel-inp
 export function useFloatingTerminalPanelStoreState() {
   const { tabs, browserTabs, groups, unifiedTabs, floatingFiles, expandedPaneByTabId } =
     useAppStore(selectFloatingTerminalPanelInputs)
+  const activeGroupId = useAppStore(
+    (state) => state.activeGroupIdByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? null
+  )
+  const layout = useAppStore(
+    (state) => state.layoutByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? null
+  )
+  const ensureWorktreeRootGroup = useAppStore((state) => state.ensureWorktreeRootGroup)
   const createTab = useAppStore((state) => state.createTab)
   const createBrowserTab = useAppStore((state) => state.createBrowserTab)
   const closeTab = useAppStore((state) => state.closeTab)
@@ -39,6 +46,9 @@ export function useFloatingTerminalPanelStoreState() {
     unifiedTabs,
     floatingFiles,
     expandedPaneByTabId,
+    activeGroupId,
+    layout,
+    ensureWorktreeRootGroup,
     createTab,
     createBrowserTab,
     closeTab,

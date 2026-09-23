@@ -1,9 +1,10 @@
+import { useEffect } from 'react'
 import { useContextualTour } from '@/components/contextual-tours/use-contextual-tour'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { createFloatingTerminalPanelDragActions } from './floating-terminal-panel-drag-actions'
 import type { FloatingTerminalPanelProps } from './floating-terminal-panel-types'
 import { useFloatingTerminalCloseActions } from './use-floating-terminal-close-actions'
 import { useFloatingTerminalCreateActions } from './use-floating-terminal-create-actions'
-import { useFloatingTerminalEditorCloseQueue } from './use-floating-terminal-editor-close-queue'
 import { useFloatingTerminalFocusLifecycle } from './use-floating-terminal-focus-lifecycle'
 import { useFloatingTerminalGlobalShortcutListeners } from './use-floating-terminal-global-shortcut-listeners'
 import { useFloatingTerminalGuestBridge } from './use-floating-terminal-guest-bridge'
@@ -18,6 +19,7 @@ import { useFloatingTerminalPanelMaximize } from './use-floating-terminal-panel-
 import { useFloatingTerminalPanelShortcuts } from './use-floating-terminal-panel-shortcuts'
 import { useFloatingTerminalPanelStoreState } from './use-floating-terminal-panel-store-state'
 import { useFloatingTerminalShortcutDetails } from './use-floating-terminal-shortcut-details'
+import { useFloatingWorkspaceTabGroupHost } from './use-floating-workspace-tab-group-host'
 
 export function useFloatingTerminalPanelController({
   open,
@@ -27,7 +29,14 @@ export function useFloatingTerminalPanelController({
   const storeState = useFloatingTerminalPanelStoreState()
   const shortcutDetails = useFloatingTerminalShortcutDetails()
   const localState = useFloatingTerminalPanelLocalState()
-  const items = useFloatingTerminalPanelItems({ ...storeState, open })
+  const items = useFloatingTerminalPanelItems(storeState)
+  const { layout, ensureWorktreeRootGroup } = storeState
+  // Why: an empty panel still needs a tab strip — it is the titlebar the panel is dragged by.
+  useEffect(() => {
+    if (open && !layout) {
+      ensureWorktreeRootGroup(FLOATING_TERMINAL_WORKTREE_ID)
+    }
+  }, [ensureWorktreeRootGroup, layout, open])
 
   useContextualTour('floating-workspace', open, 'floating_workspace_visible', {
     recordFeatureInteraction: tourInteractionSnapshot?.recordFeatureInteractionForTour ?? false,
@@ -35,7 +44,6 @@ export function useFloatingTerminalPanelController({
     wasFeaturePreviouslyInteracted: tourInteractionSnapshot?.wasPreviouslyInteracted
   })
 
-  const editorCloseQueue = useFloatingTerminalEditorCloseQueue({ ...storeState, ...localState })
   const geometry = useFloatingTerminalPanelGeometry({ ...storeState, ...localState })
   useFloatingTerminalInitialFocusEffects({ ...items, ...localState, open })
   const orchestrationVisibility = useFloatingTerminalOrchestrationVisibility({
@@ -47,12 +55,7 @@ export function useFloatingTerminalPanelController({
     ...localState,
     ...items
   })
-  const closeActions = useFloatingTerminalCloseActions({
-    ...storeState,
-    ...localState,
-    ...items,
-    ...editorCloseQueue
-  })
+  const closeActions = useFloatingTerminalCloseActions(items)
   const focusReclaim = useFloatingTerminalPanelFocusReclaim({
     ...storeState,
     ...localState,
@@ -78,6 +81,16 @@ export function useFloatingTerminalPanelController({
     ...maximize
   })
   const orchestrationDismissal = useFloatingTerminalOrchestrationDismissal(localState)
+  const tabGroupHost = useFloatingWorkspaceTabGroupHost({
+    ...storeState,
+    ...shortcutDetails,
+    ...items,
+    ...createActions,
+    ...focusReclaim,
+    ...maximize,
+    maximized: localState.maximized,
+    onOpenChange
+  })
 
   return {
     open,
@@ -86,7 +99,6 @@ export function useFloatingTerminalPanelController({
     ...shortcutDetails,
     ...localState,
     ...items,
-    ...editorCloseQueue,
     ...geometry,
     ...orchestrationVisibility,
     ...createActions,
@@ -95,6 +107,7 @@ export function useFloatingTerminalPanelController({
     ...maximize,
     ...shortcuts,
     ...dragActions,
-    ...orchestrationDismissal
+    ...orchestrationDismissal,
+    tabGroupHost
   }
 }

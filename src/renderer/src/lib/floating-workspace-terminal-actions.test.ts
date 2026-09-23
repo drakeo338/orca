@@ -1,3 +1,4 @@
+import { FLOATING_WORKSPACE_SHORTCUT_SURFACE_SELECTOR } from './floating-workspace-shortcut-policy'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type { Tab } from '../../../shared/tab-types'
@@ -60,7 +61,7 @@ function shortcutEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
 function shortcutSurfaceEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
   return shortcutEvent({
     target: makeElement({
-      closestSelectors: ['[data-floating-terminal-shortcut-surface]']
+      closestSelectors: [FLOATING_WORKSPACE_SHORTCUT_SURFACE_SELECTOR]
     }),
     ...overrides
   })

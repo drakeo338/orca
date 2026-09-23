@@ -197,8 +197,18 @@ describe('floating panel titlebar drag target', () => {
   })
 
   it('still moves the panel from bare titlebar chrome', () => {
-    const titlebar = document.createElement('div')
-    document.body.appendChild(titlebar)
-    expect(isFloatingTerminalDragTarget(titlebar)).toBe(true)
+    const strip = document.createElement('div')
+    strip.dataset.tabGroupStripId = 'floating-group'
+    const chrome = document.createElement('div')
+    strip.appendChild(chrome)
+    document.body.appendChild(strip)
+    expect(isFloatingTerminalDragTarget(chrome)).toBe(true)
+  })
+
+  // Why: the drag listener sits on the whole panel body, so only the tab strips may start a move.
+  it('does not move the panel from inside a pane', () => {
+    const pane = document.createElement('div')
+    document.body.appendChild(pane)
+    expect(isFloatingTerminalDragTarget(pane)).toBe(false)
   })
 })

@@ -174,6 +174,16 @@ describe('store selectors', () => {
         createdAt: 4
       },
       {
+        // A structured chat is its own backing record, so it counts like a simulator.
+        id: 'chat-1',
+        entityId: 'session-1',
+        worktreeId,
+        contentType: 'agent-session',
+        label: 'Claude Chat',
+        sortOrder: 4,
+        createdAt: 5
+      },
+      {
         id: 'unified-stale-terminal',
         entityId: 'missing-term',
         worktreeId,
@@ -190,10 +200,10 @@ describe('store selectors', () => {
       unifiedTabsByWorktree: { [worktreeId]: unifiedTabs }
     } satisfies Parameters<typeof selectFloatingVisibleTabCount>[0]
 
-    expect(selectFloatingVisibleTabCount(state)).toBe(4)
+    expect(selectFloatingVisibleTabCount(state)).toBe(5)
     expect(openFileScans).toBe(1)
 
-    expect(selectFloatingVisibleTabCount({ ...state })).toBe(4)
+    expect(selectFloatingVisibleTabCount({ ...state })).toBe(5)
     expect(openFileScans).toBe(1)
   })
 

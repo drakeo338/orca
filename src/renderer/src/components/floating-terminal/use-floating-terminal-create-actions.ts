@@ -63,74 +63,86 @@ export function useFloatingTerminalCreateActions({
     [activateTab, groupTabs, setActiveTab]
   )
 
+  // Why a target group: each split group's "+" creates in its own group; shortcuts and the empty
+  // state omit it and land in the focused one.
   const createFloatingTerminalTab = useCallback(
-    (shellOverride?: string) => {
-      const tab = createTab(FLOATING_TERMINAL_WORKTREE_ID, activeGroup?.id, shellOverride, {
-        activate: false
-      })
-      activateTab(tab.id)
+    (targetGroupId?: string, shellOverride?: string) => {
+      const tab = createTab(
+        FLOATING_TERMINAL_WORKTREE_ID,
+        targetGroupId ?? activeGroup?.id,
+        shellOverride
+      )
       focusTerminalTabSurface(tab.id)
     },
-    [activateTab, activeGroup, createTab]
+    [activeGroup, createTab]
   )
 
-  const createFloatingBrowserTab = useCallback(() => {
-    if (!ensureClientCreationActionAllowed(FLOATING_TERMINAL_WORKTREE_ID, 'managed-browser')) {
-      return
-    }
-    const url = browserDefaultUrl ?? 'about:blank'
-    createBrowserTab(FLOATING_TERMINAL_WORKTREE_ID, url, {
-      title: translate(
-        'auto.components.floating.terminal.FloatingTerminalPanel.8b14ba6c17',
-        'New Browser Tab'
-      ),
-      focusAddressBar: true,
-      targetGroupId: activeGroup?.id,
-      browserRuntimeEnvironmentId: null
-    })
-  }, [activeGroup, browserDefaultUrl, createBrowserTab])
-
-  const createFloatingMarkdownTab = useCallback(() => {
-    if (!markdownCwd) {
-      return
-    }
-    void (async () => {
-      try {
-        const fileInfo = await createUntitledMarkdownFileWithTemplateSelection(
-          markdownCwd,
-          FLOATING_TERMINAL_WORKTREE_ID,
-          getConnectionId(FLOATING_TERMINAL_WORKTREE_ID) ?? undefined,
-          LOCAL_RUNTIME_SETTINGS
-        )
-        if (!fileInfo) {
-          return
-        }
-        openFile(fileInfo, {
-          preview: false,
-          targetGroupId: activeGroup?.id,
-          suppressActiveRuntimeFallback: true
-        })
-      } catch (error) {
-        toast.error(extractIpcErrorMessage(error, 'Failed to create untitled markdown file.'))
+  const createFloatingBrowserTab = useCallback(
+    (targetGroupId?: string) => {
+      if (!ensureClientCreationActionAllowed(FLOATING_TERMINAL_WORKTREE_ID, 'managed-browser')) {
+        return
       }
-    })()
-  }, [activeGroup, markdownCwd, openFile])
+      const url = browserDefaultUrl ?? 'about:blank'
+      createBrowserTab(FLOATING_TERMINAL_WORKTREE_ID, url, {
+        title: translate(
+          'auto.components.floating.terminal.FloatingTerminalPanel.8b14ba6c17',
+          'New Browser Tab'
+        ),
+        focusAddressBar: true,
+        targetGroupId: targetGroupId ?? activeGroup?.id,
+        browserRuntimeEnvironmentId: null
+      })
+    },
+    [activeGroup, browserDefaultUrl, createBrowserTab]
+  )
 
-  const openFloatingMarkdownTab = useCallback(() => {
-    void (async () => {
-      try {
-        const document = await window.api.app.pickFloatingMarkdownDocument()
-        if (!document) {
-          return
-        }
-        openMarkdownDocumentInFloatingWorkspace(openFile, document, {
-          targetGroupId: activeGroup?.id
-        })
-      } catch (error) {
-        toast.error(extractIpcErrorMessage(error, 'Failed to open markdown file.'))
+  const createFloatingMarkdownTab = useCallback(
+    (targetGroupId?: string) => {
+      if (!markdownCwd) {
+        return
       }
-    })()
-  }, [activeGroup, openFile])
+      void (async () => {
+        try {
+          const fileInfo = await createUntitledMarkdownFileWithTemplateSelection(
+            markdownCwd,
+            FLOATING_TERMINAL_WORKTREE_ID,
+            getConnectionId(FLOATING_TERMINAL_WORKTREE_ID) ?? undefined,
+            LOCAL_RUNTIME_SETTINGS
+          )
+          if (!fileInfo) {
+            return
+          }
+          openFile(fileInfo, {
+            preview: false,
+            targetGroupId: targetGroupId ?? activeGroup?.id,
+            suppressActiveRuntimeFallback: true
+          })
+        } catch (error) {
+          toast.error(extractIpcErrorMessage(error, 'Failed to create untitled markdown file.'))
+        }
+      })()
+    },
+    [activeGroup, markdownCwd, openFile]
+  )
+
+  const openFloatingMarkdownTab = useCallback(
+    (targetGroupId?: string) => {
+      void (async () => {
+        try {
+          const document = await window.api.app.pickFloatingMarkdownDocument()
+          if (!document) {
+            return
+          }
+          openMarkdownDocumentInFloatingWorkspace(openFile, document, {
+            targetGroupId: targetGroupId ?? activeGroup?.id
+          })
+        } catch (error) {
+          toast.error(extractIpcErrorMessage(error, 'Failed to open markdown file.'))
+        }
+      })()
+    },
+    [activeGroup, openFile]
+  )
 
   return {
     activateFloatingItem,

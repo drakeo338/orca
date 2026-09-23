@@ -23,9 +23,8 @@ export function useFloatingTerminalGuestBridge({
     const handleGuestClose = (event: Event): void => {
       const detail = (event as CustomEvent<FloatingWorkspaceGuestCloseDetail>).detail
       if (detail) {
-        floatingShortcutListenersRef.current.closeFloatingItemConfirmed(detail.sourceId, {
-          guestOwned: true
-        })
+        // Why no ownership flag: a focused guest makes its <webview>, inside the panel, the active element.
+        floatingShortcutListenersRef.current.closeFloatingItemConfirmed(detail.sourceId)
       }
     }
     const handleGuestSelectIndex = (event: Event): void => {

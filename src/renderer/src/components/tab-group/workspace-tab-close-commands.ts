@@ -3,6 +3,10 @@ import { useAppStore } from '../../store'
 import { requestEditorFileClose } from '../editor/editor-autosave'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { closeWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-close'
+import { armFloatingPanelReclaimIntent } from '@/lib/floating-workspace-focus-reclaim'
+import { isFloatingWorkspacePanelFocused } from '@/lib/floating-workspace-terminal-actions'
+import { selectFloatingVisibleTabCount } from '@/store/selectors'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 
 export function createWorkspaceTabCloseCommands({
   worktreeId,
@@ -47,6 +51,21 @@ export function createWorkspaceTabCloseCommands({
     }
   }
 
+  // Why per workspace: emptying a worktree leaves it, but the floating panel is never the active
+  // worktree — emptying it from inside instead keeps keyboard ownership for the next Cmd/Ctrl+T.
+  // Ownership is read when the close is requested: removing the pane blurs it before the close lands.
+  const captureEmptiedReaction = (): (() => void) => {
+    if (worktreeId !== FLOATING_TERMINAL_WORKTREE_ID) {
+      return leaveWorktreeIfEmpty
+    }
+    const panelOwned = isFloatingWorkspacePanelFocused()
+    return () => {
+      if (panelOwned && selectFloatingVisibleTabCount(useAppStore.getState()) === 0) {
+        armFloatingPanelReclaimIntent()
+      }
+    }
+  }
+
   const closeItem = (
     itemId: string,
     opts?: { skipEmptyCheck?: boolean; skipRunningProcessConfirm?: boolean }
@@ -55,11 +74,10 @@ export function createWorkspaceTabCloseCommands({
     if (!item) {
       return
     }
+    const whenEmptied = opts?.skipEmptyCheck ? null : captureEmptiedReaction()
     if (item.contentType === 'agent-session') {
       closeUnifiedTab(item.id)
-      if (!opts?.skipEmptyCheck) {
-        leaveWorktreeIfEmpty()
-      }
+      whenEmptied?.()
       return
     }
     if (item.contentType === 'terminal') {
@@ -67,7 +85,7 @@ export function createWorkspaceTabCloseCommands({
       // empty check has to run on the actual close — never on cancel.
       closeTerminalTab(item.entityId, {
         ...(opts?.skipRunningProcessConfirm ? { skipRunningProcessConfirm: true } : {}),
-        ...(!opts?.skipEmptyCheck ? { onClosed: leaveWorktreeIfEmpty } : {})
+        ...(whenEmptied ? { onClosed: whenEmptied } : {})
       })
       return
     }
@@ -87,9 +105,7 @@ export function createWorkspaceTabCloseCommands({
       }
       closeUnifiedTab(item.id)
     }
-    if (!opts?.skipEmptyCheck) {
-      leaveWorktreeIfEmpty()
-    }
+    whenEmptied?.()
   }
 
   return { closeItem, leaveWorktreeIfEmpty }

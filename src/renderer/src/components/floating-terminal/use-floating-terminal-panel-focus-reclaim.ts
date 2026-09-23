@@ -6,22 +6,18 @@ import {
 import { reportFloatingFocus } from './floating-terminal-focus-reporting'
 import type { FloatingTerminalPanelItems } from './use-floating-terminal-panel-items'
 import type { FloatingTerminalPanelLocalState } from './use-floating-terminal-panel-local-state'
-import type { FloatingTerminalPanelStoreState } from './use-floating-terminal-panel-store-state'
 
 type FloatingTerminalPanelFocusReclaimInput = Pick<
   FloatingTerminalPanelLocalState,
-  'panelRef' | 'shortcutFocusFrameRef' | 'shortcutFocusTimeoutRef' | 'pendingReclaimArmByFileIdRef'
+  'panelRef' | 'shortcutFocusFrameRef' | 'shortcutFocusTimeoutRef'
 > &
-  Pick<FloatingTerminalPanelItems, 'visibleFloatingItemCount'> &
-  Pick<FloatingTerminalPanelStoreState, 'floatingFiles'>
+  Pick<FloatingTerminalPanelItems, 'visibleFloatingItemCount'>
 
 export function useFloatingTerminalPanelFocusReclaim({
   panelRef,
   shortcutFocusFrameRef,
   shortcutFocusTimeoutRef,
-  pendingReclaimArmByFileIdRef,
-  visibleFloatingItemCount,
-  floatingFiles
+  visibleFloatingItemCount
 }: FloatingTerminalPanelFocusReclaimInput) {
   const focusPanelForShortcuts = useCallback(
     (preserveExistingPanelFocus = true) => {
@@ -84,19 +80,6 @@ export function useFloatingTerminalPanelFocusReclaim({
   const reportFloatingFocusFromTarget = useCallback((target: EventTarget | null): void => {
     reportFloatingFocus(target)
   }, [])
-
-  useEffect(() => {
-    const pending = pendingReclaimArmByFileIdRef.current
-    if (pending.size === 0) {
-      return
-    }
-    for (const [fileId, armIfEmptying] of pending) {
-      if (!floatingFiles.some((file) => file.id === fileId)) {
-        pending.delete(fileId)
-        armIfEmptying()
-      }
-    }
-  }, [floatingFiles, pendingReclaimArmByFileIdRef])
 
   useEffect(() => {
     if (visibleFloatingItemCount > 0) {

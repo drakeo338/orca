@@ -4,7 +4,8 @@ import { isTerminalPaneCloseChord } from '@/components/terminal-pane/terminal-sh
 import { ensureClientCreationActionAllowed } from '@/lib/client-creation-action-error'
 import {
   matchFloatingWorkspacePanelOwnedAction,
-  matchFloatingWorkspacePanelShortcut
+  matchFloatingWorkspacePanelShortcut,
+  FLOATING_WORKSPACE_SHORTCUT_SURFACE_SELECTOR
 } from '@/lib/floating-workspace-shortcut-policy'
 import { isFloatingWorkspaceTerminalInputTarget } from '@/lib/floating-workspace-terminal-actions'
 import { getShortcutPlatform } from '@/lib/shortcut-platform'
@@ -22,8 +23,6 @@ import type { FloatingTerminalCreateActions } from './use-floating-terminal-crea
 import type { FloatingTerminalPanelItems } from './use-floating-terminal-panel-items'
 import type { FloatingTerminalPanelLocalState } from './use-floating-terminal-panel-local-state'
 import type { FloatingTerminalPanelMaximize } from './use-floating-terminal-panel-maximize'
-
-const FLOATING_TERMINAL_SHORTCUT_SURFACE_SELECTOR = '[data-floating-terminal-shortcut-surface]'
 
 type FloatingTerminalPanelShortcutsInput = Pick<
   FloatingTerminalPanelItems,
@@ -225,7 +224,7 @@ export function useFloatingTerminalPanelShortcuts({
       if (
         !(target instanceof HTMLElement) ||
         (target !== panelRef.current &&
-          target.closest(FLOATING_TERMINAL_SHORTCUT_SURFACE_SELECTOR) === null)
+          target.closest(FLOATING_WORKSPACE_SHORTCUT_SURFACE_SELECTOR) === null)
       ) {
         return
       }

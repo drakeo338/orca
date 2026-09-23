@@ -1,5 +1,5 @@
 import type { MouseEvent, PointerEvent } from 'react'
-import { isFloatingTerminalDragTarget } from './floating-terminal-panel-drag-target'
+import { isFloatingTerminalDragTarget } from './floating-terminal-titlebar-drag-target'
 import type { FloatingTerminalPanelLocalState } from './use-floating-terminal-panel-local-state'
 import type { FloatingTerminalPanelFocusReclaim } from './use-floating-terminal-panel-focus-reclaim'
 import type { FloatingTerminalPanelMaximize } from './use-floating-terminal-panel-maximize'
