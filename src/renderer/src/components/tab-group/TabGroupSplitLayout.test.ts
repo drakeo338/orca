@@ -97,6 +97,7 @@ describe('TabGroupSplitLayout', () => {
     })
 
     const tabGroupPanelElement = asElement(getSplitNodeElement(element))
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the split layout renders TabGroupPanel here, whose props carry exactly these corner and focus fields.
     return tabGroupPanelElement.props as {
       groupId: string
       worktreeId: string
@@ -165,10 +166,12 @@ describe('TabGroupSplitLayout', () => {
     const rootChildren = rootElement.props.children as unknown[]
     const leftChild = asElement(rootChildren[0]).props.children
     const rightChild = asElement(rootChildren[2]).props.children
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the split layout renders TabGroupPanel here, whose props carry exactly these corner and focus fields.
     const leftPanelProps = asElement(invokeComponent(asElement(leftChild))).props as {
       isTopEndCorner: boolean
       isTopStartCorner: boolean
     }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the split layout renders TabGroupPanel here, whose props carry exactly these corner and focus fields.
     const rightPanelProps = asElement(invokeComponent(asElement(rightChild))).props as {
       isTopEndCorner: boolean
       isTopStartCorner: boolean

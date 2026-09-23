@@ -1,6 +1,8 @@
+import { isValidElement } from 'react'
 import { vi } from 'vitest'
 import { hookRuntime } from './floating-terminal-panel-test-harness'
 import type { FloatingTerminalPanelBounds } from './floating-terminal-panel-bounds'
+import type { TabGroupHost } from '@/components/tab-group/tab-group-host'
 
 export type ReactElementLike = {
   type: unknown
@@ -23,14 +25,21 @@ function visit(node: unknown, cb: (node: ReactElementLike) => void): void {
   visit(element.props.children, cb)
 }
 
+type NamedType = { displayName?: string; name?: string; type?: NamedType }
+
+function resolveTypeName(type: unknown): string {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: callers pass an element type already narrowed to a function or object; every field read is optional.
+  const named = type as NamedType
+  // Why .type: React.memo wraps the component, and the wrapper itself carries no name.
+  return named.displayName ?? named.name ?? named.type?.displayName ?? named.type?.name ?? ''
+}
+
 export function findByTypeName(node: unknown, typeName: string): ReactElementLike {
   let found: ReactElementLike | null = null
   visit(node, (entry) => {
     const candidate =
       typeof entry.type === 'function' || typeof entry.type === 'object'
-        ? ((entry.type as { displayName?: string; name?: string }).displayName ??
-          (entry.type as { displayName?: string; name?: string }).name ??
-          '')
+        ? resolveTypeName(entry.type)
         : entry.type
     if (candidate === typeName) {
       found = entry
@@ -39,22 +48,6 @@ export function findByTypeName(node: unknown, typeName: string): ReactElementLik
   if (!found) {
     throw new Error(`${typeName} not found`)
   }
-  return found
-}
-
-export function findAllByTypeName(node: unknown, typeName: string): ReactElementLike[] {
-  const found: ReactElementLike[] = []
-  visit(node, (entry) => {
-    const candidate =
-      typeof entry.type === 'function' || typeof entry.type === 'object'
-        ? ((entry.type as { displayName?: string; name?: string }).displayName ??
-          (entry.type as { displayName?: string; name?: string }).name ??
-          '')
-        : entry.type
-    if (candidate === typeName) {
-      found.push(entry)
-    }
-  })
   return found
 }
 
@@ -80,6 +73,57 @@ export function collectPropValues(node: unknown, propName: string): unknown[] {
     }
   })
   return values
+}
+
+/** The panel's drag surface: its tab strips are its titlebar, so the drag handlers sit on the body. */
+export function findTitlebarDragSurface(node: unknown): ReactElementLike {
+  return findByProp(node, 'onDoubleClick')
+}
+
+/** A press on a tab strip's empty chrome — the only place a panel drag may start. */
+export function makeTitlebarPressTarget(): { closest: ReturnType<typeof vi.fn> } {
+  const target = {
+    closest: vi.fn((selector: string) => (selector === '[data-tab-group-strip-id]' ? {} : null))
+  }
+  Object.setPrototypeOf(target, HTMLElement.prototype)
+  return target
+}
+
+/** The host the floating panel hands its tab groups: corner chrome, empty state, creators. */
+export function findFloatingTabGroupHost(node: unknown): TabGroupHost {
+  let host: TabGroupHost | null = null
+  visit(node, (entry) => {
+    const value = entry.props.value
+    if (host === null && isTabGroupHost(value)) {
+      host = value
+    }
+  })
+  if (host === null) {
+    throw new Error('no tab group host in the rendered panel')
+  }
+  return host
+}
+
+/** The window controls, which the floating panel places in its top-right tab strip corner. */
+export function findFloatingWindowControls(node: unknown): ReactElementLike {
+  const controls = findFloatingTabGroupHost(node).headerEnd
+  if (!isValidElement<Record<string, unknown>>(controls)) {
+    throw new Error('FloatingTerminalWindowControls not found')
+  }
+  return { type: controls.type, props: controls.props }
+}
+
+/** The empty-state menu, which the floating panel shows in an empty workspace's group body. */
+export function findFloatingEmptyState(node: unknown): ReactElementLike {
+  const emptyState = findFloatingTabGroupHost(node).emptyGroupBody
+  if (!isValidElement<Record<string, unknown>>(emptyState)) {
+    throw new Error('FloatingTerminalEmptyState not found')
+  }
+  return { type: emptyState.type, props: emptyState.props }
+}
+
+function isTabGroupHost(value: unknown): value is TabGroupHost {
+  return typeof value === 'object' && value !== null && 'newTabActions' in value
 }
 
 export function runEffects(): void {

@@ -1,4 +1,3 @@
-import { FLOATING_WORKSPACE_SHORTCUT_SURFACE_SELECTOR } from './floating-workspace-shortcut-policy'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type { Tab } from '../../../shared/tab-types'
@@ -18,7 +17,10 @@ import {
   shouldMinimizeFloatingWorkspacePanelOnCloseShortcut,
   switchFloatingWorkspaceTab
 } from './floating-workspace-terminal-actions'
-import { matchFloatingWorkspacePanelOwnedAction } from './floating-workspace-shortcut-policy'
+import {
+  matchFloatingWorkspacePanelOwnedAction,
+  FLOATING_WORKSPACE_SHORTCUT_SURFACE_SELECTOR
+} from './floating-workspace-shortcut-policy'
 
 const activateWebRuntimeSessionTabMock = vi.hoisted(() => vi.fn())
 const createWebRuntimeSessionBrowserTabMock = vi.hoisted(() => vi.fn())

@@ -64,6 +64,7 @@ export type FloatingTerminalPanelMocks = {
   setTabPaneExpanded: Mock<FloatingPanelStoreState['setTabPaneExpanded']>
   shouldDeferParkedPtyExitTabClose: Mock<(tabId: string, ptyId: string) => boolean>
   useContextualTour: Mock<typeof useContextualTour>
+  ensureWorktreeRootGroup: Mock<FloatingPanelStoreState['ensureWorktreeRootGroup']>
 }
 
 export const mocks: FloatingTerminalPanelMocks = {
@@ -109,26 +110,36 @@ export const mocks: FloatingTerminalPanelMocks = {
   setTabCustomTitle: vi.fn(),
   setTabPaneExpanded: vi.fn(),
   shouldDeferParkedPtyExitTabClose: vi.fn(),
-  useContextualTour: vi.fn()
+  useContextualTour: vi.fn(),
+  ensureWorktreeRootGroup: vi.fn(() => FLOATING_ROOT_GROUP_ID)
 }
 
-export const saveDialogBox = {
-  fileId: null as string | null
-}
-
-export const parkingBox = {
-  parkedTabIds: new Set<string>()
-}
+const FLOATING_ROOT_GROUP_ID = 'floating-root-group'
 
 function resetStore(tabs: TerminalTab[] = []): void {
   storeBox.state = {
     tabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: tabs },
     browserTabsByWorktree: {},
     browserPagesByWorkspace: {},
-    groupsByWorktree: {},
+    // Why a root group: the panel creates one the first time it opens and it persists, so an
+    // opened panel always has a tab strip to render.
+    groupsByWorktree: {
+      [FLOATING_TERMINAL_WORKTREE_ID]: [
+        {
+          id: FLOATING_ROOT_GROUP_ID,
+          worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+          activeTabId: null,
+          tabOrder: []
+        }
+      ]
+    },
     unifiedTabsByWorktree: {},
     openFiles: [],
-    activeGroupIdByWorktree: {},
+    activeGroupIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: FLOATING_ROOT_GROUP_ID },
+    layoutByWorktree: {
+      [FLOATING_TERMINAL_WORKTREE_ID]: { type: 'leaf', groupId: FLOATING_ROOT_GROUP_ID }
+    },
+    ensureWorktreeRootGroup: mocks.ensureWorktreeRootGroup,
     activeTabIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: tabs[0]?.id ?? null },
     expandedPaneByTabId: {},
     activateTab: mocks.activateTab,
@@ -161,8 +172,6 @@ export async function setupFloatingTerminalPanelTest(): Promise<void> {
   hookRuntime.layoutEffects = []
   hookRuntime.index = 0
   hookRuntime.values = []
-  saveDialogBox.fileId = null
-  parkingBox.parkedTabIds = new Set()
   resetStore()
   // Why: the open-maximized intent is a module singleton; drain any leftover
   // from a prior test so it cannot bleed into an unrelated render.
@@ -213,7 +222,10 @@ export async function setupFloatingTerminalPanelTest(): Promise<void> {
     removeEventListener: vi.fn()
   })
   vi.stubGlobal('navigator', { userAgent: 'Macintosh' })
-  vi.stubGlobal('HTMLElement', class {})
+  // Why both: the real DOM's HTMLElement extends Element, and SVG-aware checks test Element.
+  class StubElement {}
+  vi.stubGlobal('Element', StubElement)
+  vi.stubGlobal('HTMLElement', class extends StubElement {})
   vi.stubGlobal('localStorage', localStorage)
   // Default so closeFloatingItemConfirmed's isFloatingWorkspacePanelFocused() read and the
   // panel's outside-pointerdown effect are both safe; individual tests override document with

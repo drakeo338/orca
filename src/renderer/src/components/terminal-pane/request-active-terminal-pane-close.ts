@@ -19,11 +19,16 @@ export function onActiveTerminalPaneCloseRequest(
   closeActivePane: () => void
 ): () => void {
   const onRequest = (event: Event): void => {
-    const detail = (event as CustomEvent<RequestActiveTerminalPaneCloseDetail>).detail
-    if (detail?.tabId === tabId) {
+    if (event instanceof CustomEvent && isCloseRequestFor(event.detail, tabId)) {
       closeActivePane()
     }
   }
   window.addEventListener(REQUEST_ACTIVE_TERMINAL_PANE_CLOSE_EVENT, onRequest)
   return () => window.removeEventListener(REQUEST_ACTIVE_TERMINAL_PANE_CLOSE_EVENT, onRequest)
+}
+
+function isCloseRequestFor(detail: unknown, tabId: string): boolean {
+  return (
+    typeof detail === 'object' && detail !== null && 'tabId' in detail && detail.tabId === tabId
+  )
 }

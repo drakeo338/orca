@@ -1,22 +1,14 @@
+import { armFloatingPanelReclaimIntent } from '@/lib/floating-workspace-focus-reclaim'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { consumeFloatingPanelReclaimIntent } from '@/lib/floating-workspace-focus-reclaim'
-import {
-  makeFile,
-  makeTab,
-  setFloatingEditorTabs,
-  setFloatingTabs
-} from './floating-terminal-panel-test-fixtures'
-import {
-  mocks,
-  saveDialogBox,
-  setupFloatingTerminalPanelTest
-} from './floating-terminal-panel-test-harness'
+import { makeTab, setFloatingTabs } from './floating-terminal-panel-test-fixtures'
+import { mocks, setupFloatingTerminalPanelTest } from './floating-terminal-panel-test-harness'
 import {
   attachRef,
   findByProp,
-  findByTypeName,
   renderPanel,
-  runEffects
+  runEffects,
+  findTitlebarDragSurface,
+  makeTitlebarPressTarget
 } from './floating-terminal-panel-render-probe'
 
 vi.mock('react', async () => {
@@ -35,10 +27,6 @@ vi.mock('@/components/tab-bar/TabBar', async () => {
 
 vi.mock('@/components/terminal-pane/TerminalPane', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createTerminalPaneModule()
-})
-
-vi.mock('@/components/terminal-pane/use-terminal-tab-cold-parking', async () => {
-  return (await import('./floating-terminal-panel-test-module-mocks')).createColdParkingModule()
 })
 
 vi.mock('@/components/terminal-pane/terminal-parked-tab-watchers', async () => {
@@ -87,12 +75,6 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', async () => {
 
 vi.mock('@/components/ui/dialog', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createDialogModule()
-})
-
-vi.mock('@/components/terminal/useTerminalSaveDialog', async () => {
-  return (
-    await import('./floating-terminal-panel-test-module-mocks')
-  ).createTerminalSaveDialogModule()
 })
 
 vi.mock('@/runtime/web-runtime-session', async () => {
@@ -309,46 +291,6 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(() => runEffects()).not.toThrow()
   })
 
-  // F3 (a)/(b): a panel-owned close that empties the panel reclaims keyboard focus for the next
-  // Cmd/Ctrl+T. The emptying close arms the one-shot intent (via closeTerminalTab's onClosed); the
-  // count→0 effect consumes it on the now-empty re-render and focuses the panel root.
-  it('reclaims panel keyboard focus after a focused last-pane close empties the panel', async () => {
-    setFloatingTabs([makeTab({ id: 'tab-1' })])
-    const panelElement = { contains: vi.fn().mockReturnValue(true), focus: vi.fn() }
-    const activeElement = { closest: vi.fn().mockReturnValue(panelElement) }
-    Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    vi.stubGlobal('document', {
-      activeElement,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    })
-    // A second render pass is needed before the active terminal pane mounts.
-    await renderPanel(true)
-    runEffects()
-    await Promise.resolve()
-    await renderPanel(true)
-    runEffects()
-    await Promise.resolve()
-    const element = await renderPanel(true)
-    attachRef(findByProp(element, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    // The last-pane close authority (L3 → onCloseTab) closes the tab while the panel owns focus.
-    const terminalPane = findByTypeName(element, 'TerminalPane')
-    ;(terminalPane.props.onCloseTab as () => void)()
-    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({ onClosed: expect.any(Function) })
-    )
-
-    // Panel is now empty: the count→0 effect consumes the armed intent and reclaims focus.
-    setFloatingTabs([])
-    const emptyElement = await renderPanel(true)
-    attachRef(findByProp(emptyElement, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-    expect(panelElement.focus).toHaveBeenCalledWith({ preventScroll: true })
-  })
-
   it('cancels the pending reclaim frame when the panel root unmounts before it runs', async () => {
     const cancelAnimationFrame = vi.fn()
     vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame)
@@ -362,16 +304,12 @@ describe('FloatingTerminalPanel close behavior', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn()
     })
-    // A second render pass is needed before the active terminal pane mounts.
-    await renderPanel(true)
-    runEffects()
-    await Promise.resolve()
     const element = await renderPanel(true)
     attachRef(findByProp(element, 'data-floating-terminal-panel').props.ref, panelElement)
     runEffects()
 
-    const terminalPane = findByTypeName(element, 'TerminalPane')
-    ;(terminalPane.props.onCloseTab as () => void)()
+    // The workspace close arms this when a panel-owned close empties the panel.
+    armFloatingPanelReclaimIntent()
 
     // Emptying schedules the reclaim frame (id 42, callback not yet run); unmounting cancels it.
     setFloatingTabs([])
@@ -385,145 +323,15 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(42)
   })
 
-  // F3 (g): a close that leaves another tab does not empty the panel, so no intent is armed and
-  // the surviving tab keeps focus instead of the panel root stealing it.
-  it('does not arm a reclaim when a focused close leaves another floating tab', async () => {
-    setFloatingTabs([makeTab({ id: 'tab-1' }), makeTab({ id: 'tab-2' })])
-    const panelElement = { contains: vi.fn().mockReturnValue(true), focus: vi.fn() }
-    const activeElement = { closest: vi.fn().mockReturnValue(panelElement) }
-    Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    vi.stubGlobal('document', {
-      activeElement,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    })
-    const element = await renderPanel(true)
-    attachRef(findByProp(element, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onClose as (tabId: string) => void)('tab-2')
-
-    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
-      'tab-2',
-      expect.objectContaining({ onClosed: expect.any(Function) })
-    )
-    expect(consumeFloatingPanelReclaimIntent()).toBe(false)
-    expect(panelElement.focus).not.toHaveBeenCalled()
-  })
-
-  // F3 arm-timing: arming is gated on closeTerminalTab's onClosed (the *actual* close), not on
-  // close-initiation. A pinned/deferred close whose confirm is pending or cancelled never fires
-  // onClosed, so an emptying, panel-owned close must still leave the intent unarmed — otherwise a
-  // later empty-panel mount would reclaim focus for a close that never happened.
-  it('does not arm a reclaim when an emptying close is deferred and onClosed never fires', async () => {
-    setFloatingTabs([makeTab({ id: 'tab-1' })])
-    const panelElement = { contains: vi.fn().mockReturnValue(true), focus: vi.fn() }
-    const activeElement = { closest: vi.fn().mockReturnValue(panelElement) }
-    Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    vi.stubGlobal('document', {
-      activeElement,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    })
-    // Model closeTerminalTab deferring to its pin-confirm dialog (or the user cancelling): the close
-    // does not complete this tick, so the onClosed arming callback is never invoked.
-    mocks.closeTerminalTab.mockImplementationOnce(() => {})
-    const element = await renderPanel(true)
-    attachRef(findByProp(element, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onClose as (tabId: string) => void)('tab-1')
-
-    // The panel owned focus and this close would empty it, yet arming rides on the real close via
-    // onClosed — which never fired — so no intent is armed and nothing can reclaim later.
-    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
-      'tab-1',
-      expect.objectContaining({ onClosed: expect.any(Function) })
-    )
-    expect(consumeFloatingPanelReclaimIntent()).toBe(false)
-  })
-
-  // A dirty editor's close is deferred to the save dialog, so its arm check must survive the queue
-  // and fire when the file actually leaves the panel — otherwise this one content type would empty
-  // the panel with no intent armed and the next Cmd/Ctrl+T would miss the floating panel.
-  it('reclaims panel keyboard focus after a deferred dirty-editor close empties the panel', async () => {
-    setFloatingEditorTabs([makeFile({ id: 'file-a', isDirty: true })])
-    const panelElement = { contains: vi.fn().mockReturnValue(true), focus: vi.fn() }
-    const activeElement = { closest: vi.fn().mockReturnValue(panelElement) }
-    Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    vi.stubGlobal('document', {
-      activeElement,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    })
-    const element = await renderPanel(true)
-    attachRef(findByProp(element, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onClose as (tabId: string) => void)('tab-file-a')
-
-    // The close is parked on the save dialog: nothing closed yet, so nothing reclaims focus yet.
-    expect(saveDialogBox.fileId).toBe('file-a')
-    expect(mocks.closeFile).not.toHaveBeenCalledWith('file-a')
-    expect(window.requestAnimationFrame).not.toHaveBeenCalled()
-
-    // The dialog resolves (save or discard) and the file leaves the panel: the parked arm runs on
-    // the now-empty count and the count→0 effect consumes it. The deferred reclaim frame is the
-    // signal here — the empty panel's own open-focus effect focuses synchronously, without a frame.
-    saveDialogBox.fileId = null
-    setFloatingEditorTabs([])
-    const emptyElement = await renderPanel(true)
-    attachRef(findByProp(emptyElement, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    expect(window.requestAnimationFrame).toHaveBeenCalled()
-    expect(panelElement.focus).toHaveBeenCalledWith({ preventScroll: true })
-  })
-
-  it('drops the deferred dirty-editor arm when the save dialog is cancelled', async () => {
-    setFloatingEditorTabs([makeFile({ id: 'file-a', isDirty: true })])
-    const panelElement = { contains: vi.fn().mockReturnValue(true), focus: vi.fn() }
-    const activeElement = { closest: vi.fn().mockReturnValue(panelElement) }
-    Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    vi.stubGlobal('document', {
-      activeElement,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    })
-    const element = await renderPanel(true)
-    attachRef(findByProp(element, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onClose as (tabId: string) => void)('tab-file-a')
-    ;(findByTypeName(element, 'Dialog').props.onOpenChange as (open: boolean) => void)(false)
-
-    // Cancel keeps the file open; a later close of that file (from some other path) must not
-    // resurrect this cancelled close's arm.
-    setFloatingEditorTabs([])
-    const emptyElement = await renderPanel(true)
-    attachRef(findByProp(emptyElement, 'data-floating-terminal-panel').props.ref, panelElement)
-    runEffects()
-
-    // No intent armed and no deferred reclaim frame; the empty panel's synchronous open-focus
-    // effect still runs, which is orthogonal to the reclaim.
-    expect(consumeFloatingPanelReclaimIntent()).toBe(false)
-    expect(window.requestAnimationFrame).not.toHaveBeenCalled()
-  })
-
   it('preserves terminal focus when dragging the titlebar from inside the floating panel', async () => {
     setFloatingTabs([makeTab({ id: 'tab-1' })])
     const element = await renderPanel(true)
     const panel = findByProp(element, 'data-floating-terminal-panel')
-    const titlebar = findByProp(element, 'data-floating-terminal-shortcut-surface')
+    const titlebar = findTitlebarDragSurface(element)
     const panelElement = { focus: vi.fn() }
     const activeElement = { closest: vi.fn().mockReturnValue(panelElement) }
-    const titlebarTarget = { closest: vi.fn().mockReturnValue(null) }
+    const titlebarTarget = makeTitlebarPressTarget()
     Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    Object.setPrototypeOf(titlebarTarget, HTMLElement.prototype)
     attachRef(panel.props.ref, panelElement)
     vi.stubGlobal('document', { activeElement })
 
@@ -543,12 +351,11 @@ describe('FloatingTerminalPanel close behavior', () => {
     setFloatingTabs([makeTab({ id: 'tab-1' })])
     const element = await renderPanel(true)
     const panel = findByProp(element, 'data-floating-terminal-panel')
-    const titlebar = findByProp(element, 'data-floating-terminal-shortcut-surface')
+    const titlebar = findTitlebarDragSurface(element)
     const panelElement = { focus: vi.fn() }
     const activeElement = { closest: vi.fn().mockReturnValue(null) }
-    const titlebarTarget = { closest: vi.fn().mockReturnValue(null) }
+    const titlebarTarget = makeTitlebarPressTarget()
     Object.setPrototypeOf(activeElement, HTMLElement.prototype)
-    Object.setPrototypeOf(titlebarTarget, HTMLElement.prototype)
     attachRef(panel.props.ref, panelElement)
     vi.stubGlobal('document', { activeElement })
 

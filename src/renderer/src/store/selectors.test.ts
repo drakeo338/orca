@@ -136,6 +136,7 @@ describe('store selectors', () => {
         }
       }
     })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the selector reads only each tab's contentType and entityId, which every fixture entry sets; the omitted Tab fields are never read.
     const unifiedTabs = [
       {
         id: 'unified-term-1',

@@ -20,7 +20,10 @@ import {
   getPanelStyleBounds,
   renderPanel,
   runEffects,
-  setViewport
+  setViewport,
+  findFloatingWindowControls,
+  findTitlebarDragSurface,
+  makeTitlebarPressTarget
 } from './floating-terminal-panel-render-probe'
 
 vi.mock('react', async () => {
@@ -39,10 +42,6 @@ vi.mock('@/components/tab-bar/TabBar', async () => {
 
 vi.mock('@/components/terminal-pane/TerminalPane', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createTerminalPaneModule()
-})
-
-vi.mock('@/components/terminal-pane/use-terminal-tab-cold-parking', async () => {
-  return (await import('./floating-terminal-panel-test-module-mocks')).createColdParkingModule()
 })
 
 vi.mock('@/components/terminal-pane/terminal-parked-tab-watchers', async () => {
@@ -91,12 +90,6 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', async () => {
 
 vi.mock('@/components/ui/dialog', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createDialogModule()
-})
-
-vi.mock('@/components/terminal/useTerminalSaveDialog', async () => {
-  return (
-    await import('./floating-terminal-panel-test-module-mocks')
-  ).createTerminalSaveDialogModule()
 })
 
 vi.mock('@/runtime/web-runtime-session', async () => {
@@ -291,9 +284,8 @@ describe('FloatingTerminalPanel close behavior', () => {
 
   it('commits the last dragged bounds on pointer cancellation', async () => {
     const element = await renderPanel(true)
-    const titlebar = findByProp(element, 'data-floating-terminal-shortcut-surface')
-    const titlebarTarget = { closest: vi.fn().mockReturnValue(null) }
-    Object.setPrototypeOf(titlebarTarget, HTMLElement.prototype)
+    const titlebar = findTitlebarDragSurface(element)
+    const titlebarTarget = makeTitlebarPressTarget()
     vi.stubGlobal('document', { activeElement: null })
     const startBounds = getDefaultFloatingTerminalBounds()
     const expectedBounds = clampFloatingTerminalBounds({
@@ -367,7 +359,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     )
 
     let element = await renderPanel(true)
-    const controls = findByTypeName(element, 'FloatingTerminalWindowControls')
+    const controls = findFloatingWindowControls(element)
     ;(controls.props.onToggleMaximized as () => void)()
 
     element = await renderPanel(true)
@@ -379,7 +371,7 @@ describe('FloatingTerminalPanel close behavior', () => {
       expect.anything()
     )
 
-    const restoredControls = findByTypeName(element, 'FloatingTerminalWindowControls')
+    const restoredControls = findFloatingWindowControls(element)
     ;(restoredControls.props.onToggleMaximized as () => void)()
     element = await renderPanel(true)
 
@@ -406,7 +398,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     let element = await renderPanel(true)
     expect(getPanelStyleBounds(element)).toEqual(getMaximizedFloatingTerminalBounds())
 
-    const controls = findByTypeName(element, 'FloatingTerminalWindowControls')
+    const controls = findFloatingWindowControls(element)
     ;(controls.props.onToggleMaximized as () => void)()
     element = await renderPanel(true)
 
@@ -428,14 +420,14 @@ describe('FloatingTerminalPanel close behavior', () => {
     )
 
     let element = await renderPanel(true)
-    const controls = findByTypeName(element, 'FloatingTerminalWindowControls')
+    const controls = findFloatingWindowControls(element)
     ;(controls.props.onToggleMaximized as () => void)()
 
     element = await renderPanel(true)
     expect(getPanelStyleBounds(element)).toEqual(getMaximizedFloatingTerminalBounds())
 
     setViewport(1200, 800)
-    const restoredControls = findByTypeName(element, 'FloatingTerminalWindowControls')
+    const restoredControls = findFloatingWindowControls(element)
     ;(restoredControls.props.onToggleMaximized as () => void)()
     element = await renderPanel(true)
 

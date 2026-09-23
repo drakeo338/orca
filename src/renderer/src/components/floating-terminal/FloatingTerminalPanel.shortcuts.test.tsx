@@ -45,10 +45,6 @@ vi.mock('@/components/terminal-pane/TerminalPane', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createTerminalPaneModule()
 })
 
-vi.mock('@/components/terminal-pane/use-terminal-tab-cold-parking', async () => {
-  return (await import('./floating-terminal-panel-test-module-mocks')).createColdParkingModule()
-})
-
 vi.mock('@/components/terminal-pane/terminal-parked-tab-watchers', async () => {
   return (
     await import('./floating-terminal-panel-test-module-mocks')
@@ -95,12 +91,6 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', async () => {
 
 vi.mock('@/components/ui/dialog', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createDialogModule()
-})
-
-vi.mock('@/components/terminal/useTerminalSaveDialog', async () => {
-  return (
-    await import('./floating-terminal-panel-test-module-mocks')
-  ).createTerminalSaveDialogModule()
 })
 
 vi.mock('@/runtime/web-runtime-session', async () => {
@@ -199,13 +189,13 @@ describe('FloatingTerminalPanel close behavior', () => {
     await flushAsyncWork()
 
     expect(preventDefault).toHaveBeenCalledWith()
+    // Why no activate option: createTab selects within the floating workspace on its own.
     expect(mocks.createTab).toHaveBeenCalledWith(
       FLOATING_TERMINAL_WORKTREE_ID,
       'floating-group',
-      undefined,
-      { activate: false }
+      undefined
     )
-    expect(mocks.activateTab).toHaveBeenCalledWith('created-tab')
+    expect(mocks.focusTerminalTabSurface).toHaveBeenCalledWith('created-tab')
   })
 
   it('routes titlebar Cmd+Shift+O to the floating markdown picker', async () => {
@@ -296,13 +286,13 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(stopPropagation).toHaveBeenCalledWith()
     expect(stopImmediatePropagation).toHaveBeenCalledWith()
     expect(mocks.createTab).toHaveBeenCalledTimes(1)
+    // Why no activate option: createTab selects within the floating workspace on its own.
     expect(mocks.createTab).toHaveBeenCalledWith(
       FLOATING_TERMINAL_WORKTREE_ID,
       'floating-group',
-      undefined,
-      { activate: false }
+      undefined
     )
-    expect(mocks.activateTab).toHaveBeenCalledWith('created-tab')
+    expect(mocks.focusTerminalTabSurface).toHaveBeenCalledWith('created-tab')
   })
 
   it('resets focused floating terminal double-tap detection on window blur', async () => {

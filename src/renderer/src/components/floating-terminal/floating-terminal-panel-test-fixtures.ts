@@ -1,7 +1,7 @@
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { KeybindingOverrides, TerminalShortcutPolicy } from '../../../../shared/keybindings'
 import type { BrowserTab } from '../../../../shared/browser-workspace-types'
-import type { Tab, TabGroup } from '../../../../shared/tab-types'
+import type { Tab, TabGroup, TabGroupLayoutNode } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { OpenFile } from '@/store/slices/editor'
 
@@ -13,6 +13,8 @@ export type FloatingPanelStoreState = {
   unifiedTabsByWorktree: Record<string, Tab[]>
   openFiles: OpenFile[]
   activeGroupIdByWorktree: Record<string, string | null>
+  layoutByWorktree: Record<string, TabGroupLayoutNode>
+  ensureWorktreeRootGroup: (worktreeId: string) => string
   activeTabIdByWorktree: Record<string, string | null>
   expandedPaneByTabId: Record<string, boolean>
   createTab: (
@@ -99,6 +101,11 @@ export function removeFloatingTerminalTabFromStore(entityId: string): void {
   }
 }
 
+export function setFloatingLayout(layout: TabGroupLayoutNode): void {
+  const state = storeBox.state as FloatingPanelStoreState
+  state.layoutByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: layout }
+}
+
 export function setFloatingTabs(tabs: TerminalTab[]): void {
   const state = storeBox.state as FloatingPanelStoreState
   const groupId = 'floating-group'
@@ -128,6 +135,7 @@ export function setFloatingTabs(tabs: TerminalTab[]): void {
     ]
   }
   state.activeGroupIdByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: groupId }
+  state.layoutByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: { type: 'leaf', groupId } }
   state.activeTabIdByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: tabs[0]?.id ?? null }
   state.tabBarOrderByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: tabs.map((tab) => tab.id) }
 }
@@ -161,36 +169,5 @@ export function setFloatingEditorTabs(files: OpenFile[]): void {
     ]
   }
   state.activeGroupIdByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: groupId }
-}
-
-export function setFloatingSimulatorTab(): Tab {
-  const state = storeBox.state as FloatingPanelStoreState
-  const groupId = 'floating-group'
-  const tab: Tab = {
-    id: 'simulator-tab',
-    entityId: 'simulator-tab',
-    groupId,
-    worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-    contentType: 'simulator',
-    label: 'Mobile Emulator',
-    customLabel: null,
-    color: null,
-    sortOrder: 0,
-    createdAt: 0
-  }
-  state.unifiedTabsByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: [tab] }
-  state.groupsByWorktree = {
-    [FLOATING_TERMINAL_WORKTREE_ID]: [
-      {
-        id: groupId,
-        worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-        activeTabId: tab.id,
-        tabOrder: [tab.id],
-        recentTabIds: [tab.id]
-      }
-    ]
-  }
-  state.activeGroupIdByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: groupId }
-  state.tabBarOrderByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: [tab.id] }
-  return tab
+  state.layoutByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: { type: 'leaf', groupId } }
 }

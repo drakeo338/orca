@@ -1,24 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { createUntitledMarkdownFileWithTemplateSelection } from '@/lib/create-untitled-markdown'
+import { makeTab, setFloatingTabs } from './floating-terminal-panel-test-fixtures'
+import { mocks, setupFloatingTerminalPanelTest } from './floating-terminal-panel-test-harness'
 import {
-  makeFile,
-  makeTab,
-  setFloatingEditorTabs,
-  setFloatingTabs
-} from './floating-terminal-panel-test-fixtures'
-import {
-  hookRuntime,
-  mocks,
-  saveDialogBox,
-  setupFloatingTerminalPanelTest
-} from './floating-terminal-panel-test-harness'
-import {
-  findByProp,
-  findByTypeName,
   flushAsyncWork,
   renderPanel,
-  runEffects
+  runEffects,
+  findFloatingTabGroupHost
 } from './floating-terminal-panel-render-probe'
 
 vi.mock('react', async () => {
@@ -37,10 +26,6 @@ vi.mock('@/components/tab-bar/TabBar', async () => {
 
 vi.mock('@/components/terminal-pane/TerminalPane', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createTerminalPaneModule()
-})
-
-vi.mock('@/components/terminal-pane/use-terminal-tab-cold-parking', async () => {
-  return (await import('./floating-terminal-panel-test-module-mocks')).createColdParkingModule()
 })
 
 vi.mock('@/components/terminal-pane/terminal-parked-tab-watchers', async () => {
@@ -89,12 +74,6 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', async () => {
 
 vi.mock('@/components/ui/dialog', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createDialogModule()
-})
-
-vi.mock('@/components/terminal/useTerminalSaveDialog', async () => {
-  return (
-    await import('./floating-terminal-panel-test-module-mocks')
-  ).createTerminalSaveDialogModule()
 })
 
 vi.mock('@/runtime/web-runtime-session', async () => {
@@ -178,8 +157,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     runEffects()
     await flushAsyncWork()
     element = await renderPanel(true)
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onNewFileTab as () => void)()
+    findFloatingTabGroupHost(element).newTabActions?.('floating-group').onNewFileTab?.()
     await flushAsyncWork()
 
     expect(createUntitledMarkdownFileWithTemplateSelection).toHaveBeenCalledWith(
@@ -204,8 +182,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     })
 
     const element = await renderPanel(true)
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onOpenFileTab as () => void)()
+    findFloatingTabGroupHost(element).newTabActions?.('floating-group').onOpenFileTab?.()
     await flushAsyncWork()
 
     expect(mocks.pickFloatingMarkdownDocument).toHaveBeenCalledWith()
@@ -220,60 +197,10 @@ describe('FloatingTerminalPanel close behavior', () => {
     )
   })
 
+  // Why: floating markdown is scratch context, not a repo review surface for agent notes.
   it('disables markdown annotations in floating editor tabs', async () => {
-    setFloatingEditorTabs([makeFile({ id: 'notes' })])
+    const host = findFloatingTabGroupHost(await renderPanel(true))
 
-    const element = await renderPanel(true)
-    const editorPanel = findByProp(element, 'activeFileId')
-
-    expect(editorPanel.props.markdownAnnotationsEnabled).toBe(false)
-    expect(editorPanel.props.activeFileId).toBe('notes')
-    expect(editorPanel.props.isVisible).toBe(true)
-  })
-
-  it('marks the retained floating editor hidden when the panel is closed', async () => {
-    setFloatingEditorTabs([makeFile({ id: 'notes' })])
-
-    const element = await renderPanel(false)
-    const editorPanel = findByProp(element, 'activeFileId')
-
-    expect(editorPanel.props.isVisible).toBe(false)
-  })
-
-  it('queues dirty editor closes from close-all-files instead of overwriting the dialog id', async () => {
-    setFloatingEditorTabs([
-      makeFile({ id: 'file-a', isDirty: true }),
-      makeFile({ id: 'file-b', isDirty: true })
-    ])
-
-    const element = await renderPanel(true)
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onCloseAllFiles as () => void)()
-
-    expect(saveDialogBox.fileId).toBe('file-a')
-    expect(mocks.closeFile).not.toHaveBeenCalledWith('file-a')
-    expect(mocks.closeFile).not.toHaveBeenCalledWith('file-b')
-  })
-
-  it('queues dirty editor closes from close-others and close-to-right one file at a time', async () => {
-    setFloatingEditorTabs([
-      makeFile({ id: 'file-a', isDirty: true }),
-      makeFile({ id: 'file-b', isDirty: true }),
-      makeFile({ id: 'file-c', isDirty: true })
-    ])
-
-    const element = await renderPanel(true)
-    const tabBar = findByTypeName(element, 'TabBar')
-    ;(tabBar.props.onCloseOthers as (tabId: string) => void)('tab-file-b')
-    expect(saveDialogBox.fileId).toBe('file-a')
-
-    saveDialogBox.fileId = null
-    mocks.closeFile.mockClear()
-    hookRuntime.values = []
-    const nextElement = await renderPanel(true)
-    const nextTabBar = findByTypeName(nextElement, 'TabBar')
-    ;(nextTabBar.props.onCloseToRight as (tabId: string) => void)('tab-file-a')
-    expect(saveDialogBox.fileId).toBe('file-b')
-    expect(mocks.closeFile).not.toHaveBeenCalledWith('file-c')
+    expect(host.markdownAnnotationsEnabled).toBe(false)
   })
 })

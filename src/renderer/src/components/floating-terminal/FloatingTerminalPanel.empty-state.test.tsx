@@ -9,11 +9,12 @@ import {
 import { mocks, setupFloatingTerminalPanelTest } from './floating-terminal-panel-test-harness'
 import {
   collectPropValues,
-  findByTypeName,
   flushAsyncWork,
   renderPanel,
   runEffects,
-  type ReactElementLike
+  type ReactElementLike,
+  findFloatingEmptyState,
+  findFloatingTabGroupHost
 } from './floating-terminal-panel-render-probe'
 
 vi.mock('react', async () => {
@@ -32,10 +33,6 @@ vi.mock('@/components/tab-bar/TabBar', async () => {
 
 vi.mock('@/components/terminal-pane/TerminalPane', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createTerminalPaneModule()
-})
-
-vi.mock('@/components/terminal-pane/use-terminal-tab-cold-parking', async () => {
-  return (await import('./floating-terminal-panel-test-module-mocks')).createColdParkingModule()
 })
 
 vi.mock('@/components/terminal-pane/terminal-parked-tab-watchers', async () => {
@@ -84,12 +81,6 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', async () => {
 
 vi.mock('@/components/ui/dialog', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createDialogModule()
-})
-
-vi.mock('@/components/terminal/useTerminalSaveDialog', async () => {
-  return (
-    await import('./floating-terminal-panel-test-module-mocks')
-  ).createTerminalSaveDialogModule()
 })
 
 vi.mock('@/runtime/web-runtime-session', async () => {
@@ -240,7 +231,7 @@ describe('FloatingTerminalPanel close behavior', () => {
 
   it('targets the empty-state actions without co-mounting the surface fallback', async () => {
     const element = await renderPanel(true)
-    const emptyState = findByTypeName(element, 'FloatingTerminalEmptyState')
+    const emptyState = findFloatingEmptyState(element)
     const renderedEmptyState = (
       emptyState.type as (props: Record<string, unknown>) => ReactElementLike
     )(emptyState.props)
@@ -259,9 +250,7 @@ describe('FloatingTerminalPanel close behavior', () => {
 
     const element = await renderPanel(true)
 
-    expect(() => findByTypeName(element, 'FloatingTerminalEmptyState')).toThrow(
-      'FloatingTerminalEmptyState not found'
-    )
+    expect(findFloatingTabGroupHost(element).emptyGroupBody).toBeUndefined()
     expect(collectPropValues(element, 'data-contextual-tour-target')).toContain(
       'floating-workspace-surface'
     )
@@ -277,7 +266,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     const onOpenChange = vi.fn()
     const element = await renderPanel(true, onOpenChange)
 
-    const emptyState = findByTypeName(element, 'FloatingTerminalEmptyState')
+    const emptyState = findFloatingEmptyState(element)
     ;(emptyState.props.onClose as () => void)()
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
@@ -294,7 +283,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     state.activeTabIdByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: null }
 
     const element = await renderPanel(true)
-    const emptyState = findByTypeName(element, 'FloatingTerminalEmptyState')
+    const emptyState = findFloatingEmptyState(element)
 
     expect(emptyState).toBeTruthy()
   })
