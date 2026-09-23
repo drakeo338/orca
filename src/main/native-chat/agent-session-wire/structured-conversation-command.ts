@@ -160,6 +160,8 @@ export function runStructuredConversationCommand(
               agent: record.provider,
               runtimeKind: 'native',
               launchArgs: record.launchArgs,
+              // The cleared chat continues in the same tab, so it stays in the folder it ran in.
+              ...(record.workspacePath ? { workspacePath: record.workspacePath } : {}),
               options: effectiveOptions
             }
             attach.envelope.payloadFingerprint = computeAgentSessionPayloadFingerprint({

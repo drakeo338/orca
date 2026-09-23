@@ -26,6 +26,7 @@ import {
 } from '../native-chat/claude-structured-managed-account-support'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 
 export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project', 'local'] as const
 export const CLAUDE_SESSION_STATE_EVENTS_ENV = 'CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS'
@@ -99,7 +100,7 @@ export type ClaudeStructuredLaunch = {
 }
 
 export type ClaudeStructuredLaunchResolverDeps = {
-  store: AgentSessionRecordStore
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinWorkspacePath'>
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCommand?: () => string
   resolveEnv?: () =>
@@ -245,7 +246,7 @@ export function createClaudeStructuredLaunchResolver(
             }
           : { sessionId: providerSessionId })
       },
-      cwd: await deps.resolveWorkspacePath(record.location.workspaceId),
+      cwd: await resolveAgentSessionLaunchDirectory(deps, record),
       env,
       claudeConfigDir: record.accountHome.path,
       providerSessionId,

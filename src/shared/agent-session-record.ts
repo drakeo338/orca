@@ -1,3 +1,4 @@
+import { isAgentSessionLaunchArgs } from './agent-session-launch-inputs'
 import { isAgentSessionRewindRecord, type AgentSessionRewindRecord } from './agent-session-rewind'
 import { isAgentSessionConversationName } from './agent-session-conversation-name'
 /**
@@ -129,6 +130,9 @@ export type AgentSessionRecord = {
   provider: AgentSessionHandleProvider
   providerHandleChain: AgentSessionProviderHandleLink[]
   accountHome: AgentSessionAccountHome
+  /** The directory the provider first launched in, in the execution host's path syntax. Floating
+   *  sessions resume here; worktree and folder ids still resolve by id to their durable place. */
+  workspacePath?: string
   /** Provider options acknowledged for the next turn, restored across owner replacement. */
   options?: Record<string, string>
   rewind?: AgentSessionRewindRecord
@@ -150,10 +154,6 @@ export type AgentSessionOptionsReplacement = {
 
 const MAX_ID_LENGTH = 512
 const MAX_PATH_LENGTH = 4096
-const MAX_LAUNCH_ENV_ENTRIES = 256
-const MAX_LAUNCH_ENV_VALUE_LENGTH = 65_536
-const MAX_LAUNCH_ARGS = 256
-const MAX_LAUNCH_ARGS_BYTES = 16 * 1024
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
 
 function isBoundedString(value: unknown, max: number): value is string {
@@ -245,22 +245,6 @@ export function isAgentSessionOptions(value: unknown): value is Record<string, s
   )
 }
 
-export function isAgentSessionLaunchEnv(value: unknown): value is AgentSessionLaunchEnv {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false
-  }
-  const entries = Object.entries(value)
-  return (
-    entries.length <= MAX_LAUNCH_ENV_ENTRIES &&
-    entries.every(
-      ([key, entry]) =>
-        isBoundedString(key, MAX_ID_LENGTH) &&
-        typeof entry === 'string' &&
-        entry.length <= MAX_LAUNCH_ENV_VALUE_LENGTH
-    )
-  )
-}
-
 function isAgentSessionJournalCheckpoint(value: unknown): value is AgentSessionJournalCheckpoint {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -344,6 +328,8 @@ export function isAgentSessionRecord(value: unknown): value is AgentSessionRecor
     (record.provider === 'claude' || record.provider === 'codex') &&
     isAgentSessionProviderHandleChain(record.providerHandleChain) &&
     isAgentSessionAccountHome(record.accountHome) &&
+    (record.workspacePath === undefined ||
+      isBoundedString(record.workspacePath, MAX_PATH_LENGTH)) &&
     (record.options === undefined || isAgentSessionOptions(record.options)) &&
     (record.rewind === undefined || isAgentSessionRewindRecord(record.rewind)) &&
     (record.conversationCommand === undefined ||
@@ -367,14 +353,5 @@ export function isAgentSessionRecord(value: unknown): value is AgentSessionRecor
       (validated.lease.ownerProcess !== null &&
         head?.linkId === validated.lease.provenHandleLinkId &&
         head.mintedAtFence === validated.lease.runtimeFence))
-  )
-}
-
-export function isAgentSessionLaunchArgs(value: unknown): value is AgentSessionLaunchArgs {
-  return (
-    Array.isArray(value) &&
-    value.length <= MAX_LAUNCH_ARGS &&
-    value.every((arg) => typeof arg === 'string' && !arg.includes('\0')) &&
-    Buffer.byteLength(JSON.stringify(value), 'utf8') <= MAX_LAUNCH_ARGS_BYTES
   )
 }

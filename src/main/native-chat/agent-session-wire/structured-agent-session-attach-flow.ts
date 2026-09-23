@@ -72,6 +72,16 @@ export type AttachFlowInput = {
   onAttachFailed?: () => Promise<void>
 }
 
+/** A refusal raised while resolving the launch arrives wrapped as pre-spawn proof; keep both. */
+function acquisitionRefusalOf(error: unknown): AgentSessionAcquisitionRefusal | null {
+  if (error instanceof AgentSessionAcquisitionRefusal) {
+    return error
+  }
+  return isAgentSessionPreSpawnError(error) && error.cause instanceof AgentSessionAcquisitionRefusal
+    ? error.cause
+    : null
+}
+
 export async function performAttach(
   input: AttachFlowInput
 ): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
@@ -168,6 +178,7 @@ export async function performAttach(
       acquiredOwner = true
     }
   } catch (error) {
+    const refusal = acquisitionRefusalOf(error)
     const spawnToken = reservedRecord?.lease.reservedSpawnToken
     if (reservedRecord && spawnToken && !unsupportedReservationSettlementAttempted) {
       // Settle processless proof and failed operation atomically.
@@ -185,11 +196,11 @@ export async function performAttach(
               code: 'agent_session_ownership_unknown',
               message: error.message
             }
-          : error instanceof AgentSessionAcquisitionRefusal
+          : refusal
             ? {
                 status: 'failed' as const,
-                code: error.code,
-                message: error.message
+                code: refusal.code,
+                message: refusal.message
               }
             : {
                 status: 'failed' as const,
@@ -214,11 +225,11 @@ export async function performAttach(
         )
       }
     }
-    if (error instanceof AgentSessionRewindRefusal) {
-      return rewindRefusal(error.rewindReason)
+    if (refusal instanceof AgentSessionRewindRefusal) {
+      return rewindRefusal(refusal.rewindReason)
     }
-    if (error instanceof AgentSessionAcquisitionRefusal) {
-      return { ok: false, refusal: { code: error.code, message: error.message } }
+    if (refusal) {
+      return { ok: false, refusal: { code: refusal.code, message: refusal.message } }
     }
     return {
       ok: false,

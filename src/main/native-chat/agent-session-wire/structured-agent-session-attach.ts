@@ -64,6 +64,8 @@ export type AgentSessionAttachParams = {
   /** Host-resolved defaults for a create-by-intent; remote attach schemas do not accept them. */
   options?: Readonly<Record<string, string>>
   launchArgs?: string[]
+  /** Host-resolved only: the directory a replacement session inherits from the one it continues. */
+  workspacePath?: string
   /** Omitted only for create-by-intent; the adapter proves the durable handle. */
   providerHandle?: Exclude<AgentSessionProviderHandle, { kind: 'opaque' }>
   /**
@@ -313,6 +315,7 @@ export function reserveRequestFor(input: {
     provider: params.provider,
     accountHome: params.accountHome,
     ...(params.options ? { options: params.options } : {}),
+    ...(params.workspacePath ? { workspacePath: params.workspacePath } : {}),
     ...(authority.launchArgs ? { launchArgs: authority.launchArgs } : {}),
     ...(authority.launchEnv ? { launchEnv: authority.launchEnv } : {}),
     runtimeKind: params.runtimeKind,
