@@ -85,7 +85,7 @@ export function useTerminalEditorCloseQueue(controller: TerminalEditorCloseFound
       // Why: the prompt names the file, so show it where it lives. The floating panel is never the
       // active worktree; activating it would take the main window over.
       if (file && isFloatingWorkspaceId(file.worktreeId)) {
-        revealFloatingWorkspacePanel()
+        revealFloatingWorkspacePanel(state)
       } else if (file && file.worktreeId !== state.activeWorktreeId) {
         setActiveWorktree(file.worktreeId)
       }

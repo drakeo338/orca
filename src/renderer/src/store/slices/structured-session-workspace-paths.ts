@@ -9,7 +9,8 @@ export type StructuredSessionWorkspacePath = {
 
 /**
  * The directory the host holds each structured chat tab's session to, mirrored from the host
- * status feed. Absent means the host resolves the tab's workspace id, so the renderer does too.
+ * status feed. Absent means the host resolves the tab's workspace id, except for a floating chat,
+ * whose directory stays unknown until its pin arrives.
  */
 export type StructuredSessionWorkspacePathSlice = {
   structuredSessionWorkspacePathByTabId: Record<string, StructuredSessionWorkspacePath>

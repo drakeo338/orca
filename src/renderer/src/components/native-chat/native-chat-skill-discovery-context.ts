@@ -9,6 +9,7 @@ import {
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import {
   resolveNativeChatTabDirectory,
+  resolveNativeChatTabDirectoryResolution,
   type NativeChatTabDirectoryState
 } from './native-chat-tab-directory'
 
@@ -76,6 +77,21 @@ export function resolveNativeChatSkillDiscoveryCwd(
     return startupCwd
   }
   return resolveNativeChatTabDirectory(state, terminalTabId, found.worktreeId)
+}
+
+/** A missing context that is not a failure: the chat's folder is known soon, when its pin arrives. */
+export function isNativeChatSkillDiscoveryAwaitingDirectory(
+  state: NativeChatSkillWorktreeState,
+  terminalTabId: string
+): boolean {
+  const found = findNativeChatTab(state, terminalTabId)
+  if (!found || found.tab.startupCwd?.trim()) {
+    return false
+  }
+  return (
+    resolveNativeChatTabDirectoryResolution(state, terminalTabId, found.worktreeId).status ===
+    'awaiting-pin'
+  )
 }
 
 export function resolveNativeChatSkillDiscoveryContext(

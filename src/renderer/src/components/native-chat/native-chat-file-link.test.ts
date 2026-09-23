@@ -187,14 +187,10 @@ describe('floating workspace native chat', () => {
     })
   })
 
-  it('resolves file links against the floating directory with no catalog row', () => {
+  it('resolves no file links until the pin arrives, instead of trusting the current setting', () => {
     expect(
-      resolveNativeChatFileLinkContext(floatingState('/home/me/scratch'), floatingTab.id)
-    ).toEqual({
-      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-      worktreePath: '/home/me/scratch',
-      runtimeEnvironmentId: null
-    })
+      resolveNativeChatFileLinkContext(floatingState('/home/me/changed-setting'), floatingTab.id)
+    ).toBeNull()
   })
 })
 

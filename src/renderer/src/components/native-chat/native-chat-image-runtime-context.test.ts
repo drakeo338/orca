@@ -96,7 +96,7 @@ describe('resolveNativeChatImageRuntimeContext', () => {
     })
   })
 
-  it('resolves a floating chat to the local floating directory with no catalog row', () => {
+  it('resolves a floating chat to its pinned folder on the local host, and nothing before the pin', () => {
     const floatingTab: Tab = {
       id: 'floating-chat-1',
       worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
@@ -119,21 +119,10 @@ describe('resolveNativeChatImageRuntimeContext', () => {
       worktreesByRepo: {},
       // Why a focused runtime: floating must stay local even when one is selected.
       settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
-      floatingWorkspacePath: '/home/me/scratch'
+      floatingWorkspacePath: '/home/me/changed-setting'
     }
 
-    expect(resolveNativeChatImageRuntimeContext(floatingState, 'floating-chat-1')).toMatchObject({
-      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-      worktreePath: '/home/me/scratch',
-      expectedExecutionHostId: 'local',
-      settings: { activeRuntimeEnvironmentId: null }
-    })
-    expect(
-      resolveNativeChatImageRuntimeContext(
-        { ...floatingState, floatingWorkspacePath: null },
-        'floating-chat-1'
-      )
-    ).toBeNull()
+    expect(resolveNativeChatImageRuntimeContext(floatingState, 'floating-chat-1')).toBeNull()
     expect(
       resolveNativeChatImageRuntimeContext(
         {
@@ -144,6 +133,11 @@ describe('resolveNativeChatImageRuntimeContext', () => {
         },
         'floating-chat-1'
       )
-    ).toMatchObject({ worktreePath: '/home/me/pinned', expectedExecutionHostId: 'local' })
+    ).toMatchObject({
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      worktreePath: '/home/me/pinned',
+      expectedExecutionHostId: 'local',
+      settings: { activeRuntimeEnvironmentId: null }
+    })
   })
 })

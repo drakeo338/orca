@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import type { Tab } from '../../../shared/tab-types'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import {
@@ -7,13 +7,12 @@ import {
   createFloatingWorkspaceMarkdownTab,
   createFloatingWorkspaceTerminalTab,
   handleEmptyFloatingWorkspacePanelCloseShortcut,
-  isEmptyFloatingWorkspacePanelVisible,
   isFloatingWorkspacePanelFocused,
   isFloatingWorkspacePanelShortcut,
   isFloatingWorkspacePanelShortcutTarget,
   isFloatingWorkspaceTerminalInputTarget,
-  isFloatingWorkspacePanelVisible,
   matchFloatingWorkspacePanelChord,
+  revealFloatingWorkspacePanel,
   shouldMinimizeFloatingWorkspacePanelOnCloseShortcut,
   switchFloatingWorkspaceTab
 } from './floating-workspace-terminal-actions'
@@ -125,41 +124,57 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('isFloatingWorkspacePanelVisible', () => {
-  it('detects the visible floating workspace panel', () => {
-    const doc = {
-      querySelector: vi.fn().mockReturnValue({})
-    }
+function floatingPanelState({
+  enabled = true,
+  open = true,
+  tabs = []
+}: { enabled?: boolean; open?: boolean; tabs?: Tab[] } = {}) {
+  return {
+    settings: { ...getDefaultSettings('/home/me'), floatingTerminalEnabled: enabled },
+    floatingWorkspacePanelOpen: open,
+    browserTabsByWorktree: {},
+    openFiles: [],
+    tabsByWorktree: {},
+    unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: tabs }
+  }
+}
 
-    expect(isFloatingWorkspacePanelVisible(doc as never)).toBe(true)
-    expect(doc.querySelector).toHaveBeenCalledWith(
-      '[data-floating-terminal-panel][aria-hidden="false"]'
-    )
+const FLOATING_CHAT_TAB = {
+  id: 'floating-chat-1',
+  worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+  groupId: 'floating-group',
+  contentType: 'agent-session',
+  entityId: 'session-1',
+  label: 'Chat',
+  customLabel: null,
+  color: null,
+  sortOrder: 0,
+  createdAt: 0
+} satisfies Tab
+
+describe('revealFloatingWorkspacePanel', () => {
+  it('toggles the panel open only while the store says it is closed', () => {
+    const dispatchEvent = vi.fn()
+    vi.stubGlobal('window', { dispatchEvent })
+    // A DOM a frame behind the store must not decide: it still shows the panel as it was.
+    vi.stubGlobal('document', { querySelector: vi.fn().mockReturnValue({}) })
+
+    revealFloatingWorkspacePanel(floatingPanelState({ open: true }))
+    expect(dispatchEvent).not.toHaveBeenCalled()
+
+    revealFloatingWorkspacePanel(floatingPanelState({ open: false }))
+    expect(dispatchEvent).toHaveBeenCalledOnce()
+    expect((dispatchEvent.mock.calls[0][0] as Event).type).toBe('orca-toggle-floating-terminal')
   })
 
-  it('returns false when the floating workspace panel is hidden or absent', () => {
-    expect(isFloatingWorkspacePanelVisible({ querySelector: vi.fn().mockReturnValue(null) })).toBe(
-      false
-    )
-  })
-})
+  it('sends no toggle once the feature is disabled, even if the panel was left open', () => {
+    const dispatchEvent = vi.fn()
+    vi.stubGlobal('window', { dispatchEvent })
+    vi.stubGlobal('document', { querySelector: vi.fn().mockReturnValue(null) })
 
-describe('isEmptyFloatingWorkspacePanelVisible', () => {
-  it('detects the visible empty floating workspace panel', () => {
-    const doc = {
-      querySelector: vi.fn().mockReturnValue({})
-    }
-
-    expect(isEmptyFloatingWorkspacePanelVisible(doc as never)).toBe(true)
-    expect(doc.querySelector).toHaveBeenCalledWith(
-      '[data-floating-terminal-panel][aria-hidden="false"] [data-floating-terminal-empty-state]'
-    )
-  })
-
-  it('returns false when the empty state is absent', () => {
-    expect(
-      isEmptyFloatingWorkspacePanelVisible({ querySelector: vi.fn().mockReturnValue(null) })
-    ).toBe(false)
+    revealFloatingWorkspacePanel(floatingPanelState({ enabled: false, open: false }))
+    revealFloatingWorkspacePanel(floatingPanelState({ enabled: false, open: true }))
+    expect(dispatchEvent).not.toHaveBeenCalled()
   })
 })
 
@@ -719,9 +734,7 @@ describe('handleEmptyFloatingWorkspacePanelCloseShortcut', () => {
     installFakeHTMLElement()
     const dispatchEvent = vi.fn()
     vi.stubGlobal('window', { dispatchEvent })
-    vi.stubGlobal('document', {
-      querySelector: vi.fn().mockReturnValue({})
-    })
+    vi.stubGlobal('document', { querySelector: vi.fn().mockReturnValue({}) })
     const event = {
       altKey: false,
       code: 'KeyW',
@@ -735,7 +748,9 @@ describe('handleEmptyFloatingWorkspacePanelCloseShortcut', () => {
       stopPropagation: vi.fn()
     } as unknown as KeyboardEvent
 
-    expect(handleEmptyFloatingWorkspacePanelCloseShortcut(event, 'darwin')).toBe(true)
+    expect(
+      handleEmptyFloatingWorkspacePanelCloseShortcut(floatingPanelState(), event, 'darwin')
+    ).toBe(true)
 
     expect(event.preventDefault).toHaveBeenCalledWith()
     expect(event.stopPropagation).toHaveBeenCalledWith()
@@ -747,9 +762,8 @@ describe('handleEmptyFloatingWorkspacePanelCloseShortcut', () => {
 
   it('ignores non-close shortcuts and non-empty floating workspaces', () => {
     vi.stubGlobal('window', { dispatchEvent: vi.fn() })
-    vi.stubGlobal('document', {
-      querySelector: vi.fn().mockReturnValue({})
-    })
+    // A DOM a frame behind the store still shows the empty state it rendered before.
+    vi.stubGlobal('document', { querySelector: vi.fn().mockReturnValue({}) })
     const nonCloseEvent = {
       altKey: false,
       code: 'KeyT',
@@ -763,12 +777,11 @@ describe('handleEmptyFloatingWorkspacePanelCloseShortcut', () => {
       stopPropagation: vi.fn()
     } as unknown as KeyboardEvent
 
-    expect(handleEmptyFloatingWorkspacePanelCloseShortcut(nonCloseEvent, 'darwin')).toBe(false)
+    expect(
+      handleEmptyFloatingWorkspacePanelCloseShortcut(floatingPanelState(), nonCloseEvent, 'darwin')
+    ).toBe(false)
     expect(nonCloseEvent.preventDefault).not.toHaveBeenCalled()
 
-    vi.stubGlobal('document', {
-      querySelector: vi.fn().mockReturnValue(null)
-    })
     const event = {
       altKey: false,
       code: 'KeyW',
@@ -782,7 +795,13 @@ describe('handleEmptyFloatingWorkspacePanelCloseShortcut', () => {
       stopPropagation: vi.fn()
     } as unknown as KeyboardEvent
 
-    expect(handleEmptyFloatingWorkspacePanelCloseShortcut(event, 'darwin')).toBe(false)
+    for (const state of [
+      floatingPanelState({ tabs: [FLOATING_CHAT_TAB] }),
+      floatingPanelState({ open: false }),
+      floatingPanelState({ enabled: false })
+    ]) {
+      expect(handleEmptyFloatingWorkspacePanelCloseShortcut(state, event, 'darwin')).toBe(false)
+    }
     expect(event.preventDefault).not.toHaveBeenCalled()
   })
 })

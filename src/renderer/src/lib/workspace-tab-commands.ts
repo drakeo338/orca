@@ -10,8 +10,8 @@ import {
   handleSwitchTabAcrossAllTypes,
   handleSwitchTerminalTab
 } from '@/hooks/ipc-tab-switch'
+import { selectEmptyFloatingWorkspacePanelVisible } from '@/store/floating-workspace-panel-selector'
 import {
-  isEmptyFloatingWorkspacePanelVisible,
   isFloatingWorkspacePanelFocused,
   switchFloatingWorkspaceTab
 } from './floating-workspace-terminal-actions'
@@ -106,7 +106,7 @@ export function dispatchWorkspaceTabCommand(command: WorkspaceTabCommand): boole
   const state = useAppStore.getState()
   if (command.type === 'close') {
     if (!command.target) {
-      if (isEmptyFloatingWorkspacePanelVisible()) {
+      if (selectEmptyFloatingWorkspacePanelVisible(state)) {
         window.dispatchEvent(new Event(TOGGLE_FLOATING_TERMINAL_EVENT))
         return true
       }

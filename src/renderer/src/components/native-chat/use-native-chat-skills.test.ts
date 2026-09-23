@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { DiscoveredSkill, SkillDiscoveryResult } from '../../../../shared/skills'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import type { Tab } from '../../../../shared/tab-types'
-import type { NativeChatSkillStateInputs } from './native-chat-skill-discovery-context'
+import {
+  isNativeChatSkillDiscoveryAwaitingDirectory,
+  type NativeChatSkillStateInputs
+} from './native-chat-skill-discovery-context'
 import {
   isNativeChatSkillForAgent,
   resolveNativeChatSkillDiscoveryContext,
@@ -211,17 +214,11 @@ describe('floating workspace skill discovery', () => {
     worktreesByRepo: {}
   }
 
-  it('scans the floating directory on the local host with no catalog row', () => {
-    expect(resolveNativeChatSkillDiscoveryCwd(floatingInputs, 'floating-chat-1')).toBe(
-      '/home/me/scratch'
-    )
-    expect(resolveNativeChatSkillDiscoveryContext(floatingInputs, 'floating-chat-1')).toMatchObject(
-      {
-        cwd: '/home/me/scratch',
-        executionHostKind: 'local',
-        runtimeTarget: { kind: 'local' },
-        discoveryTarget: { cwd: '/home/me/scratch', worktreeId: FLOATING_TERMINAL_WORKTREE_ID }
-      }
+  it('scans nothing and awaits the pin rather than scanning the current setting', () => {
+    expect(resolveNativeChatSkillDiscoveryCwd(floatingInputs, 'floating-chat-1')).toBeNull()
+    expect(resolveNativeChatSkillDiscoveryContext(floatingInputs, 'floating-chat-1')).toBeNull()
+    expect(isNativeChatSkillDiscoveryAwaitingDirectory(floatingInputs, 'floating-chat-1')).toBe(
+      true
     )
   })
 
@@ -233,9 +230,11 @@ describe('floating workspace skill discovery', () => {
         'floating-chat-1': { sessionId: 'session-1', workspacePath: '/home/me/pinned' }
       }
     }
+    expect(isNativeChatSkillDiscoveryAwaitingDirectory(pinned, 'floating-chat-1')).toBe(false)
     expect(resolveNativeChatSkillDiscoveryContext(pinned, 'floating-chat-1')).toMatchObject({
       cwd: '/home/me/pinned',
       executionHostKind: 'local',
+      runtimeTarget: { kind: 'local' },
       discoveryTarget: { cwd: '/home/me/pinned', worktreeId: FLOATING_TERMINAL_WORKTREE_ID }
     })
   })

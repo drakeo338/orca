@@ -9,6 +9,12 @@ import {
   type TypeCyclableTab
 } from '@/components/terminal/tab-type-cycle'
 import type { AppState } from '@/store/types'
+import {
+  selectEmptyFloatingWorkspacePanelVisible,
+  selectFloatingWorkspacePanelVisible,
+  type EmptyFloatingWorkspacePanelState,
+  type FloatingWorkspacePanelVisibilityState
+} from '@/store/floating-workspace-panel-selector'
 import { resolveBrowserWorkspaceOwner } from './browser-workspace-source-resolution'
 import { TOGGLE_FLOATING_TERMINAL_EVENT } from './floating-terminal'
 import { focusTerminalTabSurface } from './focus-terminal-tab-surface'
@@ -40,8 +46,6 @@ type FloatingWorkspaceTabSwitchStore = Pick<
 >
 
 const FLOATING_WORKSPACE_PANEL_SELECTOR = '[data-floating-terminal-panel]'
-const EMPTY_FLOATING_WORKSPACE_PANEL_SELECTOR =
-  '[data-floating-terminal-panel][aria-hidden="false"] [data-floating-terminal-empty-state]'
 
 type EmptyFloatingWorkspaceCloseShortcutEvent = Pick<
   KeyboardEvent,
@@ -184,23 +188,16 @@ function getNextFloatingWorkspaceTerminalTab(
   ]
 }
 
-export function isFloatingWorkspacePanelVisible(
-  doc: Pick<Document, 'querySelector'> = document
-): boolean {
-  return Boolean(doc.querySelector('[data-floating-terminal-panel][aria-hidden="false"]'))
-}
-
 /** Opens the floating panel unless it is already on screen. */
-export function revealFloatingWorkspacePanel(): void {
-  if (!isFloatingWorkspacePanelVisible()) {
+export function revealFloatingWorkspacePanel(state: FloatingWorkspacePanelVisibilityState): void {
+  // Why the flag check: a disabled workspace has no panel, and a toggle landing before React sees
+  // the disable would open (and persist open) the panel the user just turned off.
+  if (
+    state.settings?.floatingTerminalEnabled === true &&
+    !selectFloatingWorkspacePanelVisible(state)
+  ) {
     window.dispatchEvent(new CustomEvent(TOGGLE_FLOATING_TERMINAL_EVENT))
   }
-}
-
-export function isEmptyFloatingWorkspacePanelVisible(
-  doc: Pick<Document, 'querySelector'> | null = typeof document === 'undefined' ? null : document
-): boolean {
-  return Boolean(doc?.querySelector(EMPTY_FLOATING_WORKSPACE_PANEL_SELECTOR))
 }
 
 export function isFloatingWorkspacePanelFocused(
@@ -250,13 +247,14 @@ export function shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
 }
 
 export function handleEmptyFloatingWorkspacePanelCloseShortcut(
+  state: EmptyFloatingWorkspacePanelState,
   event: EmptyFloatingWorkspaceCloseShortcutEvent,
   platform: NodeJS.Platform,
   keybindings?: KeybindingOverrides
 ): boolean {
   if (
     event.repeat ||
-    !isEmptyFloatingWorkspacePanelVisible() ||
+    !selectEmptyFloatingWorkspacePanelVisible(state) ||
     !keybindingMatchesAction('tab.close', event, platform, keybindings, { context: 'app' })
   ) {
     return false
