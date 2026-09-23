@@ -20,8 +20,18 @@ vi.mock('@/lib/floating-workspace-terminal-actions', () => ({
 }))
 vi.mock('@/store/selectors', () => ({ selectFloatingVisibleTabCount: () => panel.remaining }))
 vi.mock('../editor/editor-autosave', () => ({ requestEditorFileClose }))
+// Why: a pinned tab's confirmation prompt takes focus before its close runs.
+vi.mock('@/store/pinned-tab-close-guard', () => ({
+  guardPinnedTabClose: ({ isPinned, onClose }: { isPinned: boolean; onClose: () => void }) => {
+    if (isPinned) {
+      panel.focused = false
+    }
+    onClose()
+  },
+  resolvePinnedTabLabel: () => 'Note'
+}))
 
-import { createWorkspaceTabCloseCommands } from './workspace-tab-close-commands'
+import { dispatchWorkspaceTabCommand } from '@/lib/workspace-tab-commands'
 import { useAppStore } from '../../store'
 import { makeOpenFile } from '../../store/slices/store-test-helpers'
 
@@ -38,26 +48,39 @@ const terminalTab: Tab = {
   createdAt: 1
 }
 
-function requestClose(): { land: () => void } {
-  createWorkspaceTabCloseCommands({
-    worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-    groupTabs: [terminalTab]
-  }).closeItem(terminalTab.id)
+function closeFloatingTab(tab: Tab): void {
+  useAppStore.setState({ unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [tab] } })
+  dispatchWorkspaceTabCommand({
+    type: 'close',
+    target: { kind: 'tab', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, tabId: tab.id }
+  })
+}
+
+function requestTerminalClose(): { land: () => void } {
+  closeFloatingTab(terminalTab)
   const options = closeTerminalTab.mock.calls.at(-1)?.[1]
   return { land: () => options?.onClosed?.() }
+}
+
+function floatingNote({ isDirty, isPinned }: { isDirty: boolean; isPinned: boolean }): Tab {
+  useAppStore.setState({
+    openFiles: [makeOpenFile({ id: 'note', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, isDirty })]
+  })
+  return { ...terminalTab, id: 'unified-note', entityId: 'note', contentType: 'editor', isPinned }
 }
 
 // Emptying the floating panel from inside it keeps keyboard ownership for the next Cmd/Ctrl+T.
 describe('closing the last floating tab', () => {
   beforeEach(() => {
     closeTerminalTab.mockClear()
+    requestEditorFileClose.mockClear()
     clearFloatingPanelReclaimIntent()
     panel.focused = true
     panel.remaining = 0
   })
 
   it('keeps the panel focus when a panel-owned close lands and empties it', () => {
-    requestClose().land()
+    requestTerminalClose().land()
 
     expect(consumeFloatingPanelReclaimIntent()).toBe(true)
   })
@@ -65,36 +88,32 @@ describe('closing the last floating tab', () => {
   it('does not keep focus when another floating tab remains', () => {
     panel.remaining = 1
 
-    requestClose().land()
+    requestTerminalClose().land()
 
     expect(consumeFloatingPanelReclaimIntent()).toBe(false)
   })
 
-  // Why: a pinned or running-process close can be cancelled, and then it never lands.
+  // Why: a running-process close can be cancelled, and then it never lands.
   it('does not keep focus while the close has not landed', () => {
-    requestClose()
+    requestTerminalClose()
+
+    expect(consumeFloatingPanelReclaimIntent()).toBe(false)
+  })
+
+  // Why: removing the pane blurs it, so ownership must be read when the close is requested.
+  it('reads panel ownership when the close is requested, not when it lands', () => {
+    panel.focused = false
+    const close = requestTerminalClose()
+    panel.focused = true
+
+    close.land()
 
     expect(consumeFloatingPanelReclaimIntent()).toBe(false)
   })
 
   // Why: the save prompt takes focus, so ownership must be read before it opens.
   it('keeps the panel focus when an unsaved note closes after its save prompt', () => {
-    const noteTab: Tab = {
-      ...terminalTab,
-      id: 'unified-note',
-      entityId: 'note',
-      contentType: 'editor'
-    }
-    useAppStore.setState({
-      openFiles: [
-        makeOpenFile({ id: 'note', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, isDirty: true })
-      ],
-      unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [noteTab] }
-    })
-    createWorkspaceTabCloseCommands({
-      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-      groupTabs: [noteTab]
-    }).closeItem(noteTab.id)
+    closeFloatingTab(floatingNote({ isDirty: true, isPinned: false }))
     const onClosed = requestEditorFileClose.mock.calls.at(-1)?.[1]?.onClosed
 
     panel.focused = false
@@ -104,14 +123,9 @@ describe('closing the last floating tab', () => {
     expect(consumeFloatingPanelReclaimIntent()).toBe(true)
   })
 
-  // Why: removing the pane blurs it, so ownership must be read when the close is requested.
-  it('reads panel ownership when the close is requested, not when it lands', () => {
-    panel.focused = false
-    const close = requestClose()
-    panel.focused = true
+  it('keeps the panel focus when a pinned note closes after its confirmation', () => {
+    closeFloatingTab(floatingNote({ isDirty: false, isPinned: true }))
 
-    close.land()
-
-    expect(consumeFloatingPanelReclaimIntent()).toBe(false)
+    expect(consumeFloatingPanelReclaimIntent()).toBe(true)
   })
 })

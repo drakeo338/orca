@@ -145,11 +145,13 @@ export function dispatchWorkspaceTabCommand(command: WorkspaceTabCommand): boole
     if ((command.bulk || command.skipEmptyCheck) && tab.isPinned) {
       return true
     }
+    // Why before the pin guard: its prompt takes focus, and the floating panel's reaction reads focus.
+    const whenEmptied =
+      command.bulk || command.skipEmptyCheck
+        ? undefined
+        : captureWorkspaceEmptiedReaction(target.worktreeId)
     const close = () =>
-      commands.closeItem(tab.id, {
-        skipEmptyCheck: command.bulk || command.skipEmptyCheck,
-        skipRunningProcessConfirm: command.bulk
-      })
+      commands.closeItem(tab.id, { whenEmptied, skipRunningProcessConfirm: command.bulk })
     if (tab.contentType === 'terminal' || command.bulk) {
       close()
     } else {

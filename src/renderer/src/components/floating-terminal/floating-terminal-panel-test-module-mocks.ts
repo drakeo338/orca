@@ -18,6 +18,7 @@ export function createReactHookOverrides() {
       hookRuntime.layoutEffects.push(effect)
     },
     useMemo: <T>(factory: () => T) => factory(),
+    useSyncExternalStore: <T>(_subscribe: unknown, getSnapshot: () => T) => getSnapshot(),
     useRef: <T>(initialValue: T) => {
       const index = hookRuntime.index
       hookRuntime.index += 1

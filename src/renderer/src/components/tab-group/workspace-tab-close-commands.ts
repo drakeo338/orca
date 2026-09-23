@@ -3,7 +3,6 @@ import { useAppStore } from '../../store'
 import { requestEditorFileClose } from '../editor/editor-autosave'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { closeWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-close'
-import { captureWorkspaceEmptiedReaction } from './workspace-emptied-reaction'
 
 export function createWorkspaceTabCloseCommands({
   worktreeId,
@@ -40,15 +39,16 @@ export function createWorkspaceTabCloseCommands({
     return true
   }
 
+  /** `whenEmptied` is captured by the caller when the close is requested, before any prompt. */
   const closeItem = (
     itemId: string,
-    opts?: { skipEmptyCheck?: boolean; skipRunningProcessConfirm?: boolean }
+    opts?: { whenEmptied?: () => void; skipRunningProcessConfirm?: boolean }
   ) => {
     const item = groupTabs.find((candidate) => candidate.id === itemId)
     if (!item) {
       return
     }
-    const whenEmptied = opts?.skipEmptyCheck ? null : captureWorkspaceEmptiedReaction(worktreeId)
+    const whenEmptied = opts?.whenEmptied ?? null
     if (item.contentType === 'agent-session') {
       closeUnifiedTab(item.id)
       whenEmptied?.()
