@@ -49,6 +49,7 @@ import { resolveLoginShellEnvironment } from '../startup/login-shell-environment
 import { recordAgentSessionProviderHandle } from './agent-session-provider-handle-transition'
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
+import { resolveAgentSessionLaunchDirectory } from './agent-session-launch-directory'
 
 /** Sibling of the journal tree rather than inside it: one file adjudicates every
  *  session's lease, while a journal is per session. */
@@ -327,7 +328,12 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
           recordAgentSessionProviderHandle({ record, fence: record.lease.runtimeFence, link, now })
         )
       },
-      ...(deps.handoffTransport ? { handoffTransport: deps.handoffTransport } : {})
+      ...(deps.handoffTransport ? { handoffTransport: deps.handoffTransport } : {}),
+      resolveLaunchDirectory: (record) =>
+        resolveAgentSessionLaunchDirectory(
+          { store, resolveWorkspacePath: deps.resolveWorkspacePath },
+          record
+        )
     })
     setStructuredAgentSessionHost(host)
     return {

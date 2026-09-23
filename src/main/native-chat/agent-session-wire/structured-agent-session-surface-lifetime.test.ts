@@ -78,7 +78,9 @@ function openHost(
     onEventSinkError: ({ error }) => hostErrors.push(error),
     statusSink,
     ...(probeOwner ? { probeOwner: probeOwner as never } : {}),
-    ...(handoffTransport ? { handoffTransport } : {})
+    ...(handoffTransport
+      ? { handoffTransport, resolveLaunchDirectory: async () => '/workspace' }
+      : {})
   })
 }
 
