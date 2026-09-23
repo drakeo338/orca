@@ -164,7 +164,7 @@ describe('revealFloatingWorkspacePanel', () => {
 
     revealFloatingWorkspacePanel(floatingPanelState({ open: false }))
     expect(dispatchEvent).toHaveBeenCalledOnce()
-    expect((dispatchEvent.mock.calls[0][0] as Event).type).toBe('orca-toggle-floating-terminal')
+    expect(dispatchEvent.mock.calls[0][0]).toMatchObject({ type: 'orca-toggle-floating-terminal' })
   })
 
   it('sends no toggle once the feature is disabled, even if the panel was left open', () => {
