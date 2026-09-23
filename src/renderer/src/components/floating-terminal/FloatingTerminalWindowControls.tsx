@@ -84,7 +84,9 @@ export function FloatingTerminalWindowControls({
   }, [defaultAgent, defaultAgentLabel])
 
   return (
-    <div className="flex items-center gap-1 px-2" data-floating-terminal-no-drag>
+    // Why pr-0.5: the tab strip already pads its end by 6px, so this keeps the 8px inset the
+    // controls had when they sat in their own titlebar.
+    <div className="flex items-center gap-1 pl-2 pr-0.5" data-floating-terminal-no-drag>
       {defaultAgent ? (
         <Tooltip>
           <TooltipTrigger asChild>
