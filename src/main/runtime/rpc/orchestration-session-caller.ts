@@ -15,7 +15,7 @@
  */
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { formatOrcaSessionAddress, isOrcaSessionId } from '../../../shared/orca-session-address'
+import { isOrcaSessionId } from '../../../shared/orca-session-address'
 import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../shared/orchestration-session-caller-codes'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrcaRuntimeService } from '../orca-runtime'
@@ -25,9 +25,11 @@ import {
 } from '../orchestration/orchestration-caller-identity'
 import { OrchestrationError } from '../orchestration/orchestration-error'
 import {
-  isRecordedStructuredWorkerSession,
-  resolveStructuredWorkerIdentityForSession
-} from '../structured-worker-authority'
+  lookupOrcaAgentSession,
+  sessionOrchestrationIdentity,
+  type AgentSessionRecordReader
+} from '../orchestration/structured-session-mail-address'
+import { isRecordedStructuredWorkerSession } from '../structured-worker-authority'
 import { structuredWorkerHostScope } from '../structured-worker-identity'
 import type { RpcRequest } from './core'
 
@@ -110,8 +112,8 @@ export async function resolveOrchestrationSessionCaller(
   const record = await readSessionRecord(runtime, sessionId)
   assertSessionCanAct(sessionId, record)
   const db = runtime.getOrchestrationDb()
-  const worker = resolveStructuredWorkerIdentityForSession(sessionId, db)
-  if (!worker && isRecordedStructuredWorkerSession(sessionId, db)) {
+  const identity = sessionOrchestrationIdentity(sessionId, db)
+  if (identity.terminalHandle === null && isRecordedStructuredWorkerSession(sessionId, db)) {
     // Why: acting handle-less would split one worker into two identities, and bind like a chat.
     throw new OrchestrationError(
       CODES.notLive,
@@ -119,13 +121,9 @@ export async function resolveOrchestrationSessionCaller(
       NO_EFFECTS
     )
   }
-  const terminalHandle = worker?.handle ?? null
   const caller: OrchestrationSessionCaller = Object.freeze({
+    ...identity,
     sessionId,
-    orcaSessionId: sessionId,
-    address: terminalHandle ?? formatOrcaSessionAddress(sessionId),
-    terminalHandle,
-    paneKey: worker?.paneKey ?? null,
     workspaceId: record.location.workspaceId
   })
   return {
@@ -157,16 +155,15 @@ async function readSessionRecord(
       NO_EFFECTS
     )
   }
-  const record = store.getRecord(sessionId)
-  if (record) {
-    return record
+  const found = lookupOrcaAgentSession(store, sessionId)
+  if (found.kind === 'found') {
+    return found.record
   }
-  const owner = store.listRecords().find((candidate) => namesProviderSession(candidate, sessionId))
-  if (owner) {
+  if (found.kind === 'provider-id') {
     throw new OrchestrationError(
       CODES.providerId,
-      `${sessionId} is the provider's own session id, which changes on /clear. This session's Orca id is ${owner.sessionId}; use that instead. No effects were applied.`,
-      { ...NO_EFFECTS, orcaSessionId: owner.sessionId }
+      `${sessionId} is the provider's own session id, which changes on /clear. This session's Orca id is ${found.orcaSessionId}; use that instead. No effects were applied.`,
+      { ...NO_EFFECTS, orcaSessionId: found.orcaSessionId }
     )
   }
   throw new OrchestrationError(
@@ -176,17 +173,8 @@ async function readSessionRecord(
   )
 }
 
-function sessionRecordStore(): {
-  getRecord: (sessionId: string) => AgentSessionRecord | null
-  listRecords: () => AgentSessionRecord[]
-} | null {
+function sessionRecordStore(): AgentSessionRecordReader | null {
   return getStructuredAgentSessionHost()?.deps.store ?? null
-}
-
-function namesProviderSession(record: AgentSessionRecord, id: string): boolean {
-  return record.providerHandleChain.some(({ handle }) =>
-    handle.provider === 'claude' ? handle.sessionId === id : handle.threadId === id
-  )
 }
 
 function assertSessionCanAct(sessionId: string, record: AgentSessionRecord): void {
