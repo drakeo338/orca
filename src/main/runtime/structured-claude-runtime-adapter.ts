@@ -39,6 +39,7 @@ export type StructuredClaudeRuntimeAdapterDeps = {
     state: AgentSessionBackgroundTaskState | null
   ) => void
   onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate']
+  onChildWorkEvidence?: ClaudeStructuredSessionAdapterDeps['onChildWorkEvidence']
 }
 
 /** The adapter events the host's lifecycle handler consumes, in the host's vocabulary. */
@@ -130,6 +131,7 @@ export function createStructuredClaudeRuntimeAdapter(
       ? { onBackgroundTasksChanged: deps.onBackgroundTasksChanged }
       : {}),
     ...(deps.onDispatchSettledLate ? { onDispatchSettledLate: deps.onDispatchSettledLate } : {}),
+    ...(deps.onChildWorkEvidence ? { onChildWorkEvidence: deps.onChildWorkEvidence } : {}),
     ...(deps.openClaudeConnection ? { openConnection: deps.openClaudeConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {})
   })

@@ -17,6 +17,7 @@ import type {
   AgentSessionBackgroundTaskState,
   AgentSessionFastModeState
 } from '../../shared/agent-session-wire'
+import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import type { ClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
@@ -89,6 +90,8 @@ export type ClaudeStructuredSessionAdapterDeps = {
     sessionId: string,
     state: AgentSessionBackgroundTaskState | null
   ) => void
+  /** What the session's child work did, delivered after the journal handled the frame. */
+  onChildWorkEvidence?: (sessionId: string, evidence: AgentChildWorkEvidence[]) => void
   openConnection?: typeof openClaudeStreamJsonConnection
   readProcessStartTime?: (pid: number) => Promise<number | null>
   mintLinkId?: () => string
