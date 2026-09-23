@@ -4,7 +4,8 @@ import {
   STRUCTURED_WORKER_HANDLE_PREFIX,
   STRUCTURED_WORKER_INCARNATION_PREFIX,
   isStructuredWorkerHandle,
-  sessionIdFromStructuredWorkerIncarnation
+  sessionIdFromStructuredWorkerIncarnation,
+  structuredWorkerProcessIncarnation
 } from '../../../structured-worker-identity'
 import { currentRunCoordinatorOrcaSessionIdSql } from '../runs/run-coordinator-orca-session'
 
@@ -32,7 +33,8 @@ const RECORDED_WORKER_SESSIONS_SQL = `
  *
  * Runs after migrate on every open, not only once at v42: a binary rolled back past v42 keeps
  * writing structured-worker rows without an Orca session id after user_version is already 42. It
- * fills only rows with no id that counts, so an id a writer recorded is never rewritten.
+ * fills only rows with no id that counts, so an id a writer recorded is never rewritten; the one
+ * clear is the unbind residue below.
  */
 export function backfillStructuredWorkerOrcaSessionIds(db: Database.Database): void {
   let recordedSessions: Map<string, Set<string>> | undefined
@@ -110,6 +112,52 @@ export function backfillStructuredWorkerOrcaSessionIds(db: Database.Database): v
     const orcaSessionId = orcaSessionIdFor(row.coordinator_handle, null)
     if (orcaSessionId && typeof row.id === 'string') {
       setCoordinator.run(orcaSessionId, row.id)
+    }
+  }
+  clearUnboundStructuredWorkerCoordinatorOrcaSessionIds(db)
+}
+
+/**
+ * Whether this Orca session id was assigned a Dispatch as a structured worker. Such a session always
+ * binds a Run with its worker handle, so it can never hold a handle-less binding.
+ */
+export function isRecordedStructuredWorkerOrcaSessionId(
+  db: Database.Database,
+  orcaSessionId: string
+): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM dispatch_contexts
+         WHERE assignee_orca_session_id = ? AND process_incarnation = ? LIMIT 1`
+      )
+      .get(orcaSessionId, structuredWorkerProcessIncarnation(orcaSessionId))
+  )
+}
+
+/**
+ * A binary without the Orca session id column unbinds a structured worker's Run by clearing its
+ * handle and pane, which leaves the id looking like a handle-less chat's binding. Only that unbind
+ * can make this shape for a worker's id, so the id goes; a chat coordinator's binding is untouched.
+ */
+function clearUnboundStructuredWorkerCoordinatorOrcaSessionIds(db: Database.Database): void {
+  const handleless = db
+    .prepare(
+      `SELECT id, coordinator_orca_session_id FROM runs
+       WHERE coordinator_orca_session_id IS NOT NULL AND coordinator_handle IS NULL
+         AND coordinator_pane_key IS NULL`
+    )
+    .all()
+  const clear = db.prepare(
+    `UPDATE runs SET coordinator_orca_session_id = NULL
+     WHERE id = ? AND coordinator_handle IS NULL AND coordinator_pane_key IS NULL`
+  )
+  for (const row of handleless) {
+    const orcaSessionId = row.coordinator_orca_session_id
+    if (typeof row.id === 'string' && typeof orcaSessionId === 'string') {
+      if (isRecordedStructuredWorkerOrcaSessionId(db, orcaSessionId)) {
+        clear.run(row.id)
+      }
     }
   }
 }
