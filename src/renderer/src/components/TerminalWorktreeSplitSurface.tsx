@@ -27,7 +27,8 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   isForceParked,
   activityTerminalPortals,
   backgroundMountTabIds,
-  activationDeferredMountTabIds
+  activationDeferredMountTabIds,
+  acceptsSessionDrops = true
 }: {
   worktreeId: string
   worktreePath: string
@@ -40,6 +41,8 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
   activityTerminalPortals: ActivityTerminalPortalTarget[]
   backgroundMountTabIds: ReadonlySet<string> | null
   activationDeferredMountTabIds: ReadonlySet<string> | null
+  /** Whether an AI vault session dropped here resumes into this workspace. */
+  acceptsSessionDrops?: boolean
 }): React.JSX.Element {
   const browserPageIds = useWorktreeBrowserPageIds(worktreeId)
   const needsBrowserGuestPaint = useBrowserGuestPaintRetention(browserPageIds)
@@ -93,7 +96,7 @@ export const WorktreeSplitSurface = React.memo(function WorktreeSplitSurface({
         worktreeId={worktreeId}
         isWorktreeActive={isVisible}
       />
-      <AiVaultSessionDropLayer worktreeId={worktreeId} enabled={isVisible} />
+      <AiVaultSessionDropLayer worktreeId={worktreeId} enabled={isVisible && acceptsSessionDrops} />
     </div>
   )
 })

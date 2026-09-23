@@ -221,7 +221,8 @@ describe('FloatingTerminalPanel workspace surface', () => {
     expect(surface.props).toMatchObject({
       worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
       layout: split,
-      isVisible: true
+      isVisible: true,
+      acceptsSessionDrops: false
     })
   })
 

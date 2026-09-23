@@ -68,7 +68,7 @@ export function useAppChromeLayout() {
   if (canMountTerminalWorkbenchNow && !hasMountedTerminalWorkbench) {
     setHasMountedTerminalWorkbench(true)
   }
-  // Why: skip the terminal bundle on the landing path, but once mounted keep hidden panes alive through sleep/shutdown when activeWorktreeId briefly goes null.
+  // Why: skip the terminal bundle on a landing path with no tabs, but once mounted keep hidden panes alive through sleep/shutdown when activeWorktreeId briefly goes null.
   const shouldMountTerminalWorkbench = canMountTerminalWorkbenchNow || hasMountedTerminalWorkbench
   // Why: visible worktree creation owns its faux tab strip start to finish; keep the previous workspace mounted for retention without real chrome.
   const creationLayoutActive = shouldShowWorktreeCreationSurface({

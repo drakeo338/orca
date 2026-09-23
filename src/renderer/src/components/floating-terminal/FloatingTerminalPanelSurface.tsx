@@ -109,6 +109,9 @@ export function renderFloatingTerminalPanelSurface({
               // about to leave, and the correcting fit reflows the buffer under a live TUI.
               backgroundMountTabIds={panelViewportSettled ? null : MOUNT_NOTHING_YET}
               activationDeferredMountTabIds={null}
+              // Why: a session resumes into a workspace, and the floating panel is not one it can
+              // resume into; its window-level drop handler would also fire beside the main window's.
+              acceptsSessionDrops={false}
             />
           </TabGroupHostProvider>
         ) : null}
