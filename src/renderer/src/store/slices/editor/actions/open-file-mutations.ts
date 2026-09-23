@@ -2,6 +2,7 @@ import type { EditorGet, EditorSet } from '../types/editor-set-get'
 import type { EditorSlice } from '../types/editor-slice'
 import type { OpenFile } from '../types/open-file'
 import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
+import { ownsGlobalSelection } from '../../../global-selection-owner'
 
 export function createOpenFileMutations(
   set: EditorSet,
@@ -25,9 +26,7 @@ export function createOpenFileMutations(
         const file = s.openFiles.find((f) => f.id === fileId)
         const worktreeId = file?.worktreeId
         return {
-          // Why: the global field projects the active workspace; another workspace's selection
-          // (a retained worktree, the floating panel) lands only in its own map.
-          ...(worktreeId === undefined || worktreeId === s.activeWorktreeId
+          ...(worktreeId === undefined || ownsGlobalSelection(s, worktreeId)
             ? { activeFileId: fileId }
             : {}),
           activeFileIdByWorktree: worktreeId

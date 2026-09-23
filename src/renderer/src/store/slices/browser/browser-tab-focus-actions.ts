@@ -7,6 +7,7 @@ import type {
 import { findWorkspace } from '../browser-page-records'
 import { restoreRecentlyClosedTabPosition } from '../recently-closed-tabs'
 import { isLocalBrowserPageOwner } from './browser-host-state'
+import { ownsGlobalSelection } from '../../global-selection-owner'
 
 export function createBrowserTabFocusActions(
   set: BrowserSliceSet,
@@ -99,9 +100,7 @@ export function createBrowserTabFocusActions(
           return s
         }
         return {
-          // Why: the global fields project the active workspace; another workspace's selection
-          // (a retained worktree, the floating panel) lands only in its own maps.
-          ...(browserTab.worktreeId === s.activeWorktreeId
+          ...(ownsGlobalSelection(s, browserTab.worktreeId)
             ? { activeBrowserTabId: tabId, activeTabType: 'browser' as const }
             : {}),
           activeBrowserTabIdByWorktree: {

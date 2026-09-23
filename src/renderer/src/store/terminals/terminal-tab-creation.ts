@@ -16,6 +16,7 @@ import {
   updateGroup
 } from '../slices/tab-group-state'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { ownsGlobalSelection } from '../global-selection-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
 import {
@@ -243,10 +244,8 @@ export function createTerminalTabCreationActions(
             ...s.layoutByWorktree,
             [worktreeId]: s.layoutByWorktree[worktreeId] ?? { type: 'leaf', groupId: group.id }
           },
-          // Why: the global field projects the active workspace; activating a tab elsewhere (a
-          // retained worktree, the floating panel) selects it only within its own workspace.
           activeTabId:
-            shouldActivate && worktreeId === s.activeWorktreeId
+            shouldActivate && ownsGlobalSelection(s, worktreeId)
               ? tab.id
               : orphanCleanupPatch.activeTabId,
           activeTabIdByWorktree: {

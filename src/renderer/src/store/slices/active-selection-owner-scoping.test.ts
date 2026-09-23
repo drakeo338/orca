@@ -72,6 +72,23 @@ describe('selection in a workspace other than the active one', () => {
     expect(floatingGroup?.activeTabId).toBe(floatingTab?.id)
   })
 
+  it.each(['wt-2', FLOATING_TERMINAL_WORKTREE_ID])(
+    'opens a file in %s without moving the global file or tab type',
+    (worktreeId) => {
+      const store = createEditorTabsStore()
+      const mainFileId = openMarkdown(store, 'wt-1')
+      store.setState({ activeTabType: 'terminal' })
+
+      const fileId = openMarkdown(store, worktreeId)
+
+      const state = store.getState()
+      expect(state.activeFileId).toBe(mainFileId)
+      expect(state.activeTabType).toBe('terminal')
+      expect(state.activeFileIdByWorktree[worktreeId]).toBe(fileId)
+      expect(state.activeTabTypeByWorktree[worktreeId]).toBe('editor')
+    }
+  )
+
   it('still moves the global file for the active workspace', () => {
     const store = createEditorTabsStore()
     const fileId = openMarkdown(store, 'wt-1')
