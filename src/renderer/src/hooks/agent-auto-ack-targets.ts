@@ -78,17 +78,19 @@ export function resolveAutoAckTabTargets(state: AutoAckTargetState): AutoAckTabT
 }
 
 /**
- * Whether a structured chat tab is on a visible surface. Attention dispatch and auto-ack both
- * read this, so a chat the user is reading neither earns an unread marker nor has one to clear.
+ * Whether a tab of either kind is on a visible surface — the one "did the user see it" rule.
+ * Attention dispatch and auto-ack both read it, so a surface the user is watching neither earns
+ * an unread marker nor has one to clear.
  */
-export function isStructuredTabOnVisibleSurface(
+export function isTabOnVisibleSurface(
   state: AutoAckTargetState,
   worktreeId: string,
-  tabId: string
+  tabId: string,
+  surfaceKind: AutoAckTabTarget['surfaceKind']
 ): boolean {
   return resolveAutoAckTabTargets(state).some(
     (target) =>
-      target.surfaceKind === 'structured' &&
+      target.surfaceKind === surfaceKind &&
       target.tabId === tabId &&
       target.worktreeId === worktreeId
   )
