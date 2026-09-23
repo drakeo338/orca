@@ -217,6 +217,16 @@ export function isEventTargetInsideFloatingWorkspacePanel(target: EventTarget | 
   return target instanceof HTMLElement && target.closest(FLOATING_WORKSPACE_PANEL_SELECTOR) !== null
 }
 
+/** The workspace a key press drives: the floating panel's when it comes from inside the panel. */
+export function resolveKeyboardWorkspaceId(
+  target: EventTarget | null,
+  activeWorktreeId: string | null
+): string | null {
+  return isEventTargetInsideFloatingWorkspacePanel(target)
+    ? FLOATING_TERMINAL_WORKTREE_ID
+    : activeWorktreeId
+}
+
 export function isFloatingWorkspaceTerminalInputTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false

@@ -5,6 +5,7 @@ import { useAppStore } from '../../store'
 import TabGroupPanel from './TabGroupPanel'
 import TabDragPreview from '../tab-bar/TabDragPreview'
 import { TabDragProvider } from './tab-drag-context'
+import { useTabGroupHost } from './tab-group-host'
 import TabPaneColumnSplitDragOverlay from './TabPaneColumnSplitDragOverlay'
 import { type HoveredTabInsertion, useTabDragSplit } from './useTabDragSplit'
 
@@ -275,6 +276,7 @@ export default function TabGroupSplitLayout({
 }): React.JSX.Element {
   const dragSplit = useTabDragSplit({ worktreeId, enabled: isWorktreeActive })
   const hasSplits = layout.type === 'split'
+  const tabStripChrome = useTabGroupHost().tabStripChrome ?? 'default'
 
   return (
     <TabDragProvider
@@ -311,12 +313,17 @@ export default function TabGroupSplitLayout({
           between the left sidebar and the terminal area, regardless of split
           state. The leftmost pane suppresses its own `border-l` via
           `touchesLeftEdge`, so the seam is always exactly 1px — previously
-          both painted and stacked into a 2px bar below the drag strip. */}
+          both painted and stacked into a 2px bar below the drag strip.
+          Why a floating panel drops both: its tab strip is its own titlebar and
+          its shell already draws the edge. */}
         <div
           ref={dragSplit.setDragRootNode}
-          className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden border-l border-border"
+          data-tab-strip-chrome={tabStripChrome}
+          className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden border-l border-border data-[tab-strip-chrome=floating-panel]:border-l-0"
         >
-          <div className="h-[4px] shrink-0 bg-card" data-terminal-focus-release-surface="true" />
+          {tabStripChrome === 'floating-panel' ? null : (
+            <div className="h-[4px] shrink-0 bg-card" data-terminal-focus-release-surface="true" />
+          )}
           <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
             <SplitNode
               node={layout}

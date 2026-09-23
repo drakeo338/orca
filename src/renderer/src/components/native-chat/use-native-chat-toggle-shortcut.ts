@@ -7,6 +7,7 @@ import { canToggleNativeChat } from './native-chat-availability'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { isMacPlatform, matchesNativeChatToggleShortcut } from './native-chat-shortcut'
 import { getConnectionIdFromState } from '@/lib/connection-context'
+import { resolveKeyboardWorkspaceId } from '@/lib/floating-workspace-terminal-actions'
 import {
   isNativeChatTabWideFallbackSafe,
   resolveNativeChatActiveLayoutLeafId
@@ -50,6 +51,11 @@ export function useNativeChatToggleShortcut(worktreeId: string, isWorktreeActive
         return
       }
       const state = useAppStore.getState()
+      // Why: the floating panel and the main window can both be on screen; only the one the key
+      // press came from toggles.
+      if (resolveKeyboardWorkspaceId(e.target, state.activeWorktreeId) !== worktreeId) {
+        return
+      }
       const activeGroupId = state.activeGroupIdByWorktree[worktreeId]
       const group = (state.groupsByWorktree[worktreeId] ?? []).find((g) => g.id === activeGroupId)
       if (!group?.activeTabId) {

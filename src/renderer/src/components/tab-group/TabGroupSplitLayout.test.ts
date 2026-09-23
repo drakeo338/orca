@@ -25,6 +25,9 @@ vi.mock('../../store', () => ({
   ) => useAppStoreMock(selector)
 }))
 
+const host = vi.hoisted((): { tabStripChrome?: 'default' | 'floating-panel' } => ({}))
+vi.mock('./tab-group-host', () => ({ useTabGroupHost: () => host }))
+
 vi.mock('./TabGroupPanel', () => ({
   default: (props: unknown) => ({ __mock: 'TabGroupPanel', props })
 }))
@@ -70,6 +73,7 @@ describe('TabGroupSplitLayout', () => {
     recordFeatureInteractionMock.mockClear()
     setDragRootNodeMock.mockClear()
     useAppStoreMock.mockClear()
+    host.tabStripChrome = undefined
   })
 
   function getLayoutWrapper(element: ReturnType<typeof TabGroupSplitLayout>) {
@@ -146,6 +150,31 @@ describe('TabGroupSplitLayout', () => {
     })
 
     expect(asElement(getLayoutWrapper(element)).props.ref).toBe(setDragRootNodeMock)
+  })
+
+  // The drag band and left seam join the main window's titlebar and sidebar; a floating panel's
+  // strip is its own titlebar.
+  it.each([
+    [undefined, true, 'default'],
+    ['floating-panel' as const, false, 'floating-panel']
+  ])('frames a %s host with the main-window drag band: %s', (chrome, hasDragBand, frame) => {
+    host.tabStripChrome = chrome
+    const wrapper = asElement(
+      getLayoutWrapper(
+        TabGroupSplitLayout({
+          layout: { type: 'leaf', groupId: 'group-1' },
+          worktreeId: 'wt-1',
+          focusedGroupId: 'group-1',
+          isWorktreeActive: true
+        })
+      )
+    )
+
+    const children = React.Children.toArray(wrapper.props.children as React.ReactNode)
+    expect(wrapper.props['data-tab-strip-chrome']).toBe(frame)
+    expect(
+      children.some((child) => asElement(child).props['data-terminal-focus-release-surface'])
+    ).toBe(hasDragBand)
   })
 
   it('only reserves top-right header space for the floating explorer toggle', () => {
