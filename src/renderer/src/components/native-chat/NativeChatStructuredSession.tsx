@@ -14,6 +14,7 @@ import { useNativeChatFontScale } from './use-native-chat-font-scale'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
+import { useNativeChatTabOwnerWorktreeId } from './use-native-chat-tab-owner'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { useNativeChatImageRuntimeContext } from './native-chat-image-runtime-context'
 import { useStructuredNativeChatPaneCommands } from './use-structured-native-chat-pane-commands'
@@ -31,11 +32,9 @@ function encodeQuestionAnswer(questionId: string, answer: string): string {
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
 ): React.JSX.Element {
+  const ownerWorktreeId = useNativeChatTabOwnerWorktreeId(props.tabId)
   const fileLinkContext = useNativeChatFileLinkContext(props.tabId)
-  const provisionalLaunch = useNativeChatProvisionalLaunch(
-    fileLinkContext?.worktreeId,
-    props.sessionId
-  )
+  const provisionalLaunch = useNativeChatProvisionalLaunch(ownerWorktreeId, props.sessionId)
   const controller = useStructuredAgentSession({
     ...props,
     transportEnabled: provisionalLaunch.transportEnabled
@@ -179,21 +178,14 @@ export function NativeChatStructuredSession(
       optionSnapshot: controller.optionSnapshot,
       optionPickerRequest,
       sessionCommands: controller.sessionCommands,
-      worktreeId: fileLinkContext?.worktreeId,
+      worktreeId: ownerWorktreeId ?? undefined,
       onError: setComposerError,
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
         props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
     }),
-    [
-      controller,
-      fileLinkContext?.worktreeId,
-      optionPickerRequest,
-      props.agent,
-      props.sessionId,
-      props.target
-    ]
+    [controller, optionPickerRequest, ownerWorktreeId, props.agent, props.sessionId, props.target]
   )
 
   return (

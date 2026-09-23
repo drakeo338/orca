@@ -3,7 +3,9 @@ import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { AppState } from '@/store/types'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import {
+  findNativeChatTabOwnerWorktreeId,
   resolveNativeChatFileLink,
   resolveNativeChatFileLinkContext,
   type NativeChatFileLinkContext
@@ -130,6 +132,53 @@ describe('resolveNativeChatFileLinkContext', () => {
     ).toEqual({
       worktreeId: folderKey,
       worktreePath: '/workspace/platform',
+      runtimeEnvironmentId: null
+    })
+  })
+})
+
+describe('floating workspace native chat', () => {
+  const floatingTab = {
+    id: 'floating-chat-1',
+    worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+    groupId: 'floating-group',
+    contentType: 'agent-session',
+    entityId: 'session-1',
+    label: 'Codex Chat',
+    customLabel: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 0,
+    isPinned: false,
+    agentSessionAgent: 'codex'
+  } satisfies Tab
+
+  function floatingState(floatingWorkspacePath: string | null): AppState {
+    return state({
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] },
+      getKnownWorktreeById: () => undefined,
+      worktreesByRepo: {},
+      // Why a focused runtime: floating must stay local even when one is selected.
+      settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
+      floatingWorkspacePath
+    })
+  }
+
+  it('finds the owning floating workspace before its directory is known', () => {
+    const pending = floatingState(null)
+    expect(findNativeChatTabOwnerWorktreeId(pending, floatingTab.id)).toBe(
+      FLOATING_TERMINAL_WORKTREE_ID
+    )
+    expect(resolveNativeChatFileLinkContext(pending, floatingTab.id)).toBeNull()
+  })
+
+  it('resolves file links against the floating directory with no catalog row', () => {
+    expect(
+      resolveNativeChatFileLinkContext(floatingState('/home/me/scratch'), floatingTab.id)
+    ).toEqual({
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      worktreePath: '/home/me/scratch',
       runtimeEnvironmentId: null
     })
   })

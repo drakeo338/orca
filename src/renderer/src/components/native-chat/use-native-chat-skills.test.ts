@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { DiscoveredSkill, SkillDiscoveryResult } from '../../../../shared/skills'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
+import type { Tab } from '../../../../shared/tab-types'
+import type { NativeChatSkillStateInputs } from './native-chat-skill-discovery-context'
 import {
   isNativeChatSkillForAgent,
+  resolveNativeChatSkillDiscoveryContext,
   resolveNativeChatSkillDiscoveryCwd
 } from './use-native-chat-skills'
 
@@ -172,5 +176,60 @@ describe('resolveNativeChatSkillDiscoveryCwd', () => {
         'tab-1'
       )
     ).toBe('/repo/worktree/packages/app')
+  })
+})
+
+describe('floating workspace skill discovery', () => {
+  const floatingTab: Tab = {
+    id: 'floating-chat-1',
+    worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+    groupId: 'floating-group',
+    contentType: 'agent-session',
+    entityId: 'session-1',
+    label: 'Codex Chat',
+    customLabel: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 0,
+    isPinned: false,
+    agentSessionAgent: 'codex'
+  }
+  const floatingInputs: NativeChatSkillStateInputs = {
+    activeRepoId: null,
+    activeWorktreeId: null,
+    floatingWorkspacePath: '/home/me/scratch',
+    folderWorkspaces: [],
+    projectGroups: [],
+    projects: [],
+    repos: [],
+    restoredRuntimeHostIdByWorkspaceSessionKey: {},
+    // Why a focused runtime: floating must stay local even when one is selected.
+    settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
+    tabsByWorktree: {},
+    unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] },
+    worktreesByRepo: {}
+  }
+
+  it('scans the floating directory on the local host with no catalog row', () => {
+    expect(resolveNativeChatSkillDiscoveryCwd(floatingInputs, 'floating-chat-1')).toBe(
+      '/home/me/scratch'
+    )
+    expect(resolveNativeChatSkillDiscoveryContext(floatingInputs, 'floating-chat-1')).toMatchObject(
+      {
+        cwd: '/home/me/scratch',
+        executionHostKind: 'local',
+        runtimeTarget: { kind: 'local' },
+        discoveryTarget: { cwd: '/home/me/scratch', worktreeId: FLOATING_TERMINAL_WORKTREE_ID }
+      }
+    )
+  })
+
+  it('stays not-ready until the floating directory resolves', () => {
+    expect(
+      resolveNativeChatSkillDiscoveryContext(
+        { ...floatingInputs, floatingWorkspacePath: null },
+        'floating-chat-1'
+      )
+    ).toBeNull()
   })
 })

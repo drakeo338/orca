@@ -21,10 +21,9 @@ type FloatingTerminalPanelGeometryInput = Pick<
   | 'maximized'
   | 'stagedBoundsRef'
   | 'lastPersistedBoundsRef'
-  | 'setCwd'
   | 'setMarkdownCwd'
 > &
-  Pick<FloatingTerminalPanelStoreState, 'floatingTerminalCwd'>
+  Pick<FloatingTerminalPanelStoreState, 'floatingTerminalCwd' | 'setCwd'>
 
 export function useFloatingTerminalPanelGeometry({
   boundsSourceRef,

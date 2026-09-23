@@ -160,6 +160,8 @@ function resetStore(tabs: TerminalTab[] = []): void {
     browserDefaultUrl: 'about:blank',
     keybindings: {},
     tabBarOrderByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: tabs.map((tab) => tab.id) },
+    floatingWorkspacePath: null,
+    setFloatingWorkspacePath: vi.fn(),
     settings: { floatingTerminalCwd: '' }
   } satisfies FloatingPanelStoreState
 }

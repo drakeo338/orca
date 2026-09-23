@@ -5,6 +5,7 @@ import type { AgentSessionBackgroundTask } from '../../../../shared/agent-sessio
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
+import type { NativeChatFileLinkContext } from './native-chat-file-link'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
 import type {
   SessionOptionSetResult,
@@ -17,6 +18,10 @@ function nullable<T>(): T | null {
   return null
 }
 
+function widened<T>(value: T): T {
+  return value
+}
+
 type StructuredSessionMessageListProps = {
   allowFileUriLinks?: boolean
   isVisible?: boolean
@@ -25,6 +30,12 @@ type StructuredSessionMessageListProps = {
   showLiveTurnActivity?: boolean
   isWorking?: boolean
   runtimeContext?: unknown
+}
+
+const DEFAULT_FILE_LINK_CONTEXT: NativeChatFileLinkContext = {
+  worktreeId: 'wt-1',
+  worktreePath: '/repo',
+  runtimeEnvironmentId: null
 }
 
 const initialMessageListProps: StructuredSessionMessageListProps | null = null
@@ -40,7 +51,10 @@ export function createStructuredSessionMocks() {
     call: vi.fn<(...args: never[]) => unknown>(),
     fileLinkClick: vi.fn<(...args: never[]) => unknown>(),
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
+    ownerWorktreeId: widened<string | null>('wt-1'),
+    fileLinkContext: widened<NativeChatFileLinkContext | null>(DEFAULT_FILE_LINK_CONTEXT),
     retryLaunch: vi.fn<(...args: never[]) => unknown>(),
+    lifecycleLookup: vi.fn<(worktreeId: string, sessionId: string) => void>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
     mode: 'static' as 'static' | 'outbox',
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
@@ -162,17 +176,19 @@ export function createStructuredSessionMocks() {
     },
     structuredAgentSessionLaunch: () => ({
       retryStructuredAgentSessionLaunch: mocks.retryLaunch,
-      useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle
+      useStructuredAgentSessionLaunchLifecycle: (worktreeId: string, sessionId: string) => {
+        mocks.lifecycleLookup(worktreeId, sessionId)
+        return mocks.launchLifecycle
+      }
     }),
     useNativeChatFontScale: () => ({
       useNativeChatFontScale: () => ({ scale: 1 })
     }),
     useNativeChatFileLinkContext: () => ({
-      useNativeChatFileLinkContext: () => ({
-        worktreeId: 'wt-1',
-        worktreePath: '/repo',
-        runtimeEnvironmentId: null
-      })
+      useNativeChatFileLinkContext: () => mocks.fileLinkContext
+    }),
+    useNativeChatTabOwner: () => ({
+      useNativeChatTabOwnerWorktreeId: () => mocks.ownerWorktreeId
     }),
     useNativeChatFileLinkClick: () => ({
       useNativeChatFileLinkClick: (context: unknown) => (context ? mocks.fileLinkClick : undefined)
@@ -218,7 +234,10 @@ export function createStructuredSessionMocks() {
   const resetStructuredSessionMocks = (): void => {
     mocks.call.mockReset()
     mocks.launchLifecycle = null
+    mocks.ownerWorktreeId = 'wt-1'
+    mocks.fileLinkContext = DEFAULT_FILE_LINK_CONTEXT
     mocks.retryLaunch.mockReset()
+    mocks.lifecycleLookup.mockReset()
     mocks.controllerProps = null
     mocks.mode = 'static'
     mocks.status = 'ready'

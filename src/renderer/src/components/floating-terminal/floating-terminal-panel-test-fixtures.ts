@@ -51,6 +51,8 @@ export type FloatingPanelStoreState = {
   browserDefaultUrl: string
   keybindings?: KeybindingOverrides
   tabBarOrderByWorktree: Record<string, string[]>
+  floatingWorkspacePath: string | null
+  setFloatingWorkspacePath: (path: string | null) => void
   settings: {
     activeRuntimeEnvironmentId?: string | null
     floatingTerminalCwd?: string

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { shallow } from 'zustand/shallow'
 import type { AppState } from '@/store/types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
+import type { Tab } from '../../../../shared/tab-types'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import {
   resolveNativeChatImageRuntimeContext,
   selectNativeChatImageOwnerState
@@ -92,5 +94,45 @@ describe('resolveNativeChatImageRuntimeContext', () => {
       expectedExecutionHostId: 'local',
       settings: { activeRuntimeEnvironmentId: 'owner-a' }
     })
+  })
+
+  it('resolves a floating chat to the local floating directory with no catalog row', () => {
+    const floatingTab: Tab = {
+      id: 'floating-chat-1',
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      groupId: 'floating-group',
+      contentType: 'agent-session',
+      entityId: 'session-1',
+      label: 'Codex Chat',
+      customLabel: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 0,
+      isPinned: false,
+      agentSessionAgent: 'codex'
+    }
+    const floatingState: AppState = {
+      ...state(),
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] },
+      getKnownWorktreeById: () => undefined,
+      worktreesByRepo: {},
+      // Why a focused runtime: floating must stay local even when one is selected.
+      settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
+      floatingWorkspacePath: '/home/me/scratch'
+    }
+
+    expect(resolveNativeChatImageRuntimeContext(floatingState, 'floating-chat-1')).toMatchObject({
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      worktreePath: '/home/me/scratch',
+      expectedExecutionHostId: 'local',
+      settings: { activeRuntimeEnvironmentId: null }
+    })
+    expect(
+      resolveNativeChatImageRuntimeContext(
+        { ...floatingState, floatingWorkspacePath: null },
+        'floating-chat-1'
+      )
+    ).toBeNull()
   })
 })
