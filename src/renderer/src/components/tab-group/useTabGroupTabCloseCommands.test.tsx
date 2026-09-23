@@ -259,7 +259,10 @@ describe('shared tab close policies', () => {
     renderHook(() =>
       useTabGroupTabCloseCommands({ worktreeId: 'worktree-a' })
     ).result.current.closeItem(editor.id)
-    expect(mocks.requestEditorFileClose).toHaveBeenCalledWith('dirty-file')
+    // The close carries its emptied-workspace reaction, run only once the prompt lets it land.
+    expect(mocks.requestEditorFileClose).toHaveBeenCalledWith('dirty-file', {
+      onClosed: expect.any(Function)
+    })
     expect(closeUnifiedTab).not.toHaveBeenCalled()
     expect(useAppStore.getState().closeFile).not.toHaveBeenCalled()
   })
