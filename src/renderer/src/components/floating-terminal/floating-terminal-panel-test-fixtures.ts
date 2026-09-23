@@ -62,6 +62,11 @@ export const storeBox = {
   state: null as unknown
 }
 
+function floatingStoreState(): FloatingPanelStoreState {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the harness installs a FloatingPanelStoreState here before any test body runs.
+  return storeBox.state as FloatingPanelStoreState
+}
+
 export function makeTab(overrides: Partial<TerminalTab> = {}): TerminalTab {
   return {
     id: overrides.id ?? 'tab-1',
@@ -93,7 +98,7 @@ export function makeFile(overrides: Partial<OpenFile> = {}): OpenFile {
 // Models terminal-tab-actions.closeTerminalTab's store mutation: the real close removes the tab from
 // the floating store *before* it fires onClosed, so the reclaim intent arms on a decremented count.
 export function removeFloatingTerminalTabFromStore(entityId: string): void {
-  const state = storeBox.state as FloatingPanelStoreState
+  const state = floatingStoreState()
   const current = state.tabsByWorktree?.[FLOATING_TERMINAL_WORKTREE_ID] ?? []
   const remaining = current.filter((tab) => tab.id !== entityId)
   if (remaining.length !== current.length) {
@@ -102,12 +107,12 @@ export function removeFloatingTerminalTabFromStore(entityId: string): void {
 }
 
 export function setFloatingLayout(layout: TabGroupLayoutNode): void {
-  const state = storeBox.state as FloatingPanelStoreState
+  const state = floatingStoreState()
   state.layoutByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: layout }
 }
 
 export function setFloatingTabs(tabs: TerminalTab[]): void {
-  const state = storeBox.state as FloatingPanelStoreState
+  const state = floatingStoreState()
   const groupId = 'floating-group'
   const unifiedTabs = tabs.map<Tab>((tab, index) => ({
     id: tab.id,
@@ -141,7 +146,7 @@ export function setFloatingTabs(tabs: TerminalTab[]): void {
 }
 
 export function setFloatingEditorTabs(files: OpenFile[]): void {
-  const state = storeBox.state as FloatingPanelStoreState
+  const state = floatingStoreState()
   const groupId = 'floating-group'
   const unifiedTabs = files.map<Tab>((file, index) => ({
     id: `tab-${file.id}`,

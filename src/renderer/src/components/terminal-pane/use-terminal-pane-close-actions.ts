@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { onActiveTerminalPaneCloseRequest } from './request-active-terminal-pane-close'
 import { useAppStore } from '../../store'
 import { retireUnboundRuntimeTerminalPane } from './retire-unbound-runtime-terminal-pane'
@@ -28,7 +28,6 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
     paneTransportsRef,
     pendingCloseConfirmation,
     persistLayoutSnapshot,
-    ref,
     setPendingCloseConfirmation,
     setTerminalErrorsByPaneId,
     syncPanePtyLayoutBinding,
@@ -170,7 +169,6 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
     }
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
   }, [handleRequestClosePane])
-  useImperativeHandle(ref, () => ({ closeActivePane }), [closeActivePane])
   useEffect(
     () => onActiveTerminalPaneCloseRequest(tabId, closeActivePane),
     [closeActivePane, tabId]

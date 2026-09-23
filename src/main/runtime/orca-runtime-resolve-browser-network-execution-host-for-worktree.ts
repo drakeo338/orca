@@ -19,6 +19,7 @@ import { resolveWorktreeLaunchHost } from './worktree-launch-host-repo'
 import { folderWorkspaceKey, parseWorkspaceKey } from '../../shared/workspace-scope'
 import type { FolderWorkspace } from '../../shared/folder-workspace-types'
 import type { ResolvedWorktree } from './runtime-worktree-path-identity'
+import type { Worktree } from '../../shared/worktree/types'
 import { folderWorkspaceToWorktree } from '../../shared/folder-workspace-worktree'
 import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-terminal-recovery-types'
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
@@ -30,6 +31,23 @@ import { getExplicitWorktreeIdSelector } from './runtime-worktree-selection'
 import { WORKTREE_ID_SEPARATOR } from '../../shared/worktree/id'
 import { WorktreeIdRequiresFullPathError } from './runtime-worktree-lineage-resolution'
 import { triggerTerminalSpawnPushTargetMaterialization } from './runtime-terminal-spawn-push-target-materialization'
+
+// Why: folder and floating workspaces have no worktree row, so no parent, children or lineage.
+function withoutWorktreeLineage(worktree: Worktree): ResolvedWorktree {
+  return {
+    ...worktree,
+    parentWorktreeId: null,
+    childWorktreeIds: [],
+    lineage: null,
+    git: {
+      path: worktree.path,
+      head: worktree.head,
+      branch: worktree.branch,
+      isBare: worktree.isBare,
+      isMainWorktree: worktree.isMainWorktree
+    }
+  }
+}
 
 export class OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree extends OrcaRuntimeWithTransitionGraphReloadToTerminalState {
   protected resolveBrowserNetworkExecutionHostForWorktree(worktree?: {
@@ -78,37 +96,11 @@ export class OrcaRuntimeWithResolveBrowserNetworkExecutionHostForWorktree extend
   }
 
   protected floatingWorkspaceToResolvedWorktree(path: string): ResolvedWorktree {
-    const worktree = floatingWorkspaceToWorktree(path)
-    return {
-      ...worktree,
-      parentWorktreeId: null,
-      childWorktreeIds: [],
-      lineage: null,
-      git: {
-        path: worktree.path,
-        head: worktree.head,
-        branch: worktree.branch,
-        isBare: worktree.isBare,
-        isMainWorktree: worktree.isMainWorktree
-      }
-    }
+    return withoutWorktreeLineage(floatingWorkspaceToWorktree(path))
   }
 
   protected folderWorkspaceToResolvedWorktree(folderWorkspace: FolderWorkspace): ResolvedWorktree {
-    const worktree = folderWorkspaceToWorktree(folderWorkspace)
-    return {
-      ...worktree,
-      parentWorktreeId: null,
-      childWorktreeIds: [],
-      lineage: null,
-      git: {
-        path: worktree.path,
-        head: worktree.head,
-        branch: worktree.branch,
-        isBare: worktree.isBare,
-        isMainWorktree: worktree.isMainWorktree
-      }
-    }
+    return withoutWorktreeLineage(folderWorkspaceToWorktree(folderWorkspace))
   }
 
   protected resolveWorkspaceTerminalStartupCwd(
