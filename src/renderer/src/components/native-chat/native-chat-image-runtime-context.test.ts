@@ -134,5 +134,16 @@ describe('resolveNativeChatImageRuntimeContext', () => {
         'floating-chat-1'
       )
     ).toBeNull()
+    expect(
+      resolveNativeChatImageRuntimeContext(
+        {
+          ...floatingState,
+          structuredSessionWorkspacePathByTabId: {
+            'floating-chat-1': { sessionId: 'session-1', workspacePath: '/home/me/pinned' }
+          }
+        },
+        'floating-chat-1'
+      )
+    ).toMatchObject({ worktreePath: '/home/me/pinned', expectedExecutionHostId: 'local' })
   })
 })

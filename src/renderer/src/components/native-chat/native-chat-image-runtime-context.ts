@@ -10,7 +10,7 @@ import { resolveNativeChatFileLinkContext } from './native-chat-file-link'
 import { captureDirectSshMutationExpectation } from '@/lib/ssh-mutation-expectation'
 import { parseExecutionHostId, toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
-import { resolveWorkspaceDirectory } from '@/lib/workspace-directory'
+import { resolveNativeChatTabDirectory } from './native-chat-tab-directory'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -25,6 +25,7 @@ type OwnerState = Pick<
   | 'detectedWorktreesByRepo'
   | 'folderWorkspaces'
   | 'floatingWorkspacePath'
+  | 'structuredSessionWorkspacePathByTabId'
   | 'projectGroups'
   | 'runtimeEnvironments'
   | 'runtimeEnvironmentCatalogHydrated'
@@ -49,6 +50,7 @@ export function selectNativeChatImageOwnerState(state: AppState): OwnerState {
     detectedWorktreesByRepo: state.detectedWorktreesByRepo,
     folderWorkspaces: state.folderWorkspaces,
     floatingWorkspacePath: state.floatingWorkspacePath,
+    structuredSessionWorkspacePathByTabId: state.structuredSessionWorkspacePathByTabId,
     projectGroups: state.projectGroups,
     runtimeEnvironments: state.runtimeEnvironments,
     runtimeEnvironmentCatalogHydrated: state.runtimeEnvironmentCatalogHydrated,
@@ -125,7 +127,12 @@ export function resolveNativeChatImageRuntimeContext(
   if (!executionHostId) {
     return null
   }
-  const worktreePath = resolveWorkspaceDirectory(state, linkContext.worktreeId, executionHostId)
+  const worktreePath = resolveNativeChatTabDirectory(
+    state,
+    tabId,
+    linkContext.worktreeId,
+    executionHostId
+  )
   if (!worktreePath) {
     return null
   }

@@ -7,7 +7,10 @@ import {
   getExecutionHostIdForWorktree
 } from '@/lib/worktree-runtime-owner'
 import { getLocalProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
-import { resolveWorkspaceDirectory, type WorkspaceDirectoryState } from '@/lib/workspace-directory'
+import {
+  resolveNativeChatTabDirectory,
+  type NativeChatTabDirectoryState
+} from './native-chat-tab-directory'
 
 export type NativeChatSkillStateInputs = Pick<
   AppState,
@@ -20,6 +23,7 @@ export type NativeChatSkillStateInputs = Pick<
   | 'repos'
   | 'restoredRuntimeHostIdByWorkspaceSessionKey'
   | 'settings'
+  | 'structuredSessionWorkspacePathByTabId'
   | 'tabsByWorktree'
   | 'unifiedTabsByWorktree'
   | 'worktreesByRepo'
@@ -27,9 +31,8 @@ export type NativeChatSkillStateInputs = Pick<
 
 type NativeChatSkillTab = { id: string; startupCwd?: string }
 
-type NativeChatSkillWorktreeState = WorkspaceDirectoryState & {
+type NativeChatSkillWorktreeState = NativeChatTabDirectoryState & {
   tabsByWorktree: Record<string, readonly NativeChatSkillTab[]>
-  unifiedTabsByWorktree?: Record<string, readonly { id: string }[]>
 }
 
 export type NativeChatSkillDiscoveryContext = {
@@ -51,6 +54,7 @@ export function selectNativeChatSkillStateInputs(state: AppState): NativeChatSki
     repos: state.repos,
     restoredRuntimeHostIdByWorkspaceSessionKey: state.restoredRuntimeHostIdByWorkspaceSessionKey,
     settings: state.settings,
+    structuredSessionWorkspacePathByTabId: state.structuredSessionWorkspacePathByTabId,
     tabsByWorktree: state.tabsByWorktree,
     unifiedTabsByWorktree: state.unifiedTabsByWorktree,
     worktreesByRepo: state.worktreesByRepo
@@ -71,7 +75,7 @@ export function resolveNativeChatSkillDiscoveryCwd(
   if (startupCwd) {
     return startupCwd
   }
-  return resolveWorkspaceDirectory(state, found.worktreeId)
+  return resolveNativeChatTabDirectory(state, terminalTabId, found.worktreeId)
 }
 
 export function resolveNativeChatSkillDiscoveryContext(

@@ -1,8 +1,8 @@
 import { stat } from 'node:fs/promises'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
-import { isFloatingWorkspaceId } from '../../shared/floating-workspace-worktree'
 import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
+import { agentSessionPinnedLaunchDirectory } from './agent-session-record-workspace-path'
 
 /** The floating folder a session ran in is gone; resuming anywhere else would be a different chat. */
 export class AgentSessionWorkspaceMissingError extends AgentSessionAcquisitionRefusal {
@@ -41,15 +41,15 @@ export async function resolveAgentSessionLaunchDirectory(
   deps: AgentSessionLaunchDirectoryDeps,
   record: AgentSessionRecord
 ): Promise<string> {
-  const pinned = record.workspacePath
-  if (pinned !== undefined && isFloatingWorkspaceId(record.location.workspaceId)) {
+  const pinned = agentSessionPinnedLaunchDirectory(record)
+  if (pinned !== undefined) {
     if (!(await isDirectory(pinned))) {
       throw new AgentSessionWorkspaceMissingError(pinned)
     }
     return pinned
   }
   const resolved = await deps.resolveWorkspacePath(record.location.workspaceId)
-  if (pinned === undefined) {
+  if (record.workspacePath === undefined) {
     await deps.store.pinWorkspacePath(record.sessionId, resolved)
   }
   return resolved

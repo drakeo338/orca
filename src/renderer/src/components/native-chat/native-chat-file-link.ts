@@ -5,7 +5,7 @@ import {
 } from '@/lib/explicit-file-link-target'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '@/store/types'
-import { resolveWorkspaceDirectory } from '@/lib/workspace-directory'
+import { resolveNativeChatTabDirectory } from './native-chat-tab-directory'
 
 export type NativeChatFileLinkContext = {
   worktreeId: string
@@ -31,6 +31,7 @@ type NativeChatFileLinkState = Pick<
 > & {
   unifiedTabsByWorktree?: AppState['unifiedTabsByWorktree']
   floatingWorkspacePath?: AppState['floatingWorkspacePath']
+  structuredSessionWorkspacePathByTabId?: AppState['structuredSessionWorkspacePathByTabId']
 }
 
 export function findTerminalTabWorktreeId(
@@ -78,7 +79,7 @@ export function resolveNativeChatFileLinkContext(
   if (!worktreeId) {
     return null
   }
-  const worktreePath = resolveWorkspaceDirectory(state, worktreeId)
+  const worktreePath = resolveNativeChatTabDirectory(state, terminalTabId, worktreeId)
   if (!worktreePath) {
     return null
   }

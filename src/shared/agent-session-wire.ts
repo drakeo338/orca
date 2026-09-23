@@ -222,6 +222,9 @@ export type AgentSessionStatusSummary = {
    *  mixed-version hosts. */
   backgroundTasks?: AgentSessionBackgroundTask[]
   providerSession?: AgentProviderSessionMetadata
+  /** Host-path directory the session is held to regardless of its workspace's current directory
+   *  (a floating chat's pinned folder). Absent means resolve the workspace id; older hosts omit it. */
+  workspacePath?: string
   updatedAt: number
 }
 

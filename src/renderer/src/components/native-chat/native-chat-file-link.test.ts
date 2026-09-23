@@ -173,6 +173,20 @@ describe('floating workspace native chat', () => {
     expect(resolveNativeChatFileLinkContext(pending, floatingTab.id)).toBeNull()
   })
 
+  it('resolves file links against the pinned folder after the floating setting moved', () => {
+    const pinned = {
+      ...floatingState('/home/me/changed-setting'),
+      structuredSessionWorkspacePathByTabId: {
+        [floatingTab.id]: { sessionId: floatingTab.entityId, workspacePath: '/home/me/pinned' }
+      }
+    }
+    expect(resolveNativeChatFileLinkContext(pinned, floatingTab.id)).toEqual({
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      worktreePath: '/home/me/pinned',
+      runtimeEnvironmentId: null
+    })
+  })
+
   it('resolves file links against the floating directory with no catalog row', () => {
     expect(
       resolveNativeChatFileLinkContext(floatingState('/home/me/scratch'), floatingTab.id)

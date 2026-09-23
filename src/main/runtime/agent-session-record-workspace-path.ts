@@ -1,4 +1,5 @@
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import { isFloatingWorkspaceId } from '../../shared/floating-workspace-worktree'
 
 /**
  * Pin the directory a session's provider was launched in.
@@ -15,4 +16,12 @@ export function pinAgentSessionRecordWorkspacePath(
     return record
   }
   return { ...record, workspacePath, updatedAt: now }
+}
+
+/**
+ * The pinned directory a launch is held to, or undefined when the workspace id decides. Only the
+ * floating id names a setting rather than a place, so only a floating session is held to its pin.
+ */
+export function agentSessionPinnedLaunchDirectory(record: AgentSessionRecord): string | undefined {
+  return isFloatingWorkspaceId(record.location.workspaceId) ? record.workspacePath : undefined
 }
