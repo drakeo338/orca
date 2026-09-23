@@ -17938,6 +17938,10 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "已结束",
+      "endedAgo": "{{value0}}前结束"
     }
   },
   "dashboardPopout": {

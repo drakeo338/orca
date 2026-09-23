@@ -18037,6 +18037,10 @@
           }
         }
       }
+    },
+    "agentChildRow": {
+      "ended": "Terminé",
+      "endedAgo": "terminé il y a {{value0}}"
     }
   },
   "dashboardPopout": {
