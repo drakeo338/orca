@@ -148,7 +148,6 @@ export async function preparePendingSplitClose(
     expandedStyleSnapshotRef: { current: new Map() },
     containerRef: { current: null },
     pendingPaneSizeRefreshFrameIdsRef: { current: [] },
-    ref: { current: null },
     clearSessionRestoredBannerForPane: vi.fn(),
     persistLayoutSnapshot: vi.fn(),
     setPendingCloseConfirmation: vi.fn(),

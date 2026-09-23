@@ -60,6 +60,11 @@ function asElement(node: unknown): ReactElementLike {
   return node as ReactElementLike
 }
 
+function childrenOf(element: ReactElementLike): React.ReactNode[] {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the element came from the layout's own JSX, whose children are React nodes.
+  return React.Children.toArray(element.props.children as React.ReactNode)
+}
+
 function invokeComponent(element: ReactElementLike): unknown {
   if (typeof element.type === 'function') {
     return element.type(element.props)
@@ -170,7 +175,7 @@ describe('TabGroupSplitLayout', () => {
       )
     )
 
-    const children = React.Children.toArray(wrapper.props.children as React.ReactNode)
+    const children = childrenOf(wrapper)
     expect(wrapper.props['data-tab-strip-chrome']).toBe(frame)
     expect(
       children.some((child) => asElement(child).props['data-terminal-focus-release-surface'])

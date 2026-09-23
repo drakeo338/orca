@@ -15,7 +15,7 @@ function workspaceWithTerminal(worktreeId: string) {
   }
 }
 
-const state = vi.hoisted(() => ({ activeWorktreeId: 'wt-main' as string | null }))
+const state = vi.hoisted(() => ({ activeWorktreeId: 'wt-main' }))
 vi.mock('../../store', () => {
   const main = workspaceWithTerminal('wt-main')
   const floating = workspaceWithTerminal(FLOATING_TERMINAL_WORKTREE_ID)

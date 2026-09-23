@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type * as EditorAutosaveModule from './editor/editor-autosave'
 
-const store = vi.hoisted(() => ({
-  openFiles: [] as { id: string; worktreeId: string; isDirty: boolean; relativePath: string }[],
-  activeWorktreeId: 'wt-main' as string | null
+type FakeOpenFile = { id: string; worktreeId: string; isDirty: boolean; relativePath: string }
+const store = vi.hoisted((): { openFiles: FakeOpenFile[]; activeWorktreeId: string | null } => ({
+  openFiles: [],
+  activeWorktreeId: 'wt-main'
 }))
 const revealFloatingWorkspacePanel = vi.hoisted(() => vi.fn())
 
@@ -60,7 +61,7 @@ function mountCloseQueue() {
   })
 }
 
-function dirtyFile(id: string, worktreeId: string): (typeof store.openFiles)[number] {
+function dirtyFile(id: string, worktreeId: string): FakeOpenFile {
   return { id, worktreeId, isDirty: true, relativePath: `${id}.md` }
 }
 
