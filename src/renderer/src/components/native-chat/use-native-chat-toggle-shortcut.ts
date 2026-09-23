@@ -36,10 +36,10 @@ export function resolveNativeChatToggleShortcutDetectedAgent({
   )
 }
 
-/** Toggles the active worktree's focused agent-terminal tab between the terminal
- *  and native chat views via the keyboard. Gated to the active worktree so only
- *  one listener acts at a time, and to agent terminals so the chord is inert on
- *  plain shells / non-terminal surfaces. */
+/** Toggles a workspace's focused agent-terminal tab between the terminal and native
+ *  chat views via the keyboard. Gated to the surface the key press came from (main
+ *  window or floating panel) so only one listener acts, and to agent terminals so
+ *  the chord is inert on plain shells / non-terminal surfaces. */
 export function useNativeChatToggleShortcut(worktreeId: string, isWorktreeActive: boolean): void {
   useEffect(() => {
     if (!isWorktreeActive) {
