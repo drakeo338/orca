@@ -10,6 +10,7 @@ import {
 import { shouldMountBackgroundWorktreeTab } from '../terminal/background-terminal-worktree-mount'
 import { useNativeChatToggleShortcut } from '../native-chat/use-native-chat-toggle-shortcut'
 import { TerminalOverlaySlot } from './TerminalOverlaySlot'
+import { captureWorkspaceEmptiedReaction } from '../tab-group/workspace-emptied-reaction'
 import { useTerminalTabColdParking } from './use-terminal-tab-cold-parking'
 
 type TerminalOverlayAssignment = {
@@ -57,21 +58,13 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
   )
   const focusGroup = useAppStore((state) => state.focusGroup)
   const consumeSuppressedPtyExit = useAppStore((state) => state.consumeSuppressedPtyExit)
-  const setActiveWorktree = useAppStore((state) => state.setActiveWorktree)
-  const reconcileWorktreeTabModel = useAppStore((state) => state.reconcileWorktreeTabModel)
 
   useNativeChatToggleShortcut(worktreeId, isWorktreeActive)
 
-  const leaveWorktreeIfEmpty = useCallback(() => {
-    const state = useAppStore.getState()
-    if (state.activeWorktreeId !== worktreeId) {
-      return
-    }
-    const { renderableTabCount } = reconcileWorktreeTabModel(worktreeId)
-    if (renderableTabCount === 0) {
-      setActiveWorktree(null)
-    }
-  }, [reconcileWorktreeTabModel, setActiveWorktree, worktreeId])
+  const captureEmptiedReaction = useCallback(
+    () => captureWorkspaceEmptiedReaction(worktreeId),
+    [worktreeId]
+  )
 
   const focusOwningGroup = useCallback(
     (groupId: string) => focusGroup(worktreeId, groupId),
@@ -162,7 +155,7 @@ const TerminalPaneOverlayLayer = memo(function TerminalPaneOverlayLayer({
               activityTerminalPortal={activityTerminalPortal}
               onFocusOwningGroup={focusOwningGroup}
               consumeSuppressedPtyExit={consumeSuppressedPtyExit}
-              leaveWorktreeIfEmpty={leaveWorktreeIfEmpty}
+              captureEmptiedReaction={captureEmptiedReaction}
             />
           )
         })}

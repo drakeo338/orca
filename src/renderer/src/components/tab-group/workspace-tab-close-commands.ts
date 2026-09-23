@@ -3,10 +3,7 @@ import { useAppStore } from '../../store'
 import { requestEditorFileClose } from '../editor/editor-autosave'
 import { closeTerminalTab } from '../terminal/terminal-tab-actions'
 import { closeWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-close'
-import { armFloatingPanelReclaimIntent } from '@/lib/floating-workspace-focus-reclaim'
-import { isFloatingWorkspacePanelFocused } from '@/lib/floating-workspace-terminal-actions'
-import { selectFloatingVisibleTabCount } from '@/store/selectors'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { captureWorkspaceEmptiedReaction } from './workspace-emptied-reaction'
 
 export function createWorkspaceTabCloseCommands({
   worktreeId,
@@ -15,9 +12,13 @@ export function createWorkspaceTabCloseCommands({
   worktreeId: string
   groupTabs: Tab[]
 }) {
-  const { closeUnifiedTab, closeFile, setActiveWorktree } = useAppStore.getState()
+  const { closeUnifiedTab, closeFile } = useAppStore.getState()
 
-  const closeEditorIfUnreferenced = (entityId: string, closingTabId: string) => {
+  const closeEditorIfUnreferenced = (
+    entityId: string,
+    closingTabId: string,
+    whenEmptied: (() => void) | null
+  ) => {
     const otherReference = (useAppStore.getState().unifiedTabsByWorktree[worktreeId] ?? []).some(
       (item) =>
         item.id !== closingTabId &&
@@ -31,39 +32,12 @@ export function createWorkspaceTabCloseCommands({
       const file = useAppStore.getState().openFiles.find((candidate) => candidate.id === entityId)
       if (file?.isDirty) {
         // Why: route through Terminal.tsx so the unsaved-confirmation save/discard queue stays centralized across all close paths.
-        requestEditorFileClose(entityId)
+        requestEditorFileClose(entityId, whenEmptied ? { onClosed: whenEmptied } : undefined)
         return false
       }
       closeFile(entityId)
     }
     return true
-  }
-
-  const leaveWorktreeIfEmpty = () => {
-    const state = useAppStore.getState()
-    if (state.activeWorktreeId !== worktreeId) {
-      return
-    }
-    // Why: split-group closes bypass legacy Terminal.tsx; deselect the emptied worktree here or the window goes blank instead of landing.
-    const { renderableTabCount } = state.reconcileWorktreeTabModel(worktreeId)
-    if (renderableTabCount === 0) {
-      setActiveWorktree(null)
-    }
-  }
-
-  // Why per workspace: emptying a worktree leaves it, but the floating panel is never the active
-  // worktree — emptying it from inside instead keeps keyboard ownership for the next Cmd/Ctrl+T.
-  // Ownership is read when the close is requested: removing the pane blurs it before the close lands.
-  const captureEmptiedReaction = (): (() => void) => {
-    if (worktreeId !== FLOATING_TERMINAL_WORKTREE_ID) {
-      return leaveWorktreeIfEmpty
-    }
-    const panelOwned = isFloatingWorkspacePanelFocused()
-    return () => {
-      if (panelOwned && selectFloatingVisibleTabCount(useAppStore.getState()) === 0) {
-        armFloatingPanelReclaimIntent()
-      }
-    }
   }
 
   const closeItem = (
@@ -74,7 +48,7 @@ export function createWorkspaceTabCloseCommands({
     if (!item) {
       return
     }
-    const whenEmptied = opts?.skipEmptyCheck ? null : captureEmptiedReaction()
+    const whenEmptied = opts?.skipEmptyCheck ? null : captureWorkspaceEmptiedReaction(worktreeId)
     if (item.contentType === 'agent-session') {
       closeUnifiedTab(item.id)
       whenEmptied?.()
@@ -99,7 +73,7 @@ export function createWorkspaceTabCloseCommands({
     } else if (item.contentType === 'simulator') {
       closeUnifiedTab(item.id)
     } else {
-      const canCloseTab = closeEditorIfUnreferenced(item.entityId, item.id)
+      const canCloseTab = closeEditorIfUnreferenced(item.entityId, item.id, whenEmptied)
       if (!canCloseTab) {
         return
       }
@@ -108,5 +82,5 @@ export function createWorkspaceTabCloseCommands({
     whenEmptied?.()
   }
 
-  return { closeItem, leaveWorktreeIfEmpty }
+  return { closeItem }
 }

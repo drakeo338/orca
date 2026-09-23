@@ -198,6 +198,13 @@ export function isFloatingWorkspacePanelVisible(
   return Boolean(doc.querySelector('[data-floating-terminal-panel][aria-hidden="false"]'))
 }
 
+/** Opens the floating panel unless it is already on screen. */
+export function revealFloatingWorkspacePanel(): void {
+  if (!isFloatingWorkspacePanelVisible()) {
+    window.dispatchEvent(new CustomEvent(TOGGLE_FLOATING_TERMINAL_EVENT))
+  }
+}
+
 export function isEmptyFloatingWorkspacePanelVisible(
   doc: Pick<Document, 'querySelector'> | null = typeof document === 'undefined' ? null : document
 ): boolean {

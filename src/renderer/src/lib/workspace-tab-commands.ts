@@ -3,6 +3,7 @@ import { toVisibleTabType, type Tab } from '../../../shared/tab-types'
 import { useAppStore } from '@/store'
 import { guardPinnedTabClose, resolvePinnedTabLabel } from '@/store/pinned-tab-close-guard'
 import { createWorkspaceTabCloseCommands } from '@/components/tab-group/workspace-tab-close-commands'
+import { captureWorkspaceEmptiedReaction } from '@/components/tab-group/workspace-emptied-reaction'
 import {
   handleSwitchRecentTab,
   handleSwitchTab,
@@ -121,6 +122,7 @@ export function dispatchWorkspaceTabCommand(command: WorkspaceTabCommand): boole
       if (!target.browserWorkspaceId) {
         return false
       }
+      const whenEmptied = captureWorkspaceEmptiedReaction(target.worktreeId)
       const plan = closeWorkspaceBrowserTab(target.worktreeId, target.browserWorkspaceId)
       if (
         plan.closesLocally &&
@@ -128,10 +130,7 @@ export function dispatchWorkspaceTabCommand(command: WorkspaceTabCommand): boole
         !command.skipEmptyCheck &&
         !command.bulk
       ) {
-        createWorkspaceTabCloseCommands({
-          worktreeId: target.worktreeId,
-          groupTabs: []
-        }).leaveWorktreeIfEmpty()
+        whenEmptied()
       }
       return true
     }

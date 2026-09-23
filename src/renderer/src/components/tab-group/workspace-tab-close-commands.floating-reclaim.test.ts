@@ -10,14 +10,20 @@ const closeTerminalTab = vi.hoisted(() =>
   vi.fn<(tabId: string, options?: { onClosed?: () => void }) => void>()
 )
 const panel = vi.hoisted(() => ({ focused: true, remaining: 0 }))
+const requestEditorFileClose = vi.hoisted(() =>
+  vi.fn<(fileId: string, options?: { onClosed?: () => void }) => void>()
+)
 
 vi.mock('../terminal/terminal-tab-actions', () => ({ closeTerminalTab }))
 vi.mock('@/lib/floating-workspace-terminal-actions', () => ({
   isFloatingWorkspacePanelFocused: () => panel.focused
 }))
 vi.mock('@/store/selectors', () => ({ selectFloatingVisibleTabCount: () => panel.remaining }))
+vi.mock('../editor/editor-autosave', () => ({ requestEditorFileClose }))
 
 import { createWorkspaceTabCloseCommands } from './workspace-tab-close-commands'
+import { useAppStore } from '../../store'
+import { makeOpenFile } from '../../store/slices/store-test-helpers'
 
 const terminalTab: Tab = {
   id: 'unified-terminal',
@@ -69,6 +75,33 @@ describe('closing the last floating tab', () => {
     requestClose()
 
     expect(consumeFloatingPanelReclaimIntent()).toBe(false)
+  })
+
+  // Why: the save prompt takes focus, so ownership must be read before it opens.
+  it('keeps the panel focus when an unsaved note closes after its save prompt', () => {
+    const noteTab: Tab = {
+      ...terminalTab,
+      id: 'unified-note',
+      entityId: 'note',
+      contentType: 'editor'
+    }
+    useAppStore.setState({
+      openFiles: [
+        makeOpenFile({ id: 'note', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, isDirty: true })
+      ],
+      unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [noteTab] }
+    })
+    createWorkspaceTabCloseCommands({
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      groupTabs: [noteTab]
+    }).closeItem(noteTab.id)
+    const onClosed = requestEditorFileClose.mock.calls.at(-1)?.[1]?.onClosed
+
+    panel.focused = false
+    onClosed?.()
+
+    expect(onClosed).toBeDefined()
+    expect(consumeFloatingPanelReclaimIntent()).toBe(true)
   })
 
   // Why: removing the pane blurs it, so ownership must be read when the close is requested.
