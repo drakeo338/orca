@@ -3,6 +3,7 @@ import { hasPtySerializer } from '../pty-buffer-serializer'
 import { writeTerminalOutput } from '@/lib/pane-manager/pane-terminal-output-scheduler'
 
 import { settleSpawnThatLeftPaneUnbound } from './unbound-pane-spawn-recovery'
+import { startZCodeMissingTuiWatcher } from '../zcode-missing-tui-watcher'
 import { STARTUP_CWD_FALLBACK_NOTICE } from './startup-cwd-fallback-notice'
 import { pendingSpawnByPaneKey, pendingSpawnGenerationByPaneKey } from './pty-connect-limits'
 import { shouldWritePtyOutputForeground } from './foreground-output-scan'
@@ -139,6 +140,13 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
             : typeof spawnedPtyId === 'string'
               ? spawnedPtyId
               : session.transport.getPtyId()
+        if (resolvedPtyId && session.paneStartup?.launchAgent === 'zcode') {
+          // Why here and not in the shared data path: a ZCode build with no terminal UI dies
+          // in its first chunk, so the scan is bounded to one freshly launched pane's startup
+          // instead of every chunk of every pane. See zcode-missing-tui-watcher.
+          session.disposeZCodeMissingTuiWatcher?.()
+          session.disposeZCodeMissingTuiWatcher = startZCodeMissingTuiWatcher(resolvedPtyId)
+        }
         if (resolvedPtyId && !session.claimCapturedDirectSshRetryPty(resolvedPtyId)) {
           releaseDeferredCwdFence()
           session.finishReattachLiveDataDeferral(false, outputCallbacks.generation)
