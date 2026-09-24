@@ -4,9 +4,10 @@ const { execCommandMock } = vi.hoisted(() => ({ execCommandMock: vi.fn() }))
 vi.mock('./ssh-relay-deploy-helpers', () => ({ execCommand: execCommandMock }))
 
 import type { SshConnection } from './ssh-connection'
+import { BUNDLED_RIPGREP_PLATFORMS } from '../../shared/bundled-ripgrep'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { decodeRemotePowerShellScript } from './ssh-remote-powershell'
-import { gcRemoteRipgrepCache, supportsRipgrepCacheGc } from './ssh-relay-ripgrep-cache-gc'
+import { gcRemoteRipgrepCache } from './ssh-relay-ripgrep-cache-gc'
 
 const LINUX = getRemoteHostPlatform('linux-x64')
 const WINDOWS = getRemoteHostPlatform('win32-x64')
@@ -69,6 +70,41 @@ describe('remote ripgrep cache GC', () => {
     await gcRemoteRipgrepCache(conn, LINUX, '/home/me', { pinnedEntry: CURRENT })
 
     expect(removedTrees()).toEqual([])
+  })
+
+  // Why this case exists: the relay directory is named from a hash of the relay bytes, and
+  // ripgrep is not among them, so a release that bumps only the ripgrep package -- the monthly
+  // Dependabot PR -- shares a relay directory with its predecessor while minting a new entry.
+  // With a single marker slot the second client overwrote the first's reference and this pass
+  // then collected the binary the first client's relay was still running against.
+  it('keeps both builds when two clients share one relay directory', async () => {
+    reply([CURRENT, SUPERSEDED], [CURRENT, SUPERSEDED])
+
+    await gcRemoteRipgrepCache(conn, LINUX, '/home/me', { pinnedEntry: CURRENT })
+
+    expect(removedTrees()).toEqual([])
+  })
+
+  // Why assert the shell and not just the parse: the marker is per entry, so a scan that read a
+  // single fixed filename would silently see only one of the two references above.
+  it('scans every marker in a relay directory, not one fixed name', async () => {
+    execCommandMock.mockReset()
+    execCommandMock.mockResolvedValue('__ORCA_RG_CACHE__LIST_OK')
+
+    await gcRemoteRipgrepCache(conn, LINUX, '/home/me', {})
+    execCommandMock.mockReset()
+    execCommandMock.mockImplementation((_c: unknown, command: string) => {
+      const text = String(command)
+      if (text.includes('ENTRY %s')) {
+        return Promise.resolve(`ENTRY ${SUPERSEDED}\n__ORCA_RG_CACHE__LIST_OK`)
+      }
+      return Promise.resolve('__ORCA_RG_CACHE__REFS_OK')
+    })
+    await gcRemoteRipgrepCache(conn, LINUX, '/home/me', {})
+
+    const refScan = scripts().find((s) => s.includes('REF %s')) ?? ''
+    expect(refScan).toContain('.ripgrep-ref-*')
+    expect(refScan).toContain('${f##*/.ripgrep-ref-}')
   })
 
   // Why the whole pass and not just that directory: a relay deployed by an older Orca records no
@@ -149,6 +185,22 @@ describe('remote ripgrep cache GC', () => {
     expect(scripts().filter((s) => s.includes('MOVED'))).toHaveLength(2)
   })
 
+  // Why tie this to the platform list: a platform the entry pattern did not know would make the
+  // reference scan read as unreadable, and the pass then collects nothing at all -- every
+  // superseded build on that host leaks, silently, with no other test failing.
+  it('accepts an entry for every bundled platform', async () => {
+    for (const platform of BUNDLED_RIPGREP_PLATFORMS) {
+      const entry = `c0ffee0123456789-${platform}`
+      reply([entry], [entry])
+
+      await gcRemoteRipgrepCache(conn, LINUX, '/home/me', {})
+
+      // Referenced, so not collected -- but it had to parse as an entry to be considered at all.
+      expect(removedTrees()).toEqual([])
+      expect(scripts().some((s) => s.includes('REF %s'))).toBe(true)
+    }
+  })
+
   it('only mints entry names it could have written', async () => {
     reply([CURRENT, '../../etc', 'not-an-entry'], [CURRENT])
 
@@ -177,7 +229,6 @@ describe('remote ripgrep cache GC', () => {
       return Promise.resolve('')
     })
 
-    expect(supportsRipgrepCacheGc(WINDOWS)).toBe(true)
     await gcRemoteRipgrepCache(conn, WINDOWS, 'C:/Users/me', { pinnedEntry: WIN_CURRENT })
 
     const removals = scripts()

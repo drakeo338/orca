@@ -24,7 +24,11 @@ import {
 } from './ssh-relay-install-namespace'
 import { createRelayInstallMarkerFileName } from './ssh-relay-install-marker'
 import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
-import { ensureRemoteBundledRipgrep, remoteRipgrepLayout } from './ssh-relay-ripgrep-install'
+import {
+  ensureRemoteBundledRipgrep,
+  remoteRipgrepLayout,
+  recordRemoteRipgrepReference
+} from './ssh-relay-ripgrep-install'
 import { gcRemoteRipgrepCache } from './ssh-relay-ripgrep-cache-gc'
 import {
   readLocalFullVersion,
@@ -575,6 +579,15 @@ async function deployAndLaunchRelayAttempt(
     }
   }
 
+  const ripgrepLayout = remoteRipgrepLayout(hostPlatform, remoteHome)
+  const ripgrepReferenced =
+    ripgrepLayout &&
+    (await recordRemoteRipgrepReference(
+      conn,
+      hostPlatform,
+      remoteRelayDir,
+      ripgrepLayout.entryName
+    ))
   let launched: Awaited<ReturnType<typeof launchRelay>>
   let launchLivenessObserved = false
   try {
@@ -589,7 +602,7 @@ async function deployAndLaunchRelayAttempt(
       graceTimeSeconds,
       relayInstanceId,
       deploySignal,
-      remoteRipgrepLayout(hostPlatform, remoteHome)?.binaryPath
+      ripgrepReferenced ? ripgrepLayout.binaryPath : undefined
     )
     launchLivenessObserved = true
   } finally {
@@ -610,11 +623,12 @@ async function deployAndLaunchRelayAttempt(
   // different trees (`ripgrep/` is owned by no version GC), and neither delays connect.
   // Why deploySignal is safe on a fire-and-forget call: the controller aborts only on the deploy
   // timeout, never on success, so this cancels a still-running upload when the deploy gives up.
-  const ripgrepEntry = remoteRipgrepLayout(hostPlatform, remoteHome)?.entryName
-  void ensureRemoteBundledRipgrep(conn, hostPlatform, remoteHome, {
-    signal: deploySignal,
-    relayDir: remoteRelayDir
-  }).catch(() => {})
+  const ripgrepEntry = ripgrepLayout?.entryName
+  if (ripgrepReferenced) {
+    void ensureRemoteBundledRipgrep(conn, hostPlatform, remoteHome, {
+      signal: deploySignal
+    }).catch(() => {})
+  }
 
   void execHostCommand(
     conn,

@@ -151,8 +151,8 @@ export function searchWithRg(
       clearTimeout(killTimeout)
       // Why: child.kill() is advisory over SSH; detach listeners if the
       // process ignores timeout kill so old searches cannot retain closures.
-      child.stdout!.off('data', handleStdoutData)
-      child.stderr!.off('data', handleStderrData)
+      child.stdout?.off('data', handleStdoutData)
+      child.stderr?.off('data', handleStderrData)
       child.off('error', handleError)
       child.off('close', handleClose)
       absorbPendingRipgrepSpawnError(child, {
@@ -240,9 +240,9 @@ export function searchWithRg(
       resolveOnce()
     }
 
-    child.stdout!.setEncoding('utf-8')
-    child.stdout!.on('data', handleStdoutData)
-    child.stderr!.on('data', handleStderrData)
+    child.stdout?.setEncoding('utf-8')
+    child.stdout?.on('data', handleStdoutData)
+    child.stderr?.on('data', handleStderrData)
     child.once('error', handleError)
     child.once('close', handleClose)
 

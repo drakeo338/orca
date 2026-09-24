@@ -54,7 +54,8 @@ vi.mock('./ssh-remote-node-resolution', () => ({
 vi.mock('./ssh-relay-ripgrep-cache-gc', () => ({ gcRemoteRipgrepCache: vi.fn() }))
 vi.mock('./ssh-relay-ripgrep-install', async (importOriginal) => ({
   ...(await importOriginal<typeof RelayRipgrepInstallModule>()),
-  ensureRemoteBundledRipgrep: vi.fn().mockResolvedValue('present')
+  ensureRemoteBundledRipgrep: vi.fn().mockResolvedValue('present'),
+  recordRemoteRipgrepReference: vi.fn().mockResolvedValue(true)
 }))
 
 vi.mock('./ssh-relay-versioned-install', () => ({

@@ -106,16 +106,27 @@ describe('ensureRemoteBundledRipgrep', () => {
   // Why the marker matters: it is the only thing that tells the cache GC this build is in use.
   // Without it the GC cannot distinguish "nobody uses this" from "nobody recorded it", and the
   // safe answer to the second is to collect nothing at all.
-  it('records which build the relay directory runs against', async () => {
-    execCommandMock.mockResolvedValueOnce('ORCA-RG-PRESENT\n')
+  it('records the reference before checking or installing its binary', async () => {
+    execCommandMock.mockResolvedValueOnce('').mockResolvedValueOnce('ORCA-RG-PRESENT\n')
 
     await ensureRemoteBundledRipgrep(connection(), LINUX, '/home/me', {
       relayDir: '/home/me/.orca-remote/relay-1.2.3'
     })
 
-    const ref = execScripts().find((script) => script.includes('.ripgrep-ref'))
+    const ref = execScripts()[0]
     expect(ref).toContain('c0ffee0123456789-linux-x64')
     expect(ref).toContain('/home/me/.orca-remote/relay-1.2.3/.ripgrep-ref')
+  })
+
+  it('does not inspect or upload the binary after its reference write fails', async () => {
+    execCommandMock.mockRejectedValueOnce(new Error('read-only relay directory'))
+    await expect(
+      ensureRemoteBundledRipgrep(connection(), LINUX, '/home/me', {
+        relayDir: '/home/me/.orca-remote/relay-1.2.3'
+      })
+    ).resolves.toBe('failed')
+    expect(execCommandMock).toHaveBeenCalledTimes(1)
+    expect(uploadRelayDirectoryMock).not.toHaveBeenCalled()
   })
 
   it('records nothing when the host has no bundled build to reference', async () => {

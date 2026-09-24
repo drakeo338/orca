@@ -63,6 +63,7 @@ function createMockProcess(): ChildProcess {
 function createMissingRipgrepProcess(): ChildProcess {
   const child = createMockProcess()
   Object.defineProperty(child, 'pid', { value: undefined })
+  Object.defineProperties(child, { stdout: { value: undefined }, stderr: { value: undefined } })
   void Promise.resolve().then(() => child.emit('close', -2, null))
   return child
 }
@@ -85,6 +86,14 @@ describe('filesystem-list-files', () => {
     bundledRipgrepCommandMock.mockImplementation((options?: { wsl?: boolean }) =>
       options?.wsl ? '/bundled/linux/rg' : BUNDLED_RG
     )
+  })
+
+  it('rejects a synchronous launch failure before cleanup has been initialized', async () => {
+    spawnMock.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawn EMFILE'), { code: 'EMFILE' })
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: authorization and workspace lookup are mocked above.
+    await expect(listQuickOpenFiles('/repo', {} as Store)).rejects.toThrow('EMFILE')
   })
 
   // Why close(97) and not a spawn error: this is the WSL wrapper's "cd failed" code. It is above

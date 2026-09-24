@@ -158,6 +158,26 @@ export function ripgrepMissingCwdError(cwd: string): Error {
   return new Error(`Search root is not reachable: ${cwd}`)
 }
 
+// ENOTDIR and some resource failures throw before a ChildProcess can emit an error.
+export async function classifySynchronousRipgrepSpawnFailure(
+  error: unknown,
+  cwd: string
+): Promise<Error> {
+  // Why pass an already-classified error straight through: this only diagnoses raw spawn errnos.
+  // A caller that threw a verdict of its own has more context than a cwd probe does.
+  if (error instanceof RipgrepUnavailableError || error instanceof RipgrepLaunchFailureError) {
+    return error
+  }
+  if (isTransientRipgrepSpawnError(error)) {
+    const code = error instanceof Error && 'code' in error ? String(error.code) : 'unknown'
+    return new RipgrepLaunchFailureError(`rg failed to start (${code})`)
+  }
+  if (!(await isRipgrepSpawnCwdUsable(cwd))) {
+    return ripgrepMissingCwdError(cwd)
+  }
+  return error instanceof Error ? error : new Error(String(error))
+}
+
 export function isRipgrepUnavailableExit(
   child: ChildProcess,
   code: number | null,

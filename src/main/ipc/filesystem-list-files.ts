@@ -21,6 +21,7 @@ import { spawnBundledRipgrep } from '../ripgrep/bundled-ripgrep-spawn'
 import {
   absorbPendingRipgrepSpawnError,
   isRipgrepUnavailableExit,
+  classifySynchronousRipgrepSpawnFailure,
   isRipgrepMissingCwdExit,
   isRipgrepSpawnCwdUsable,
   isTransientRipgrepSpawnError,
@@ -123,12 +124,19 @@ export async function listQuickOpenFiles(
         return maxResults !== undefined && files.size >= maxResults
       }
 
-      const child = spawnBundledRipgrep(args, {
-        cwd: authorizedRootPath,
-        wslDistro: localGitOptions.wslDistro,
-        wslDistroForOutput,
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
+      // A synchronous spawn failure has no child to clean up.
+      let child: ReturnType<typeof spawnBundledRipgrep>
+      try {
+        child = spawnBundledRipgrep(args, {
+          cwd: authorizedRootPath,
+          wslDistro: localGitOptions.wslDistro,
+          wslDistroForOutput,
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      } catch (error) {
+        void classifySynchronousRipgrepSpawnFailure(error, authorizedRootPath).then(reject, reject)
+        return
+      }
       let timer: ReturnType<typeof setTimeout>
       const handleStdoutData = (chunk: string): void => {
         buf += chunk
@@ -226,8 +234,8 @@ export async function listQuickOpenFiles(
         clearTimeout(timer)
         // Why: child.kill() is advisory. If rg ignores it, detach our
         // closures so repeated Quick Open attempts do not retain old scans.
-        child.stdout!.off('data', handleStdoutData)
-        child.stderr!.off('data', handleStderrData)
+        child.stdout?.off('data', handleStdoutData)
+        child.stderr?.off('data', handleStderrData)
         child.off('error', handleError)
         child.off('close', handleClose)
         signal?.removeEventListener('abort', handleAbort)
@@ -249,9 +257,9 @@ export async function listQuickOpenFiles(
 
       children.push({ child, isDone: () => done, finish })
 
-      child.stdout!.setEncoding('utf-8')
-      child.stdout!.on('data', handleStdoutData)
-      child.stderr!.on('data', handleStderrData)
+      child.stdout?.setEncoding('utf-8')
+      child.stdout?.on('data', handleStdoutData)
+      child.stderr?.on('data', handleStderrData)
       child.once('error', handleError)
       child.once('close', handleClose)
       timer = setTimeout(() => {

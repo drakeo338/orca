@@ -64,7 +64,8 @@ vi.mock('../ripgrep/bundled-ripgrep-path', () => ({
 vi.mock('./ssh-relay-ripgrep-cache-gc', () => ({ gcRemoteRipgrepCache: vi.fn() }))
 vi.mock('./ssh-relay-ripgrep-install', async (importOriginal) => ({
   ...(await importOriginal<typeof RelayRipgrepInstallModule>()),
-  ensureRemoteBundledRipgrep: vi.fn().mockResolvedValue('present')
+  ensureRemoteBundledRipgrep: vi.fn().mockResolvedValue('present'),
+  recordRemoteRipgrepReference: vi.fn().mockResolvedValue(true)
 }))
 
 // Why: the versioned-install modules shell out for install state, locking,
@@ -100,7 +101,10 @@ import { execCommand, waitForSentinel } from './ssh-relay-deploy-helpers'
 import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
 import { isRelayAlreadyInstalled } from './ssh-relay-versioned-install'
 import { acquireInstallLock } from './ssh-relay-install-lock'
-import { ensureRemoteBundledRipgrep } from './ssh-relay-ripgrep-install'
+import {
+  ensureRemoteBundledRipgrep,
+  recordRemoteRipgrepReference
+} from './ssh-relay-ripgrep-install'
 import * as DeployTiming from './ssh-relay-deploy-timing'
 import type { SshConnection } from './ssh-connection'
 import type * as SshRemoteNodeResolution from './ssh-remote-node-resolution'
@@ -519,6 +523,15 @@ describe('deployAndLaunchRelay', () => {
     )
     expect(launchCommand).not.toContain('--pty-source-credit-v1')
     expect(launchCommand).not.toContain('.pty-source-credit-policy')
+  })
+
+  it('does not launch or upload an unprotected binary when recording its reference fails', async () => {
+    const conn = makeMockConnection()
+    queueFreshLinuxDeploy()
+    vi.mocked(recordRemoteRipgrepReference).mockResolvedValueOnce(false)
+    await deployAndLaunchRelay(conn)
+    expect(detachedLaunchCommand(conn)).not.toContain('--ripgrep-path')
+    expect(ensureRemoteBundledRipgrep).not.toHaveBeenCalled()
   })
 
   it('allows an unlimited SSH disconnect grace window', async () => {

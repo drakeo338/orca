@@ -66,7 +66,8 @@ vi.mock('../ripgrep/bundled-ripgrep-path', () => ({
 vi.mock('./ssh-relay-ripgrep-cache-gc', () => ({ gcRemoteRipgrepCache: vi.fn() }))
 vi.mock('./ssh-relay-ripgrep-install', async (importOriginal) => ({
   ...(await importOriginal<typeof RelayRipgrepInstallModule>()),
-  ensureRemoteBundledRipgrep: vi.fn().mockResolvedValue('present')
+  ensureRemoteBundledRipgrep: vi.fn().mockResolvedValue('present'),
+  recordRemoteRipgrepReference: vi.fn().mockResolvedValue(true)
 }))
 
 // Why: the versioned-install modules shell out for install state, locking,

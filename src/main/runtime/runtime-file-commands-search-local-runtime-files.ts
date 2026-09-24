@@ -17,6 +17,7 @@ import { bundledRipgrepUnavailableError } from '../ripgrep/bundled-ripgrep-path'
 import { spawnBundledRipgrep } from '../ripgrep/bundled-ripgrep-spawn'
 import {
   absorbPendingRipgrepSpawnError,
+  classifySynchronousRipgrepSpawnFailure,
   isRipgrepMissingCwdExit,
   isRipgrepSpawnCwdUsable,
   isRipgrepUnavailableExit,
@@ -47,7 +48,7 @@ export class RuntimeFileCommandsWithSearchLocalRuntimeFiles extends RuntimeFileC
     )
     const wslDistroForOutput = parseWslPath(authorizedRootPath)?.distro ?? localGitOptions.wslDistro
 
-    return new Promise<SearchResult>((resolvePromise) => {
+    return new Promise<SearchResult>((resolvePromise, rejectPromise) => {
       const searchKey = `${this.host.getRuntimeId()}:${authorizedRootPath}`
       const rgArgs = buildRgArgs(options.query, authorizedRootPath, options)
       const previousChild = this.activeRuntimeTextSearches.get(searchKey)
@@ -111,16 +112,26 @@ export class RuntimeFileCommandsWithSearchLocalRuntimeFiles extends RuntimeFileC
         }
       }
 
-      const nextChild = spawnBundledRipgrep(rgArgs, {
-        cwd: authorizedRootPath,
-        wslDistro: localGitOptions.wslDistro,
-        wslDistroForOutput,
-        stdio: ['ignore', 'pipe', 'pipe']
-      })
+      // A synchronous spawn failure has no child to clean up.
+      let nextChild: ReturnType<typeof spawnBundledRipgrep>
+      try {
+        nextChild = spawnBundledRipgrep(rgArgs, {
+          cwd: authorizedRootPath,
+          wslDistro: localGitOptions.wslDistro,
+          wslDistroForOutput,
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      } catch (error) {
+        void classifySynchronousRipgrepSpawnFailure(error, authorizedRootPath).then(
+          rejectPromise,
+          rejectPromise
+        )
+        return
+      }
       child = nextChild
       this.activeRuntimeTextSearches.set(searchKey, nextChild)
 
-      nextChild.stdout!.setEncoding('utf-8')
+      nextChild.stdout?.setEncoding('utf-8')
       const onStdoutData = (chunk: string): void => {
         lines.push(chunk, processLine)
       }
@@ -186,8 +197,8 @@ export class RuntimeFileCommandsWithSearchLocalRuntimeFiles extends RuntimeFileC
         resolveOnce()
       }
 
-      nextChild.stdout!.on('data', onStdoutData)
-      nextChild.stderr!.on('data', onStderrData)
+      nextChild.stdout?.on('data', onStdoutData)
+      nextChild.stderr?.on('data', onStderrData)
       nextChild.once('error', onError)
       nextChild.once('close', onClose)
 

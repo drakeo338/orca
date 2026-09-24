@@ -63,6 +63,22 @@ async function flushRuntimeSearchMicrotasks(): Promise<void> {
 describe('RuntimeFileCommands', () => {
   useRuntimeFileCommandsLifecycle()
 
+  it('rejects a synchronous launch failure without invoking child cleanup', async () => {
+    const { commands } = createRuntimeFileCommands({
+      resolveRuntimeFileTarget: vi.fn(async () => ({
+        worktree: { id: 'wt-1', repoId: 'repo-1', path: '/repo' },
+        executionHostId: 'local'
+      }))
+    })
+    resolveAuthorizedPathMock.mockResolvedValue('/repo')
+    wslAwareSpawnMock.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawn EMFILE'), { code: 'EMFILE' })
+    })
+    await expect(commands.searchRuntimeFiles('id:wt-1', { query: 'needle' })).rejects.toThrow(
+      'EMFILE'
+    )
+  })
+
   it('keeps byte-budgeted legacy listings count-bounded across an SSH hop', async () => {
     const listFiles = vi.fn().mockResolvedValue(['src/index.ts'])
     getSshFilesystemProviderMock.mockReturnValue({ listFiles })
@@ -131,6 +147,7 @@ describe('RuntimeFileCommands', () => {
       const { commands } = createRuntimeFileCommands({ resolveRuntimeFileTarget })
       const child = createRuntimeSearchChild()
       Object.defineProperty(child, 'pid', { value: undefined })
+      Object.defineProperties(child, { stdout: { value: undefined }, stderr: { value: undefined } })
       // Why a root that exists: an ENOENT spawn failure is also what a vanished workspace looks
       // like, so this stays about the binary only while the search root is reachable.
       resolveAuthorizedPathMock.mockResolvedValue(process.cwd())

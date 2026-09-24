@@ -116,6 +116,23 @@ describe('filesystem rg search timeout', () => {
     )
   })
 
+  it('rejects a synchronous launch failure without invoking child cleanup', async () => {
+    wslAwareSpawnMock.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawn EMFILE'), { code: 'EMFILE' })
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: all store access is mocked for this handler.
+    registerFilesystemHandlers({} as never)
+    await expect(
+      handlers.get('fs:search')!(
+        { sender: { id: 7 } },
+        {
+          rootPath: '/repo',
+          query: 'needle'
+        }
+      )
+    ).rejects.toThrow('EMFILE')
+  })
+
   it('settles and detaches when rg ignores the timeout kill', async () => {
     vi.useFakeTimers()
 
@@ -154,6 +171,7 @@ describe('filesystem rg search timeout', () => {
     async (order) => {
       const child = createMockProcess()
       Object.defineProperty(child, 'pid', { value: undefined })
+      Object.defineProperties(child, { stdout: { value: undefined }, stderr: { value: undefined } })
       wslAwareSpawnMock.mockReturnValue(child)
       registerFilesystemHandlers({} as never)
 

@@ -13,6 +13,7 @@ import { isQuickOpenQueryTooLarge, QuickOpenPathRanker } from '../../shared/quic
 import {
   absorbPendingRipgrepSpawnError,
   isRipgrepUnavailableExit,
+  classifySynchronousRipgrepSpawnFailure,
   isRipgrepMissingCwdExit,
   isRipgrepSpawnCwdUsable,
   isTransientRipgrepSpawnError,
@@ -123,11 +124,13 @@ function scanRipgrepPaths(args: {
         stdio: ['ignore', 'pipe', 'pipe']
       })
     } catch (error) {
-      throw isTransientRipgrepSpawnError(error)
-        ? new RipgrepLaunchFailureError(
-            `rg failed to start (${(error as NodeJS.ErrnoException).code})`
-          )
-        : error
+      // Why route through the classifier: a sync throw skips the 'error' handler, and ENOTDIR --
+      // a search root that is a file -- should read the same here as it does there.
+      void classifySynchronousRipgrepSpawnFailure(error, args.authorizedRootPath).then(
+        reject,
+        reject
+      )
+      return
     }
     let timer: ReturnType<typeof setTimeout>
 
@@ -153,8 +156,8 @@ function scanRipgrepPaths(args: {
     }
     const cleanup = (): void => {
       clearTimeout(timer)
-      child.stdout!.off('data', handleStdoutData)
-      child.stderr!.off('data', handleStderrData)
+      child.stdout?.off('data', handleStdoutData)
+      child.stderr?.off('data', handleStderrData)
       child.off('error', handleError)
       child.off('close', handleClose)
       args.signal?.removeEventListener('abort', handleAbort)
@@ -246,9 +249,9 @@ function scanRipgrepPaths(args: {
       finish(fileListingCancellationError(args.signal))
     }
 
-    child.stdout!.setEncoding('utf-8')
-    child.stdout!.on('data', handleStdoutData)
-    child.stderr!.on('data', handleStderrData)
+    child.stdout?.setEncoding('utf-8')
+    child.stdout?.on('data', handleStdoutData)
+    child.stderr?.on('data', handleStderrData)
     child.once('error', handleError)
     child.once('close', handleClose)
     args.signal?.addEventListener('abort', handleAbort, { once: true })

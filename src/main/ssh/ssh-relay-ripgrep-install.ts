@@ -45,16 +45,11 @@ import {
 /** Sibling of `relay-<version>`, `orcad-<version>` and `native/`. */
 export const REMOTE_RIPGREP_CACHE_DIR_NAME = 'ripgrep'
 
-/**
- * Marker a relay directory carries naming the ripgrep entry it was launched against.
- *
- * Why a recorded reference and not an age heuristic: the cache GC has to tell "no one uses this"
- * from "no one has touched the directory lately", and only the first is a licence to delete. A
- * relay directory without this file is an older Orca's, so the GC treats it as unaccountable and
- * declines to collect anything -- see `ssh-relay-ripgrep-cache-gc.ts`.
- */
-export function remoteRipgrepRefFileName(): string {
-  return '.ripgrep-ref'
+// Ripgrep-only updates share relay bytes, so one relay directory can reference multiple builds.
+export const REMOTE_RIPGREP_REF_PREFIX = '.ripgrep-ref-'
+
+export function remoteRipgrepRefFileName(entryName: string): string {
+  return `${REMOTE_RIPGREP_REF_PREFIX}${entryName}`
 }
 
 /** Record which ripgrep build a relay directory runs against. Best-effort: never fails a deploy. */
@@ -63,8 +58,8 @@ export async function recordRemoteRipgrepReference(
   host: RemoteHostPlatform,
   relayDir: string,
   entryName: string
-): Promise<void> {
-  const refPath = joinRemotePath(host, relayDir, remoteRipgrepRefFileName())
+): Promise<boolean> {
+  const refPath = joinRemotePath(host, relayDir, remoteRipgrepRefFileName(entryName))
   try {
     assertSafeRemotePathSegment(entryName, host.pathFlavor)
     await execCommand(
@@ -76,11 +71,13 @@ export async function recordRemoteRipgrepReference(
         : `printf %s ${shellEscape(entryName)} > ${shellEscape(refPath)}`,
       { wrapCommand: !isWindowsRemoteHost(host) }
     )
+    return true
   } catch (error) {
     console.warn(
-      '[ssh-relay] Could not record the ripgrep reference; its build stays uncollectable:',
+      '[ssh-relay] Could not record the ripgrep reference; skipping the bundled binary:',
       error instanceof Error ? error.message : String(error)
     )
+    return false
   }
 }
 const UPLOAD_STAGE_PREFIX = '.upload-'
@@ -127,15 +124,13 @@ export async function ensureRemoteBundledRipgrep(
   remoteHome: string,
   options: { signal?: AbortSignal; relayDir?: string } = {}
 ): Promise<RemoteRipgrepInstallOutcome> {
-  const outcome = await installOrReport(conn, host, remoteHome, options)
-  // Why here and not at the call site: recording which build a relay runs against is the same
-  // concern as putting it there, and keeping them together leaves the deploy one ripgrep call to
-  // mock rather than three that drain its queued exec responses.
-  const entryName = remoteRipgrepLayout(host, remoteHome)?.entryName
-  if (options.relayDir && entryName && (outcome === 'present' || outcome === 'installed')) {
-    await recordRemoteRipgrepReference(conn, host, options.relayDir, entryName)
+  const layout = remoteRipgrepLayout(host, remoteHome)
+  if (options.relayDir && layout && resolveBundledRipgrepPath(layout.platform)) {
+    if (!(await recordRemoteRipgrepReference(conn, host, options.relayDir, layout.entryName))) {
+      return 'failed'
+    }
   }
-  return outcome
+  return installOrReport(conn, host, remoteHome, options)
 }
 
 async function installOrReport(

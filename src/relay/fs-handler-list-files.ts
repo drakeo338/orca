@@ -132,8 +132,8 @@ export function listFilesWithRg(
             clearTimeout(timer)
             timer = null
           }
-          child.stdout!.off('data', handleStdoutData)
-          child.stderr!.off('data', handleStderrData)
+          child.stdout?.off('data', handleStdoutData)
+          child.stderr?.off('data', handleStderrData)
           child.off('error', handleError)
           child.off('close', handleClose)
           absorbPendingRipgrepSpawnError(child, {
@@ -268,9 +268,9 @@ export function listFilesWithRg(
           }
         }
 
-        child.stdout!.setEncoding('utf-8')
-        child.stdout!.on('data', handleStdoutData)
-        child.stderr!.on('data', handleStderrData)
+        child.stdout?.setEncoding('utf-8')
+        child.stdout?.on('data', handleStdoutData)
+        child.stderr?.on('data', handleStderrData)
         child.once('error', handleError)
         child.once('close', handleClose)
       })

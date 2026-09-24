@@ -12,6 +12,7 @@ import {
 } from '../../../shared/text-search'
 import {
   absorbPendingRipgrepSpawnError,
+  classifySynchronousRipgrepSpawnFailure,
   isRipgrepMissingCwdExit,
   isRipgrepSpawnCwdUsable,
   isRipgrepUnavailableExit,
@@ -63,7 +64,7 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
       const searchKey = `${event.sender.id}:${rootPath}`
       const wslDistroForOutput = parseWslPath(rootPath)?.distro ?? localGitOptions.wslDistro
 
-      return new Promise<SearchResult>((resolvePromise) => {
+      return new Promise<SearchResult>((resolvePromise, rejectPromise) => {
         const rgArgs = buildRgArgs(args.query, rootPath, args)
         // Why: kill the prior rg so it stops parsing thousands of matches on the main thread (the large-repo freeze) after the UI moved on.
         const previousChild = activeTextSearches.get(searchKey)
@@ -117,12 +118,22 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
           }
         }
 
-        const nextChild = spawnBundledRipgrep(rgArgs, {
-          cwd: rootPath,
-          wslDistro: localGitOptions.wslDistro,
-          wslDistroForOutput,
-          stdio: ['ignore', 'pipe', 'pipe']
-        })
+        // A synchronous spawn failure has no child to clean up.
+        let nextChild: ReturnType<typeof spawnBundledRipgrep>
+        try {
+          nextChild = spawnBundledRipgrep(rgArgs, {
+            cwd: rootPath,
+            wslDistro: localGitOptions.wslDistro,
+            wslDistroForOutput,
+            stdio: ['ignore', 'pipe', 'pipe']
+          })
+        } catch (error) {
+          void classifySynchronousRipgrepSpawnFailure(error, rootPath).then(
+            rejectPromise,
+            rejectPromise
+          )
+          return
+        }
         child = nextChild
         activeTextSearches.set(searchKey, nextChild)
 
@@ -189,9 +200,9 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
           resolveOnce()
         }
 
-        nextChild.stdout!.setEncoding('utf-8')
-        nextChild.stdout!.on('data', handleStdoutData)
-        nextChild.stderr!.on('data', handleStderrData)
+        nextChild.stdout?.setEncoding('utf-8')
+        nextChild.stdout?.on('data', handleStdoutData)
+        nextChild.stderr?.on('data', handleStderrData)
         nextChild.once('error', handleError)
         nextChild.once('close', handleClose)
 

@@ -651,6 +651,10 @@ describe('relay quick open ignored file listing', () => {
     const listFirst = createMockProcess()
     const listProbe = createMockProcess()
     Object.defineProperty(listFirst, 'pid', { value: undefined })
+    Object.defineProperties(listFirst, {
+      stdout: { value: undefined },
+      stderr: { value: undefined }
+    })
     Object.defineProperty(listProbe, 'pid', { value: 1 })
     let callIndex = 0
     spawnMock.mockImplementation(() => [listFirst, listProbe][callIndex++])
@@ -675,6 +679,10 @@ describe('relay quick open ignored file listing', () => {
     const searchChild = createMockProcess()
     const searchProbe = createMockProcess()
     Object.defineProperty(searchChild, 'pid', { value: undefined })
+    Object.defineProperties(searchChild, {
+      stdout: { value: undefined },
+      stderr: { value: undefined }
+    })
     Object.defineProperty(searchProbe, 'pid', { value: 1 })
     spawnMock.mockReturnValueOnce(searchChild).mockReturnValueOnce(searchProbe)
     const search = searchWithRg(missingRoot, 'ok', { maxResults: 100 })

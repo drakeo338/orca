@@ -1,128 +1,45 @@
-/**
- * Garbage collection for the remote ripgrep cache.
- *
- * Nothing else collects this tree: the version GC in `remote-install-gc.ts` only matches
- * `relay-*`, so every change to the shipped ripgrep bytes used to leave another ~5 MB on every
- * SSH host, permanently. Age cannot decide it -- a directory's mtime is when it was written, not
- * when it was last used, so an old entry may still be the binary a live relay was launched with.
- * Deleting that one is not a graceful degradation: without a PATH ripgrep, remote text search
- * fails outright and listing falls back to the capped walk this PR exists to remove.
- *
- * So the question is reference, not age, and the discipline is `ssh-relay-native-deps-cache-gc.ts`':
- * **anything this pass cannot account for blocks the whole pass.** A relay directory whose
- * reference marker is missing or unreadable aborts it, because a relay deployed by an older Orca
- * holds a binary it never recorded -- and inferring which one is exactly the guess that breaks a
- * live search. Those directories are removed by the version GC in time, and an entry becomes
- * collectable once the installations referencing it are gone.
- *
- * Deletion is the same three-step move: rename to a tombstone, re-read the references under the
- * rename, and only then remove.
- */
-import { shellEscape } from './ssh-connection-utils'
+import {
+  LIST_OK,
+  REFS_OK,
+  REFS_ERR,
+  TOMBSTONE_PREFIX,
+  MAX_LISTING_ENTRIES,
+  cacheDir,
+  listEntriesCommand,
+  listReferencesCommand,
+  restoreEntryCommand
+} from './ssh-relay-ripgrep-cache-gc-commands'
+// Relay installation references protect binaries until version GC removes their owners.
+// Unknown references block deletion; tombstones are rechecked before removal.
 import type { SshConnection } from './ssh-connection'
 import { execCommand } from './ssh-relay-deploy-helpers'
-import {
-  REMOTE_RIPGREP_CACHE_DIR_NAME,
-  remoteRipgrepRefFileName
-} from './ssh-relay-ripgrep-install'
-import { RELAY_REMOTE_DIR } from './relay-protocol'
+import { BUNDLED_RIPGREP_PLATFORMS } from '../../shared/bundled-ripgrep'
 import { moveRemoteTreeCommand, removeRemoteTreeCommand } from './ssh-remote-commands'
-import { powerShellCommand, powerShellLiteral } from './ssh-remote-powershell'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 
-const LIST_OK = '__ORCA_RG_CACHE__LIST_OK'
-const REFS_OK = '__ORCA_RG_CACHE__REFS_OK'
-const REFS_ERR = '__ORCA_RG_CACHE__REFS_ERR'
-const TOMBSTONE_PREFIX = '.rg-gc-'
-/** Bounds every listing, the way MAX_RELAY_GC_LISTING_ENTRIES bounds version dirs. */
-const MAX_LISTING_ENTRIES = 64
-/** An entry name is `<16-hex-content-hash>-<os>-<arch>`; only names this client mints are eligible. */
-const RIPGREP_REF_FILE_NAME = remoteRipgrepRefFileName()
-const ENTRY_NAME = /^[0-9a-f]{16}-(?:linux|darwin|win32)-(?:x64|arm64)$/
-
-/** Both dialects are implemented; the export stays so callers can ask rather than assume. */
-export function supportsRipgrepCacheGc(_host: RemoteHostPlatform): boolean {
-  return true
+function entryNamePattern(): RegExp {
+  const platforms = BUNDLED_RIPGREP_PLATFORMS.map((platform) =>
+    platform.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  ).join('|')
+  return new RegExp(`^[0-9a-f]{16}-(?:${platforms})$`)
 }
 
-function cacheDir(host: RemoteHostPlatform, remoteHome: string): string {
-  return joinRemotePath(host, remoteHome, RELAY_REMOTE_DIR, REMOTE_RIPGREP_CACHE_DIR_NAME)
+const ENTRY_NAME = entryNamePattern()
+
+// Recover abandoned deletions only after the owning pass has had time to finish.
+function staleTombstoneEntry(name: string): string | null {
+  if (!name.startsWith(TOMBSTONE_PREFIX)) {
+    return null
+  }
+  const match = /^(.*)\.(\d+)\.(\d+)$/.exec(name.slice(TOMBSTONE_PREFIX.length))
+  if (!match || !ENTRY_NAME.test(match[1]) || Date.now() - Number(match[3]) < 30 * 60_000) {
+    return null
+  }
+  return match[1]
 }
 
 function exec(conn: SshConnection, host: RemoteHostPlatform, command: string): Promise<string> {
   return execCommand(conn, command, { wrapCommand: !isWindowsRemoteHost(host) })
-}
-
-function listEntriesCommand(host: RemoteHostPlatform, remoteHome: string): string {
-  if (isWindowsRemoteHost(host)) {
-    const dir = powerShellLiteral(cacheDir(host, remoteHome))
-    return powerShellCommand(
-      [
-        `if (-not (Test-Path -LiteralPath ${dir})) { '${LIST_OK}'; exit 0 }`,
-        `Get-ChildItem -LiteralPath ${dir} -Directory -Filter '${TOMBSTONE_PREFIX}*' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddMinutes(-30) } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue`,
-        // Why the ENTRY prefix and not bare names: PowerShell writes every uncaptured value to
-        // stdout, so the token is what separates this listing from anything else a cmdlet emits.
-        `Get-ChildItem -LiteralPath ${dir} -Directory -ErrorAction SilentlyContinue | ForEach-Object { 'ENTRY ' + $_.Name }`,
-        `'${LIST_OK}'`
-      ].join('\n')
-    )
-  }
-  const dir = shellEscape(cacheDir(host, remoteHome))
-  return [
-    `d=${dir}`,
-    `[ -d "$d" ] || { printf '%s\\n' ${LIST_OK}; exit 0; }`,
-    // A tombstone older than any in-flight pass is drained here, the way the stage sweep drains.
-    `find "$d" -mindepth 1 -maxdepth 1 -type d -name '${TOMBSTONE_PREFIX}*' -mmin +30 -exec rm -rf {} + 2>/dev/null`,
-    'for e in "$d"/*; do',
-    '  [ -d "$e" ] || continue',
-    `  printf 'ENTRY %s\\n' "$(basename "$e")"`,
-    'done',
-    `printf '%s\\n' ${LIST_OK}`
-  ].join('\n')
-}
-
-/**
- * Every relay directory's recorded ripgrep entry.
- *
- * A relay directory with no readable marker answers `REFS_ERR`: it may be an older Orca's relay,
- * running right now against a binary it never recorded.
- */
-function listReferencesCommand(host: RemoteHostPlatform, remoteHome: string): string {
-  if (isWindowsRemoteHost(host)) {
-    const root = powerShellLiteral(joinRemotePath(host, remoteHome, RELAY_REMOTE_DIR))
-    return powerShellCommand(
-      [
-        `if (-not (Test-Path -LiteralPath ${root})) { '${REFS_OK}'; exit 0 }`,
-        `$dirs = @(Get-ChildItem -LiteralPath ${root} -Directory -Filter 'relay-*' -ErrorAction SilentlyContinue)`,
-        `if ($dirs.Count -ge ${MAX_LISTING_ENTRIES}) { '${REFS_ERR}'; exit 0 }`,
-        'foreach ($d in $dirs) {',
-        `  $f = Join-Path $d.FullName '${RIPGREP_REF_FILE_NAME}'`,
-        `  if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { '${REFS_ERR}'; exit 0 }`,
-        '  $t = (Get-Content -LiteralPath $f -Raw -ErrorAction SilentlyContinue)',
-        `  if ([string]::IsNullOrWhiteSpace($t)) { '${REFS_ERR}'; exit 0 }`,
-        "  'REF ' + $t.Trim()",
-        '}',
-        `'${REFS_OK}'`
-      ].join('\n')
-    )
-  }
-  const root = shellEscape(joinRemotePath(host, remoteHome, RELAY_REMOTE_DIR))
-  return [
-    `root=${root}`,
-    `[ -d "$root" ] || { printf '%s\\n' ${REFS_OK}; exit 0; }`,
-    'n=0',
-    'for d in "$root"/relay-*; do',
-    '  [ -d "$d" ] || continue',
-    `  f="$d"/${remoteRipgrepRefFileName()}`,
-    `  [ -f "$f" ] || { printf '%s\\n' ${REFS_ERR}; exit 0; }`,
-    '  t=$(cat "$f" 2>/dev/null) || t=""',
-    `  [ -n "$t" ] || { printf '%s\\n' ${REFS_ERR}; exit 0; }`,
-    `  printf 'REF %s\\n' "$t"`,
-    '  n=$((n+1))',
-    `  if [ "$n" -ge ${MAX_LISTING_ENTRIES} ]; then printf '%s\\n' ${REFS_ERR}; exit 0; fi`,
-    'done',
-    `printf '%s\\n' ${REFS_OK}`
-  ].join('\n')
 }
 
 type ReferenceScan = { readable: true; referenced: Set<string> } | { readable: false }
@@ -140,7 +57,10 @@ function parseEntries(output: string): string[] {
     const name = line.slice('ENTRY '.length)
     // Why re-validate a name the host produced: it is about to be interpolated into `mv` and
     // `rm -rf`. Only names this client could itself have minted are eligible.
-    if (ENTRY_NAME.test(name) && entries.length < MAX_LISTING_ENTRIES) {
+    if (
+      (ENTRY_NAME.test(name) || staleTombstoneEntry(name)) &&
+      entries.length < MAX_LISTING_ENTRIES
+    ) {
       entries.push(name)
     }
   }
@@ -185,9 +105,6 @@ export async function gcRemoteRipgrepCache(
   remoteHome: string,
   options: { pinnedEntry?: string | undefined } = {}
 ): Promise<void> {
-  if (!supportsRipgrepCacheGc(host)) {
-    return
-  }
   try {
     const entries = parseEntries(await exec(conn, host, listEntriesCommand(host, remoteHome)))
     if (entries.length === 0) {
@@ -198,11 +115,20 @@ export async function gcRemoteRipgrepCache(
       return
     }
     const removed: string[] = []
-    for (const entry of entries) {
+    for (const name of entries) {
+      const entry = staleTombstoneEntry(name) ?? name
       if (scan.referenced.has(entry) || entry === options.pinnedEntry) {
         continue
       }
-      if (await removeUnreferencedEntry(conn, host, remoteHome, entry)) {
+      if (
+        await removeUnreferencedEntry(
+          conn,
+          host,
+          remoteHome,
+          entry,
+          name === entry ? undefined : name
+        )
+      ) {
         removed.push(entry)
       }
     }
@@ -218,17 +144,19 @@ async function removeUnreferencedEntry(
   conn: SshConnection,
   host: RemoteHostPlatform,
   remoteHome: string,
-  entry: string
+  entry: string,
+  abandonedTombstone?: string
 ): Promise<boolean> {
   const base = cacheDir(host, remoteHome)
   const entryDir = joinRemotePath(host, base, entry)
   const tombstone = joinRemotePath(
     host,
     base,
-    `${TOMBSTONE_PREFIX}${entry}.${process.pid}.${Date.now()}`
+    abandonedTombstone ?? `${TOMBSTONE_PREFIX}${entry}.${process.pid}.${Date.now()}`
   )
   try {
     if (
+      !abandonedTombstone &&
       (await exec(conn, host, moveRemoteTreeCommand(host, entryDir, tombstone))).trim() !== 'MOVED'
     ) {
       return false
@@ -241,14 +169,14 @@ async function removeUnreferencedEntry(
   // the only outcome that leaves that relay with a working ripgrep.
   const recheck = await scanReferences(conn, host, remoteHome)
   if (!recheck.readable || recheck.referenced.has(entry)) {
-    await exec(conn, host, moveRemoteTreeCommand(host, tombstone, entryDir)).catch(() => {})
+    await exec(conn, host, restoreEntryCommand(host, tombstone, entryDir)).catch(() => {})
     return false
   }
   try {
     await exec(conn, host, removeRemoteTreeCommand(host, tombstone))
     return true
   } catch {
-    // The sweep in the entry listing drains a tombstone this pass could not remove.
+    // A later pass retries after verifying references again.
     return false
   }
 }
