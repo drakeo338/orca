@@ -31,7 +31,6 @@ export async function installWslGuestHooks(options: {
     options
   let agents
   let claudeVersion: string | null = null
-  let grokHomeDir: string | null = null
   try {
     const detected = readManagedHookDetectionResult(
       await mux.request('preflight.detectAgents', {
@@ -40,7 +39,6 @@ export async function installWslGuestHooks(options: {
     )
     agents = detected.agents
     claudeVersion = detected.claudeVersion
-    grokHomeDir = detected.grokHome
   } catch (error) {
     warn(
       `[agent-hooks] WSL agent detection for '${distro}' failed: ${
@@ -71,8 +69,7 @@ export async function installWslGuestHooks(options: {
   const remoteAgents = agents.filter((agent) => agent !== 'codex')
   const results = await installHooks(createWslHookSftpAdapter(mux), guestHome, {
     agents: remoteAgents,
-    ...(claudeVersion ? { claudeVersion } : {}),
-    ...(grokHomeDir ? { grokHomeDir } : {})
+    ...(claudeVersion ? { claudeVersion } : {})
   })
   const failed = results.filter((r) => r.state === 'error').length
   if (failed > 0) {

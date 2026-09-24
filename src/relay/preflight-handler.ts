@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { userInfo } from 'node:os'
 import { promisify } from 'node:util'
 import path, { win32 } from 'node:path'
 import type { RelayDispatcher } from './dispatcher'
@@ -8,8 +9,6 @@ import { isWslAvailableAsync, listWslDistrosAsync } from '../main/wsl'
 import { isGitBashAvailable } from '../main/git-bash'
 import { buildPosixCommandPathLookupScript } from '../shared/posix-command-path-lookup'
 import { runProcess } from '../shared/child-process/run-process'
-import { resolveGrokHomeForRelay } from './grok-home-probe'
-import { resolveAccountLoginShell } from './preflight-shell'
 
 const execFileAsync = promisify(execFile)
 
@@ -60,7 +59,6 @@ export class PreflightHandler {
   private async detectAgents(params: Record<string, unknown>): Promise<{
     agents: string[]
     versions?: Record<string, string>
-    grokHome?: string
   }> {
     const commands = params.commands as AgentDetectionCommand[]
     if (!Array.isArray(commands)) {
@@ -107,14 +105,10 @@ export class PreflightHandler {
         versions[command.id] = version
       }
     }
-    const grokHome = detectedCommands.some((command) => command.id === 'grok')
-      ? await resolveGrokHomeForRelay()
-      : null
 
     return {
       agents: [...new Set(detectedCommands.map(({ id }) => id))],
-      ...(Object.keys(versions).length > 0 ? { versions } : {}),
-      ...(grokHome ? { grokHome } : {})
+      ...(Object.keys(versions).length > 0 ? { versions } : {})
     }
   }
 
@@ -302,6 +296,23 @@ function buildFishCommandLookupScript(command: string): string {
     `printf '${AGENT_PATH_PREFIX}%s\\n' "$resolved"`,
     'end'
   ].join('\n')
+}
+
+function resolveAccountLoginShell(
+  platform: NodeJS.Platform,
+  accountLoginShell?: string | null
+): string | null {
+  if (accountLoginShell !== undefined) {
+    return accountLoginShell
+  }
+  if (platform === 'win32') {
+    return null
+  }
+  try {
+    return userInfo().shell ?? null
+  } catch {
+    return null
+  }
 }
 
 function pickTrustedPosixShell(

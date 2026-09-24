@@ -16,7 +16,6 @@ export {
 } from './grok-session-path-lookup-queue'
 
 export const GROK_CHAT_HISTORY_FILE = 'chat_history.jsonl'
-export const GROK_HOME_PATH_MAX_LENGTH = 4096
 // Why: Grok URL-encodes the cwd for the sessions group directory. When that
 // encoded name exceeds 255 bytes it switches to a slug+hash layout.
 export const GROK_ENCODED_CWD_DIR_MAX_BYTES = 255
@@ -28,32 +27,6 @@ export const GROK_SESSION_GROUP_SCAN_MAX_ENTRIES = 2_048
 export type GrokSessionPathEnv =
   | NodeJS.ProcessEnv
   | Partial<Record<'GROK_HOME' | 'HOME' | 'USERPROFILE', string | undefined>>
-
-function hasControlCharacter(value: string): boolean {
-  return Array.from(value).some((character) => {
-    const code = character.charCodeAt(0)
-    return code <= 0x1f || code === 0x7f
-  })
-}
-
-/** Validate the POSIX path carried between a remote shell and the installer. */
-export function normalizeGrokHomePath(candidate: string): string | null {
-  if (
-    candidate.length === 0 ||
-    candidate.length > GROK_HOME_PATH_MAX_LENGTH ||
-    candidate !== candidate.trim() ||
-    !candidate.startsWith('/') ||
-    candidate.includes('\\') ||
-    hasControlCharacter(candidate)
-  ) {
-    return null
-  }
-  return candidate.replace(/\/+$/, '') || '/'
-}
-
-export function defaultGrokHomePath(home: string): string {
-  return `${home.replace(/\/+$/, '') || home}/.grok`
-}
 
 /** Official ids are UUIDs; keep legacy/test token ids while rejecting paths. */
 export function isSafeGrokSessionId(sessionId: string): boolean {
@@ -69,7 +42,7 @@ export function resolveGrokHomeDir(
   env: GrokSessionPathEnv = process.env,
   homeDir: string = homedir()
 ): string {
-  return resolveAbsoluteDirOverride(env.GROK_HOME, defaultGrokHomePath(homeDir))
+  return resolveAbsoluteDirOverride(env.GROK_HOME, join(homeDir, '.grok'))
 }
 
 export function resolveGrokSessionsDir(
