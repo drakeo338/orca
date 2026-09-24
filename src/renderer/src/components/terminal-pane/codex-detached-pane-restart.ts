@@ -206,6 +206,9 @@ async function executeDetachedCodexPaneRestart(
     return
   }
 
+  // Why: main stops this PTY before launching its replacement, and a parked tab's exit sidecar
+  // would read that exit as the pane dying — collapsing the leaf or closing the tab.
+  disposeParkedTerminalWatchersForPtyIds([ptyId])
   // Hidden replacements converge on mount; provider sizing must not delay ownership transfer.
   const spawned = await window.api.pty.spawn({
     cols: 80,
@@ -219,6 +222,7 @@ async function executeDetachedCodexPaneRestart(
     worktreeId,
     tabId: tab.id,
     leafId,
+    replacesPtyId: ptyId,
     ...(tab.shellOverride ? { shellOverride: tab.shellOverride } : {}),
     ...(projectRuntime ? { projectRuntime } : {}),
     initiallyHidden: true
@@ -248,8 +252,7 @@ async function executeDetachedCodexPaneRestart(
   // new PTY; the restart it recorded is now done, so the block must lift.
   store.clearCodexRestartNotice(spawned.id)
   store.clearCodexRestartNotice(ptyId)
-
-  killReplacedCodexPanePty(ptyId)
+  releaseReplacedCodexPanePty(ptyId)
 }
 
 function isLocatedCodexPaneCurrent(
@@ -331,12 +334,17 @@ function reapUnboundCodexPty(ptyId: string, reason: string): void {
   discardPreHandlerPtyState(ptyId)
 }
 
+function releaseReplacedCodexPanePty(ptyId: string): void {
+  for (const snapshot of unregisterPtyDataHandlers([ptyId])) {
+    snapshot.commit()
+  }
+  discardPreHandlerPtyState(ptyId)
+}
+
 function killReplacedCodexPanePty(ptyId: string): void {
   // Why the disposal: a parked tab's exit sidecar treats any exit as the pane
   // dying — it would collapse the just-rebound leaf or close the whole tab.
   disposeParkedTerminalWatchersForPtyIds([ptyId])
-  for (const snapshot of unregisterPtyDataHandlers([ptyId])) {
-    snapshot.commit()
-  }
+  releaseReplacedCodexPanePty(ptyId)
   reapUnboundCodexPty(ptyId, 'replaced Codex pane PTY')
 }

@@ -31,6 +31,11 @@ function restoreProvisionalPtySize(ctx: PtyIpcSpawnState): void {
 }
 
 export async function runPtyIpcSpawn(deps: PtySpawnIpcDeps, args: PtySpawnIpcArgs) {
+  if (args.replacesPtyId !== undefined) {
+    // Why: stop before resolving the pane owner, so the spawn below finds a dead owner and
+    // launches fresh instead of reattaching the process this restart exists to replace.
+    await deps.stopReplacedPty(args.replacesPtyId)
+  }
   triggerPtySpawnPushTargetMaterialization(deps, args)
   const ctx = createPtyIpcSpawnState(deps, args)
   const early = await beginPtyIpcSpawn(ctx)

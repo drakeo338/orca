@@ -13,7 +13,11 @@ import { localProvider } from './provider/registry'
 import { finishPtyShutdown } from './provider/liveness'
 import type { GetSelectedCodexHomePath, PrepareClaudeAuth } from './host-env/types'
 import { installPtyInspectIpcHandlers } from './ipc/inspect'
-import { installPtyKillIpcHandler } from './ipc/renderer-kill'
+import {
+  installPtyKillIpcHandler,
+  stopRendererOwnedPty,
+  type PtyKillIpcDeps
+} from './ipc/renderer-kill'
 import { installPtyWriteIpcHandlers } from './ipc/write'
 import { installPtySpawnIpcHandler } from './ipc/spawn'
 import { installPtyRuntimeController } from './runtime/controller'
@@ -239,6 +243,14 @@ export function registerPtyHandlers(
   })
 
   installPtySnapshotIpcHandlers({ runtime, pendingData: session.pendingData })
+  const killDeps: PtyKillIpcDeps = {
+    store,
+    runtime,
+    getLocalPtyProviderStartupPromise,
+    shutdownProviderAndDetectExit: session.shutdownProviderAndDetectExit,
+    rememberSyntheticKillExit: session.rememberSyntheticKillExit,
+    sendPtyExitToRenderer: session.sendPtyExitToRenderer
+  }
   installPtySpawnIpcHandler({
     runtime,
     store,
@@ -260,7 +272,8 @@ export function registerPtyHandlers(
       session.transitionSpawnHiddenRendererPtyDeliveryState,
     trustedTerminalHandleEnv: session.trustedTerminalHandleEnv,
     sendPtySpawnedToRenderer: session.sendPtySpawnedToRenderer,
-    syncPtyBackgroundedDelivery: session.syncPtyBackgroundedDelivery
+    syncPtyBackgroundedDelivery: session.syncPtyBackgroundedDelivery,
+    stopReplacedPty: (id) => stopRendererOwnedPty(killDeps, { id })
   })
   installPtyWriteIpcHandlers({
     mainWindow,
@@ -269,12 +282,5 @@ export function registerPtyHandlers(
   })
   installPtyResizeVisibilityIpc(session)
   installPtyInspectIpcHandlers({ getLocalPtyProviderStartupPromise })
-  installPtyKillIpcHandler({
-    store,
-    runtime,
-    getLocalPtyProviderStartupPromise,
-    shutdownProviderAndDetectExit: session.shutdownProviderAndDetectExit,
-    rememberSyntheticKillExit: session.rememberSyntheticKillExit,
-    sendPtyExitToRenderer: session.sendPtyExitToRenderer
-  })
+  installPtyKillIpcHandler(killDeps)
 }

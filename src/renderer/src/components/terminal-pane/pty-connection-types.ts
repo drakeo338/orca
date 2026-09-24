@@ -44,6 +44,8 @@ export type PtyPaneStartup = {
   showSessionRestoredBanner?: boolean
   /** Initial startup may be paired with a setup split that changes its grid. */
   waitForSetupSplitDirection?: SetupSplitDirection
+  /** The pane's current PTY, which main stops before this launch so it cannot be reattached. */
+  replacesPtyId?: string
 } | null
 
 export type PaneProcessExit = {

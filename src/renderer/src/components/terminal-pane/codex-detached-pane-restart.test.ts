@@ -113,6 +113,7 @@ describe('codex detached pane restart executor', () => {
         worktreeId: 'wt1',
         tabId: 'tab-1',
         leafId: LEAF_ID,
+        replacesPtyId: OLD_PTY,
         initiallyHidden: true
       })
     )
@@ -125,7 +126,8 @@ describe('codex detached pane restart executor', () => {
         ORCA_WORKSPACE_ID: 'wt1'
       })
     )
-    expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith(OLD_PTY)
+    // Main stops the replaced PTY inside the spawn; a renderer kill would race its adoption.
+    expect(window.api.pty.kill).not.toHaveBeenCalled()
 
     const state = useAppStore.getState()
     expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
@@ -145,7 +147,10 @@ describe('codex detached pane restart executor', () => {
       expect(window.api.pty.spawn).not.toHaveBeenCalled()
 
       await vi.waitFor(() => expect(window.api.pty.spawn).toHaveBeenCalledTimes(1))
-      await vi.waitFor(() => expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith(OLD_PTY))
+      await vi.waitFor(() =>
+        expect(useAppStore.getState().ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
+      )
+      expect(window.api.pty.kill).not.toHaveBeenCalled()
 
       expect(useAppStore.getState().pendingCodexPaneRestartIds).toEqual({})
     } finally {
@@ -254,7 +259,9 @@ describe('codex detached pane restart executor', () => {
         ptyIdsByLeafId: { [LEAF_ID]: NEW_PTY }
       })
     )
-    expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith(OLD_PTY)
+    expect(window.api.pty.spawn).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ replacesPtyId: OLD_PTY })
+    )
   })
 
   it('rebinds only the codex leaf of a split and keeps the sibling', async () => {
@@ -285,8 +292,11 @@ describe('codex detached pane restart executor', () => {
       [LEAF_ID]: NEW_PTY,
       [SIBLING_LEAF]: 'wt1@@sibling'
     })
-    // Split-pane safety: only the codex pane's PTY dies.
-    expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith(OLD_PTY)
+    // Split-pane safety: only the codex pane's PTY is replaced.
+    expect(window.api.pty.spawn).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ replacesPtyId: OLD_PTY })
+    )
+    expect(window.api.pty.kill).not.toHaveBeenCalled()
     expect(useAppStore.getState().ptyIdsByTabId['tab-1']).toEqual([NEW_PTY, 'wt1@@sibling'])
   })
 
