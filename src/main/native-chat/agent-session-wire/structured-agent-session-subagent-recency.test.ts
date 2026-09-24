@@ -197,6 +197,7 @@ describe("a subagent's work and the recency of the session that spawned it", () 
     await session.drain()
     const settled = session.latestStatus()
     expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
+    const evidenceClock = session.journal.lastActivityAt()
     const published = session.events.length
     const sequence = session.journal.cursor().sequence
 
@@ -215,8 +216,10 @@ describe("a subagent's work and the recency of the session that spawned it", () 
     )
     await session.drain()
 
-    // A control, so the holds below are not vacuous: the child's edges DID reach the journal.
+    // Controls, so the holds below are not vacuous: the child's edges DID reach the journal,
+    // and they moved its evidence clock.
     expect(session.journal.cursor().sequence).toBeGreaterThan(sequence)
+    expect(session.journal.lastActivityAt()).toBeGreaterThan(evidenceClock)
     expect(session.events).toHaveLength(published)
     expect(session.projected().statusStartedAt).toBe(settled.statusStartedAt)
 
@@ -249,6 +252,7 @@ describe("a subagent's work and the recency of the session that spawned it", () 
     await session.drain()
     const settled = session.latestStatus()
     expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
+    const evidenceClock = session.journal.lastActivityAt()
     const published = session.events.length
     const sequence = session.journal.cursor().sequence
 
@@ -266,6 +270,7 @@ describe("a subagent's work and the recency of the session that spawned it", () 
     await session.drain()
 
     expect(session.journal.cursor().sequence).toBeGreaterThan(sequence)
+    expect(session.journal.lastActivityAt()).toBeGreaterThan(evidenceClock)
     // Whatever else a child row republishes, none of it re-dates the session.
     for (const event of session.events.slice(published)) {
       expect(event).toMatchObject({ session: { statusStartedAt: settled.statusStartedAt } })

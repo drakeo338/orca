@@ -20,7 +20,6 @@ import {
 } from '../../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
 import { journalItemRevisionIsStale } from './journal-item-revision'
-import { journalRowRemovesSessionWork, journalRowWroteSessionWork } from './journal-session-clock'
 import type { JournalRow } from './journal-row-schema'
 import { dispatchRejectionWasTransportWriteFailure } from '../../../shared/structured-agent-session-dispatch-rejection'
 
@@ -30,7 +29,6 @@ export type JournalReducerState = {
   sessionId: string
   epoch: string
   lastSequence: number
-  /** Newest `ts` among the session's own rows, not its subagents'. */
   lastActivityAt: number
   /** Lowest sequence still individually replayable; rows below it were compacted. */
   oldestSequence: number
@@ -64,19 +62,12 @@ export function createJournalReducerState(sessionId: string, epoch: string): Jou
 }
 
 export function applyJournalRow(state: JournalReducerState, row: JournalRow): void {
-  const removesSessionWork = journalRowRemovesSessionWork(state, row)
-  applyJournalRowContent(state, row)
-  if (removesSessionWork || journalRowWroteSessionWork(state, row)) {
-    state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)
-  }
-}
-
-function applyJournalRowContent(state: JournalReducerState, row: JournalRow): void {
   state.lastSequence = Math.max(state.lastSequence, row.seq)
   state.highestFence = Math.max(state.highestFence, row.fence)
   if (row.kind === 'epoch') {
     return
   }
+  state.lastActivityAt = Math.max(state.lastActivityAt, row.ts)
   if (row.kind === 'item') {
     if (journalItemRevisionIsStale(state, row.itemId, row.revision)) {
       return
