@@ -79,7 +79,8 @@ async function scanReferences(
     return { readable: false }
   }
   const lines = output.split(/\r?\n/).map((line) => line.trim())
-  if (lines.includes(REFS_ERR) || !lines.includes(REFS_OK)) {
+  // An empty legacy marker is unknown ownership, not an empty reference set.
+  if (lines.includes(REFS_ERR) || lines.includes('REF') || !lines.includes(REFS_OK)) {
     return { readable: false }
   }
   const referenced = new Set<string>()

@@ -80,6 +80,16 @@ describe('ripgrep cache shell transactions', () => {
     expect(readdirSync(cache).sort()).toEqual([FIRST, SECOND])
   })
 
+  it.each(['', ' \t\r\n'])(
+    'blocks collection when a legacy marker is empty or whitespace: %j',
+    async (contents) => {
+      writeFileSync(join(relay, '.ripgrep-ref'), contents)
+      await recordRemoteRipgrepReference(conn, host, relay, SECOND)
+      await gcRemoteRipgrepCache(conn, host, home)
+      expect(readdirSync(cache).sort()).toEqual([FIRST, SECOND])
+    }
+  )
+
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     'preserves binaries when the relay directory listing is unreadable',
     async () => {

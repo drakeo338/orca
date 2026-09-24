@@ -62,6 +62,18 @@ describe('remote ripgrep cache GC', () => {
     expect(removedTrees()[0]).toContain(SUPERSEDED)
   })
 
+  it.each([LINUX, WINDOWS])(
+    'rejects an empty reference on %j before any mutation',
+    async (host) => {
+      execCommandMock.mockReset()
+      execCommandMock
+        .mockResolvedValueOnce(`ENTRY ${SUPERSEDED}\r\n__ORCA_RG_CACHE__LIST_OK`)
+        .mockResolvedValueOnce('REF \t\r\n__ORCA_RG_CACHE__REFS_OK')
+      await gcRemoteRipgrepCache(conn, host, '/home/me')
+      expect(execCommandMock).toHaveBeenCalledTimes(2)
+    }
+  )
+
   // Why: the reference is the whole safety argument. A build a live relay was launched against
   // must survive, however old its directory is.
   it('keeps a referenced build', async () => {
