@@ -186,6 +186,37 @@ describe("an answered subagent ask on a settled parent's Activity row", () => {
     expect(row.events.map((event) => event.unread)).toEqual([false, false, false])
     expect(row.unread).toBe(false)
     expect(countActivityUnread(store().getState())).toBe(0)
+
+    // Clearing the answered row must also pass the ask, which is dated after the done.
+    act(() => {
+      expect(clearActivityThread(row)).toBe(true)
+    })
+    expect(renderActivity().result.current.allThreads).toHaveLength(0)
+  })
+
+  it('keeps each answered done between the asks around it', async () => {
+    const asks = [ASKED, ASKED + 400, ASKED + 800]
+    const emit = await connect()
+    emit({ type: 'snapshot', sessions: [summary()] })
+    for (const askedAt of asks) {
+      emit({
+        type: 'status',
+        session: summary({ status: 'attention', statusStartedAt: askedAt, updatedAt: askedAt })
+      })
+      emit({ type: 'status', session: summary({ updatedAt: askedAt + 200 }) })
+    }
+
+    // Every done repeats the turn's end, so only when each was seen keeps them apart and in order;
+    // the oldest of the six falls to the per-pane cap.
+    expect(thread(renderActivity()).events.map((event) => [event.state, event.observedAt])).toEqual(
+      [
+        ['done', ASKED + 1_000],
+        ['blocked', ASKED + 800],
+        ['done', ASKED + 600],
+        ['blocked', ASKED + 400],
+        ['done', ASKED + 200]
+      ]
+    )
   })
 
   it('reads done after a clear hid that done, while the later ask stays listed', async () => {
@@ -215,5 +246,19 @@ describe("an answered subagent ask on a settled parent's Activity row", () => {
     expect(activityThreadRowCopy(row).needsAttention).toBe(false)
     expect(row.unread).toBe(false)
     expect(countActivityUnread(store().getState())).toBe(0)
+
+    // Once a second ask moves the answered done into history, it stays cleared there too.
+    emit({
+      type: 'status',
+      session: summary({
+        status: 'attention',
+        statusStartedAt: ANSWERED + 200,
+        updatedAt: ANSWERED + 200
+      })
+    })
+    expect(thread(renderActivity()).events.map((event) => event.state)).toEqual([
+      'blocked',
+      'blocked'
+    ])
   })
 })
