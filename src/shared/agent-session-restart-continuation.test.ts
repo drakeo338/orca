@@ -11,9 +11,9 @@ describe('the restart continuation message', () => {
   })
 
   // The fingerprint covers the body, so it may depend on nothing the journal can restate.
-  it('covers every kind of stopped work for a marker that carries a journal cursor', () => {
-    expect(restartContinuationMessage({ journalCursor: { epoch: 'e', sequence: 4 } })).toBe(
-      AGENT_SESSION_RESTART_WORK_CONTINUATION_MESSAGE
-    )
+  it('covers every kind of stopped work for a marker that carries a snapshot', () => {
+    expect(
+      restartContinuationMessage({ activity: { state: 'working', prompts: [], tasks: [] } })
+    ).toBe(AGENT_SESSION_RESTART_WORK_CONTINUATION_MESSAGE)
   })
 })

@@ -49,7 +49,7 @@ type FailureCapsule = Pick<
   | 'rollbackResume'
   | 'dismiss'
   | 'clearAll'
-  | 'forgetFailures'
+  | 'forgetSuperseded'
 >
 
 /** What a failure is filed against: the chat's newest user message as its own attempt ended. Kept
@@ -209,10 +209,11 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     if (capsule && superseded.length > 0) {
       const gone = superseded.map((failure) => ({
         sessionId: failure.marker.sessionId,
+        recordedAt: failure.marker.recordedAt,
         failedAt: failure.failedAt
       }))
       void deps
-        .enqueue(() => capsule.forgetFailures(gone, deps.now()))
+        .enqueue(() => capsule.forgetSuperseded(gone, deps.now()))
         .catch(() => {
           console.warn('[structured-agent-session] pruning superseded restart failures failed')
         })
@@ -236,7 +237,7 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     )
     for (const outcome of outcomes) {
       const resumed = outcome.outcome === 'resumed'
-      // Ineligible means the user moved on or the offer no longer applies (expired, record gone,
+      // Ineligible means the user moved on or the offer no longer applies (record gone,
       // conversation forked), so there is nothing to retry and the offer is spent.
       const failure = resumed
         ? action.failureAfterResume(outcome.sessionId)

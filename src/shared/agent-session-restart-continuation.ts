@@ -28,9 +28,9 @@ export const AGENT_SESSION_RESTART_WORK_CONTINUATION_MESSAGE =
  * build that recorded only a working lead keeps the original wording.
  */
 export function restartContinuationMessage(
-  marker: Pick<AgentSessionResumeMarker, 'journalCursor'>
+  marker: Pick<AgentSessionResumeMarker, 'activity'>
 ): string {
-  return marker.journalCursor
+  return marker.activity
     ? AGENT_SESSION_RESTART_WORK_CONTINUATION_MESSAGE
     : AGENT_SESSION_RESTART_CONTINUATION_MESSAGE
 }

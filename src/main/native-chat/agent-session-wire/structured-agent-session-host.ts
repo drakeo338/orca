@@ -31,7 +31,10 @@ import type {
   StructuredAgentSessionHoldOptions
 } from './structured-agent-session-holds'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
-import { listStructuredAgentSessionTabs } from './structured-agent-session-host-tabs'
+import {
+  listStructuredAgentSessionTabs,
+  setStructuredAgentSessionTabVisibility
+} from './structured-agent-session-host-tabs'
 import {
   structuredAgentSessionMutationDelegates,
   settleStructuredAgentSessionLateDispatch,
@@ -217,7 +220,7 @@ export class StructuredAgentSessionHost {
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
 
   setSessionTabVisibility = (sessionId: string, visible: boolean): Promise<void> =>
-    this.deps.store.setSessionTabVisibility(sessionId, visible)
+    setStructuredAgentSessionTabVisibility(this.deps.store, this.restartResume, sessionId, visible)
 
   reconcileRestartLeases = async (): Promise<void> => {
     const refusal = await this.reconcileLeases('startup')
@@ -273,8 +276,6 @@ export class StructuredAgentSessionHost {
       sessions: this.sessions,
       publish: (sessionId, journal) => this.subscribers.publish(sessionId, journal),
       flushStreamedEvents: this.flushStreamedEvents,
-      hasPendingStreamedEvents: (sessionId) =>
-        this.runtimeState.hasPendingStreamedEvents(sessionId),
       requireSession: (sessionId) => this.requireSession(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       now: () => this.now()

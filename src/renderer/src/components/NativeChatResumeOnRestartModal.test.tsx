@@ -164,11 +164,11 @@ it('offers exactly Dismiss all and the resume action', async () => {
 it('says under each chat what it was doing when Orca went away', async () => {
   rpc.mockResolvedValue({
     sessions: [
-      { ...offered[0], activity: { midReply: true, prompts: [], tasks: [] } },
+      { ...offered[0], activity: { state: 'working', prompts: [], tasks: [] } },
       {
         ...offered[1],
         activity: {
-          midReply: false,
+          state: 'done',
           prompts: [],
           tasks: [{ kind: 'command', label: 'Watch CI' }]
         }

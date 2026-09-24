@@ -1,4 +1,4 @@
-// Whether a session was genuinely working when this process stopped it.
+// Whether a session was genuinely working when this process stopped it, and what it was doing.
 //
 // Read off the LIVE host state, never off a persisted status field. That distinction is the whole
 // safety argument: a `running` turn row left behind by an older crash is still sitting in that
@@ -8,8 +8,9 @@
 // "Working" is what the sidebar showed, not the lead alone: a lead mid-turn, a lead blocked on the
 // user, or a settled lead whose subagents, commands or monitors were still running all count. It is
 // asked once per session, right before that session's child is stopped, and that answer is the
-// offer: nothing after the restart re-judges it. What was cut off is read back from the journal
-// for display only.
+// offer. The same snapshot also records WHAT was cut off — the lead's own state, the pending
+// prompts and the live child roster — because that fact exists only here: once reattached, the
+// provider rewrites the journal in its own words.
 
 import {
   agentSessionProviderHandleChainHead,
@@ -28,11 +29,20 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionBackgroundTask } from '../../../shared/agent-session-background-task-wire'
 import {
+  AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH,
+  AGENT_SESSION_RESTART_ACTIVITY_MAX_PROMPTS,
+  AGENT_SESSION_RESTART_ACTIVITY_MAX_TASKS,
+  type AgentSessionRestartActivity,
+  type AgentSessionRestartPrompt,
+  type AgentSessionRestartTask
+} from '../../../shared/agent-session-restart-activity'
+import { isLiveChildWork } from '../../../shared/agent-status-child-work-liveness'
+import {
   activeStructuredAgentSessionTurnId,
   newestStructuredAgentSessionTurn
 } from '../../../shared/structured-agent-session-live-turn'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { structuredAgentSessionShowsWork } from './structured-agent-session-shown-work'
+import { structuredAgentSessionShownStatus } from './structured-agent-session-shown-work'
 
 /** A send Orca journaled that the provider has neither opened a turn for nor refused. Mirrors the
  *  projection's own unanswered-dispatch rule, which is what makes that window read as `working`. */
@@ -81,6 +91,47 @@ function structuredAgentSessionResumeWork(
   return newest ? { kind: 'turn', id: newest.turnId } : null
 }
 
+function boundedLabel(text: string | undefined): string {
+  const trimmed = text?.trim() ?? ''
+  return trimmed.length > AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH
+    ? `${trimmed.slice(0, AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH - 1)}…`
+    : trimmed
+}
+
+/** The prompts the session is blocked on, from the same items the projection called `attention`
+ *  over — one read, so the recorded state and the prompts it stands for cannot disagree. */
+function pendingPrompts(items: readonly AgentJournalRenderItem[]): AgentSessionRestartPrompt[] {
+  const prompts: AgentSessionRestartPrompt[] = []
+  for (const item of items) {
+    const body = item.body
+    if (
+      (body.kind !== 'approval' && body.kind !== 'question') ||
+      body.resolution.state !== 'pending'
+    ) {
+      continue
+    }
+    prompts.push(
+      body.kind === 'approval'
+        ? { kind: 'approval', label: boundedLabel(body.displayName ?? body.title) }
+        : { kind: 'question', label: boundedLabel(body.question) }
+    )
+    if (prompts.length === AGENT_SESSION_RESTART_ACTIVITY_MAX_PROMPTS) {
+      break
+    }
+  }
+  return prompts
+}
+
+/** The live rows of the provider's roster, by the same liveness rule the sidebar's fold counts. */
+function liveTasks(
+  roster: readonly AgentSessionBackgroundTask[] | null | undefined
+): AgentSessionRestartTask[] {
+  return (roster ?? [])
+    .filter((task) => isLiveChildWork(task))
+    .slice(0, AGENT_SESSION_RESTART_ACTIVITY_MAX_TASKS)
+    .map((task) => ({ kind: task.kind, label: boundedLabel(task.description ?? task.name) }))
+}
+
 type WorkingCandidateSession = {
   journal: AgentSessionJournal
   /** Only this host generation's own child counts. A restored-for-reading journal has none. */
@@ -107,7 +158,9 @@ export function structuredAgentSessionWorkingAtStop(input: {
     return null
   }
   const snapshot = session.journal.snapshot()
-  if (!structuredAgentSessionShowsWork(snapshot, input.backgroundTasks(sessionId), session.fence)) {
+  const roster = input.backgroundTasks(sessionId)
+  const status = structuredAgentSessionShownStatus(snapshot, roster, session.fence)
+  if (status.state === 'done') {
     return null
   }
   const work = structuredAgentSessionResumeWork(snapshot.items, snapshot.submissions)
@@ -116,6 +169,13 @@ export function structuredAgentSessionWorkingAtStop(input: {
   )
   if (!work || !head) {
     return null
+  }
+  const activity: AgentSessionRestartActivity = {
+    // The lead's OWN state, not the fold: a settled lead with running children reads `done` here
+    // and carries them in `tasks`, which is how the dialog tells the two apart.
+    state: status.mainAgent.state,
+    prompts: pendingPrompts(snapshot.items),
+    tasks: liveTasks(roster)
   }
   return {
     sessionId,
@@ -127,7 +187,8 @@ export function structuredAgentSessionWorkingAtStop(input: {
     // Root, not key: the close path advances Claude's leaf moments after this runs, and a key
     // comparison would then refuse the session forever.
     providerHandleRoot: agentSessionProviderHandleRoot(head.handle),
-    // Before the stop: closing the child is itself what settles its children's rows.
-    journalCursor: snapshot.cursor
+    // Before the stop: closing the child is what settles its children's rows, and the description
+    // must be the roster the sidebar was still showing.
+    activity
   }
 }

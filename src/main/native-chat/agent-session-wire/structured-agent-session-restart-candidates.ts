@@ -3,9 +3,6 @@
 // A different question from storage: the durable record decides which markers are still present;
 // this decides which of those a resume may act on. The offer, the click and the pre-send check all
 // ask it, and all get the same answer: the marker stands until the user sends a newer message.
-//
-// The per-session journal snapshot is cached for the length of one call, so the withdrawal check
-// and the row's activity read the same conversation.
 
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
@@ -19,13 +16,8 @@ import type { AgentSessionJournal } from '../agent-session-journal/journal-store
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 import {
-  journalItemRevisions,
-  structuredAgentSessionRestartActivity,
-  type JournalItemRevision
-} from './structured-agent-session-restart-cut-off'
-import {
   structuredAgentSessionResumableSet,
-  type StructuredAgentSessionResumeCandidate
+  type StructuredAgentSessionResumableSet
 } from './structured-agent-session-restart-resume-set'
 
 /** The only part of a live session this reads. */
@@ -40,7 +32,7 @@ export type StructuredAgentSessionRestartCandidateReader = (
   markers: readonly AgentSessionResumeMarker[],
   leaseState: 'must-be-released' | 'may-be-held',
   options?: StructuredAgentSessionRestartCandidateOptions
-) => StructuredAgentSessionResumeCandidate[]
+) => StructuredAgentSessionResumableSet
 
 /** The newest user message in a live session's journal, the same fact the predicate compares
  *  against a marker. Undefined when the session is not readable here, which decides nothing. */
@@ -59,7 +51,6 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
   sessions: ReadonlyMap<string, StructuredAgentSessionRestartJournalSource>
   getRecord: (sessionId: string) => AgentSessionRecord | null
   adapter: StructuredAgentSessionAdapter
-  now: () => number
 }): StructuredAgentSessionRestartCandidateReader {
   return (markers, leaseState, options = {}) => {
     const items = new Map<string, AgentJournalRenderItem[]>()
@@ -75,28 +66,13 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
       }
       return snapshot
     }
-    const revisionsSince = (marker: AgentSessionResumeMarker): JournalItemRevision[] | null => {
-      const journal = deps.sessions.get(marker.sessionId)?.journal
-      if (!journal || !marker.journalCursor) {
-        return null
-      }
-      const read = journal.readSince(marker.journalCursor)
-      return read.ok ? journalItemRevisions(read.rows, journal.canonicalItemId) : null
-    }
     return structuredAgentSessionResumableSet({
       markers,
       getRecord: deps.getRecord,
       supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
-      activity: (marker) =>
-        structuredAgentSessionRestartActivity({
-          marker,
-          items: itemsFor(marker.sessionId),
-          revisionsSinceCursor: revisionsSince(marker)
-        }),
       latestPrompt: (sessionId) => latestStructuredAgentSessionPrompt(itemsFor(sessionId)),
       latestUserItemId: (sessionId) =>
         latestStructuredAgentSessionUserItem(itemsFor(sessionId))?.itemId ?? null,
-      now: deps.now(),
       leaseState
     })
   }

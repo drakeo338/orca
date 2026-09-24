@@ -1,26 +1,28 @@
 // Which durable teardown witnesses are still offers.
 //
-// The marker IS the answer to "was this chat working": teardown took it from the same check the
-// sidebar shows, right before the chat's child was stopped. Nothing here re-reads the journal to
-// second-guess it — once reattached, a provider rewrites that journal in its own words (a notice
-// turn of its own, restated subagent rows, a restored thread), and every reading of those rewrites
-// as "the work is done" dropped chats that were owed a resume.
+// The marker IS the answer to "was this chat working" AND the description of what it was doing:
+// teardown took both from the same check the sidebar shows, right before the chat's child was
+// stopped. Nothing here re-reads the journal to second-guess it — once reattached, a provider
+// rewrites that journal in its own words (a notice turn of its own, restated subagent rows, a
+// restored thread), and every reading of those rewrites as "the work is done" dropped chats that
+// were owed a resume.
 //
-// So an offer is withdrawn only by the user moving on — a newer message of theirs — by dismissal,
-// or by expiry. What remains are structural checks that are not about work at all: the record
-// still exists and this build supports it, the lease is free, and the conversation has not forked.
+// An offer ends only by the user's own actions. The one this predicate can see — a newer message
+// of theirs in that chat — is reported back as `superseded` so the caller DELETES the record
+// rather than filtering it forever. What remains are structural checks that are not about work at
+// all: the record still exists and this build supports it, the lease is free, and the conversation
+// has not forked.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   agentSessionProviderHandleChainHead,
   agentSessionProviderHandleRoot
 } from '../../../shared/agent-session-provider-handle'
-import {
-  isExpiredAgentSessionResumeMarker,
-  type AgentSessionResumeFailureOutcome,
-  type AgentSessionResumeMarker,
-  type AgentSessionResumeTrigger,
-  type AgentSessionResumeWork
+import type {
+  AgentSessionResumeFailureOutcome,
+  AgentSessionResumeMarker,
+  AgentSessionResumeTrigger,
+  AgentSessionResumeWork
 } from '../../../shared/agent-session-resume-marker'
 import type { AgentSessionRestartActivity } from '../../../shared/agent-session-restart-activity'
 import { isResumableStructuredAgentSessionRecord } from './structured-agent-session-resume-eligibility'
@@ -43,8 +45,8 @@ export type StructuredAgentSessionResumeCandidate = {
   /** Model in force, read from the record's acknowledged options exactly as the status feed does.
    *  Absent until the host has read them. */
   model?: string
-  /** What the restart cut off, read from the journal for display. Optional on the wire: an older
-   *  host omits it, and so does a marker from a build that recorded no journal cursor. */
+  /** What the chat was doing, from the marker's own stop-time snapshot. Optional on the wire: an
+   *  older host omits it, and so does a marker from a build that recorded no snapshot. */
   activity?: AgentSessionRestartActivity
 }
 
@@ -61,15 +63,19 @@ export type StructuredAgentSessionResumeFailure = StructuredAgentSessionResumeCa
   retryable: boolean
 }
 
+export type StructuredAgentSessionResumableSet = {
+  candidates: StructuredAgentSessionResumeCandidate[]
+  /** Markers the user's own newer message has withdrawn. Every ending deletes: the caller retires
+   *  these from the durable record rather than re-filtering them on every read forever. */
+  superseded: AgentSessionResumeMarker[]
+}
+
 export type StructuredAgentSessionResumeSetInput = {
   markers: readonly AgentSessionResumeMarker[]
   getRecord: (sessionId: string) => AgentSessionRecord | null
   supportsRecord: (record: AgentSessionRecord) => boolean
-  /** What the restart cut off, for the row to name. Display only: it never decides the offer. */
-  activity: (marker: AgentSessionResumeMarker) => AgentSessionRestartActivity | undefined
   latestPrompt: (sessionId: string) => string
   latestUserItemId: (sessionId: string) => string | null
-  now: number
   /**
    * Whether the lease must be free.
    *
@@ -82,12 +88,10 @@ export type StructuredAgentSessionResumeSetInput = {
 
 export function structuredAgentSessionResumableSet(
   input: StructuredAgentSessionResumeSetInput
-): StructuredAgentSessionResumeCandidate[] {
+): StructuredAgentSessionResumableSet {
   const candidates: StructuredAgentSessionResumeCandidate[] = []
+  const superseded: AgentSessionResumeMarker[] = []
   for (const marker of input.markers) {
-    if (isExpiredAgentSessionResumeMarker(marker, input.now)) {
-      continue
-    }
     const record = input.getRecord(marker.sessionId)
     if (!record || !input.supportsRecord(record)) {
       continue
@@ -106,9 +110,9 @@ export function structuredAgentSessionResumableSet(
     // The user moving on is the one thing that withdraws the offer. Anything the provider does on
     // its own after reattaching — a turn it opens, a prompt, restated rows — is not.
     if (input.latestUserItemId(marker.sessionId) !== marker.latestUserItemId) {
+      superseded.push(marker)
       continue
     }
-    const activity = input.activity(marker)
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)
     candidates.push({
       sessionId: marker.sessionId,
@@ -121,8 +125,8 @@ export function structuredAgentSessionResumableSet(
       executionHostId: record.location.executionHostId,
       workspaceKind: record.location.workspaceKind,
       ...(model === undefined ? {} : { model }),
-      ...(activity === undefined ? {} : { activity })
+      ...(marker.activity === undefined ? {} : { activity: marker.activity })
     })
   }
-  return candidates
+  return { candidates, superseded }
 }

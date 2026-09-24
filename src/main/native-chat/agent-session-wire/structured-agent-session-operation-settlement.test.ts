@@ -129,43 +129,30 @@ it.each([1, 2])(
   }
 )
 
-// The drain only narrows the window for a racing message. A barrier that cannot finish is not a
-// reason to fail the send, and a barrier finishing after the dispatch never dispatches again.
-it.each(['stalled', 'failed'] as const)(
-  'dispatches once past a %s admission barrier, never late',
-  async (barrier) => {
-    const ctx = await context()
-    const { store } = hostTestState()
-    vi.spyOn(store, 'recordOperationOutcome').mockResolvedValue()
-    const pending = Promise.withResolvers<void>()
-    const waiting = Promise.withResolvers<void>()
-    ctx.flushStreamedEvents = () => {
-      waiting.resolve()
-      return barrier === 'failed' ? Promise.reject(new Error('disk unavailable')) : pending.promise
-    }
-    const beforeRun = vi.fn()
-    const body = hostTestMessage('Continue the interrupted work')
-    const operation = envelope('agentSession.send', { body })
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const result = runSettledAgentSessionMutation({
-      store,
-      operationCallerKey: 'test',
-      envelope: operation,
-      context: ctx,
-      plan: sendPlan({ envelope: operation, body, beforeRun })
-    })
-    await waiting.promise
-    await vi.advanceTimersByTimeAsync(AGENT_SESSION_ADMISSION_BARRIER_TIMEOUT_MS)
-    expect(await result).toMatchObject({ ok: true })
-    expect(beforeRun).toHaveBeenCalledOnce()
-    expect(hostTestState().dispatch).toHaveBeenCalledOnce()
-    expect(ctx.journal.submissions()[0]?.dispatchState).toBe('accepted')
-    pending.resolve()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(hostTestState().dispatch).toHaveBeenCalledOnce()
-    expect(vi.getTimerCount()).toBe(0)
-  }
-)
+// The pre-dispatch check judges only what the journal already holds; the send path never waits on
+// the provider's stream barrier, so a sink that stalls or fails cannot delay or double a send.
+it('dispatches without touching the event-stream barrier', async () => {
+  const ctx = await context()
+  const { store } = hostTestState()
+  vi.spyOn(store, 'recordOperationOutcome').mockResolvedValue()
+  const barrier = vi.fn(() => new Promise<void>(() => {}))
+  ctx.flushStreamedEvents = barrier
+  const beforeRun = vi.fn()
+  const body = hostTestMessage('Continue the interrupted work')
+  const operation = envelope('agentSession.send', { body })
+  const result = await runSettledAgentSessionMutation({
+    store,
+    operationCallerKey: 'test',
+    envelope: operation,
+    context: ctx,
+    plan: sendPlan({ envelope: operation, body, beforeRun })
+  })
+  expect(result).toMatchObject({ ok: true })
+  expect(beforeRun).toHaveBeenCalledOnce()
+  expect(hostTestState().dispatch).toHaveBeenCalledOnce()
+  expect(ctx.journal.submissions()[0]?.dispatchState).toBe('accepted')
+  expect(barrier).not.toHaveBeenCalled()
+})
 
 it('refuses a superseded send without waiting on a stalled refusal write, and never dispatches late', async () => {
   const ctx = await context()

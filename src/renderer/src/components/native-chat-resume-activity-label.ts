@@ -14,9 +14,9 @@ function named(label: string): string {
   )
 }
 
-/** What an offered chat was doing when Orca went away. Null when the host sent no activity — an
- *  older host, or an offer recorded by a build that only offered a lead mid-reply — which the
- *  dialog's own wording already covers. */
+/** What an offered chat was doing when Orca went away, read from the offer's own stop-time
+ *  snapshot. Null when the host sent none — an older host, or an offer recorded by a build that
+ *  captured no snapshot — which the dialog's own wording already covers. */
 export function resumeActivityLabel(
   activity: AgentSessionRestartActivity | undefined
 ): ResumeActivityLabel | null {
@@ -25,7 +25,9 @@ export function resumeActivityLabel(
   }
   const parts: string[] = []
   const [prompt] = activity.prompts
-  if (prompt) {
+  // The headline is the main agent's own recorded state: blocked names the prompt it was waiting
+  // on, working was a reply in progress, done says nothing — its children speak below.
+  if (activity.state === 'blocked' && prompt) {
     parts.push(
       prompt.kind === 'approval'
         ? translate(
@@ -39,7 +41,7 @@ export function resumeActivityLabel(
             { value0: named(prompt.label) }
           )
     )
-  } else if (activity.midReply) {
+  } else if (activity.state === 'working') {
     parts.push(
       translate('auto.components.NativeChatResumeOnRestartModal.activityMidReply', 'Was mid-reply')
     )

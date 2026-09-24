@@ -22,6 +22,7 @@ import {
   createStructuredAgentSessionRestartFailureLedger
 } from './structured-agent-session-restart-failure-ledger'
 import { createStructuredAgentSessionRestartOperationQueue } from './structured-agent-session-restart-operation-queue'
+import { createStructuredAgentSessionRestartOfferRecords } from './structured-agent-session-restart-offer-records'
 import type {
   StructuredAgentSessionResumeCandidate,
   StructuredAgentSessionResumeFailure
@@ -102,8 +103,7 @@ export function createStructuredAgentSessionRestartResume(
   const derive = createStructuredAgentSessionRestartCandidateReader({
     sessions,
     getRecord: deps.store.getRecord,
-    adapter: deps.adapter,
-    now: surfaces.now
+    adapter: deps.adapter
   })
   const witnesses = createStructuredAgentSessionRestartWitnesses({
     sessions,
@@ -122,58 +122,38 @@ export function createStructuredAgentSessionRestartResume(
     },
     getRecord: deps.store.getRecord,
     adapter: deps.adapter,
-    retryable: (marker) => derive([marker], 'may-be-held').length === 1,
+    retryable: (marker) => derive([marker], 'may-be-held').candidates.length === 1,
     now: surfaces.now,
     enqueue: enqueueRecoveryOperation
   })
 
-  const readMarkers = async (): Promise<AgentSessionResumeMarker[]> => {
-    try {
-      return (await deps.recoveryCapsule?.list(surfaces.now())) ?? []
-    } catch {
-      // Recovery is advisory. A malformed capsule must not make ordinary chat actions unusable;
-      // the durable bytes stay untouched so an explicit dismissal can remove them.
-      console.warn('[structured-agent-session] reading recovery capsule failed')
-      return []
-    }
-  }
-
-  /** The markers an explicit action may act on: every pending offer, plus a recorded failure when
-   *  the action names it — a retry. An unselective action never re-runs a failure. */
-  const readActionMarkers = async (
-    sessionIds: readonly string[] | undefined
-  ): Promise<AgentSessionResumeMarker[]> => {
-    const pending = await readMarkers()
-    if (sessionIds === undefined) {
-      return pending
-    }
-    const named = new Set(sessionIds)
-    const retried = (await failures.read())
-      .map((failure) => failure.marker)
-      .filter((marker) => named.has(marker.sessionId))
-    return [...pending, ...retried]
-  }
-
-  const revealMarkers = async (markers: readonly AgentSessionResumeMarker[]): Promise<void> => {
-    for (const marker of markers) {
-      if (!sessions.has(marker.sessionId)) {
-        await surfaces.revealSession(marker.sessionId).catch(() => null)
-      }
-    }
-  }
+  const { readMarkers, readActionMarkers, revealMarkers, retireSuperseded } =
+    createStructuredAgentSessionRestartOfferRecords({
+      ...(deps.recoveryCapsule ? { capsule: deps.recoveryCapsule } : {}),
+      readFailedMarkers: async () => (await failures.read()).map((failure) => failure.marker),
+      hasSession: (sessionId) => sessions.has(sessionId),
+      reveal: async (sessionId) => {
+        await surfaces.revealSession(sessionId).catch(() => null)
+      },
+      now: surfaces.now,
+      enqueue: enqueueRecoveryOperation
+    })
 
   const list = async (): Promise<StructuredAgentSessionResumeCandidate[]> => {
     const markers = await readMarkers()
     await revealMarkers(markers)
     // A live chat remains an offer. The user may have opened it to inspect the context and still
     // explicitly choose whether Orca should ask the agent to continue.
-    return derive(markers, 'may-be-held')
+    const { candidates, superseded } = derive(markers, 'may-be-held')
+    retireSuperseded(superseded)
+    return candidates
   }
 
   const continuationHost: StructuredAgentSessionContinuationHost = {
     ...surfaces,
     sessions,
-    stillResumable: (marker, options) => derive([marker], 'may-be-held', options).length === 1
+    stillResumable: (marker, options) =>
+      derive([marker], 'may-be-held', options).candidates.length === 1
   }
 
   const run = async (
@@ -191,9 +171,9 @@ export function createStructuredAgentSessionRestartResume(
     const markers = await readActionMarkers(sessionIds)
     await revealMarkers(markers)
     const requested = new Set(sessionIds ?? markers.map((marker) => marker.sessionId))
-    const eligible = derive(markers, 'may-be-held').filter((candidate) =>
-      requested.has(candidate.sessionId)
-    )
+    const derived = derive(markers, 'may-be-held')
+    retireSuperseded(derived.superseded)
+    const eligible = derived.candidates.filter((candidate) => requested.has(candidate.sessionId))
     if (eligible.length === 0) {
       return []
     }
@@ -208,7 +188,7 @@ export function createStructuredAgentSessionRestartResume(
           ) ?? Promise.resolve([])
       )) ?? []
     const markersBySession = new Map(reserved.map((marker) => [marker.sessionId, marker]))
-    const candidates = derive(reserved, 'may-be-held')
+    const candidates = derive(reserved, 'may-be-held').candidates
     const attempts = failures.attempts(markersBySession)
 
     let outcomes: StructuredAgentSessionResumeOutcome[]
@@ -218,7 +198,7 @@ export function createStructuredAgentSessionRestartResume(
           admission,
           consumeMarker: async (sessionId) => {
             const marker = markersBySession.get(sessionId)
-            return marker !== undefined && derive([marker], 'may-be-held').length === 1
+            return marker !== undefined && derive([marker], 'may-be-held').candidates.length === 1
           },
           resume: async (sessionId) => {
             const holder = `restart-resume:${sessionId}`

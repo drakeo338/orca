@@ -6,7 +6,6 @@
 // resumable session, so deleting the matching guard turns that test red.
 
 import { describe, expect, it, vi } from 'vitest'
-import { AGENT_SESSION_RESUME_MARKER_TTL_MS } from '../../../shared/agent-session-resume-marker'
 import { structuredAgentSessionResumableSet } from './structured-agent-session-restart-resume-set'
 import {
   resumeStructuredAgentSessionsFromRestart,
@@ -67,7 +66,7 @@ describe('deriving what was working at teardown', () => {
         teardownId: TEARDOWN_CURRENT,
         providerHandleRoot: HANDLE_ROOT,
         latestUserItemId: null,
-        journalCursor: { epoch: 'epoch-1', sequence: 1 }
+        activity: { state: 'working', prompts: [], tasks: [] }
       }
     ])
   })
@@ -133,8 +132,9 @@ describe('deriving what was working at teardown', () => {
   })
 
   // The sidebar shows a chat blocked on the user as needing attention, and teardown cancels the
-  // prompt, so the chat is owed a resume that says which prompt it lost.
-  it('marks a turn that is waiting on the user', () => {
+  // prompt, so the chat is owed a resume that says which prompt it lost. The state and the prompt
+  // come from ONE journal read, so a `blocked` marker always names what it was blocked on.
+  it('marks a turn that is waiting on the user, with the prompt beside the state', () => {
     const [recorded] = markersAtTeardown({
       sessions: new Map([
         [
@@ -153,9 +153,15 @@ describe('deriving what was working at teardown', () => {
     })
 
     expect(recorded?.work).toEqual({ kind: 'turn', id: 'turn-1' })
+    expect(recorded?.activity).toEqual({
+      state: 'blocked',
+      prompts: [{ kind: 'approval', label: 'Run the command?' }],
+      tasks: []
+    })
   })
 
   // What the user hit: the lead had finished, its subagents had not, and the sidebar said working.
+  // The lead's OWN state stays `done` — its children are the work, carried in `tasks`.
   it('marks a settled lead whose subagent was still running, anchored on its last turn', () => {
     const markers = markersAtTeardown({
       sessions: new Map([
@@ -171,6 +177,37 @@ describe('deriving what was working at teardown', () => {
     })
 
     expect(markers.map((entry) => entry.work)).toEqual([{ kind: 'turn', id: 'turn-1' }])
+    expect(markers[0]?.activity).toEqual({
+      state: 'done',
+      prompts: [],
+      tasks: [{ kind: 'agent', label: 'Review loop 4' }]
+    })
+  })
+
+  // Settled roster rows are history; only what the fold counts live is described.
+  it('records only the live rows of the roster, bounded', () => {
+    const [recorded] = markersAtTeardown({
+      sessions: new Map([
+        [SESSION, { journal: journal([turnItem('turn-1', 'completed')]), hasProviderChild: true }]
+      ]),
+      getRecord: () => record(),
+      backgroundTasks: () => [
+        { id: 'gone', kind: 'agent', description: 'Finished agent', state: 'done' },
+        ...Array.from({ length: 20 }, (_, index) => ({
+          id: `live-${index}`,
+          kind: 'command' as const,
+          description: `Shell ${index}${'x'.repeat(300)}`,
+          state: 'working' as const
+        }))
+      ],
+      trigger: 'quit',
+      teardownId: TEARDOWN_CURRENT,
+      now: NOW
+    })
+
+    expect(recorded?.activity?.tasks).toHaveLength(16)
+    expect(recorded?.activity?.tasks.every((task) => task.kind === 'command')).toBe(true)
+    expect(recorded?.activity?.tasks.every((task) => task.label.length <= 200)).toBe(true)
   })
 
   it('marks a settled lead whose only live work is a monitor', () => {
@@ -315,7 +352,7 @@ describe('deriving what was working at teardown', () => {
 
 describe('the resumable set', () => {
   it('offers a genuinely working session exactly once', () => {
-    const candidates = resumableSet({ markers: [marker()] })
+    const { candidates } = resumableSet({ markers: [marker()] })
 
     expect(candidates).toHaveLength(1)
     expect(candidates[0]).toMatchObject({
@@ -328,17 +365,19 @@ describe('the resumable set', () => {
 
   // No marker means no teardown ever observed this session working, whatever its journal says.
   it('offers nothing for a stale running row with no marker', () => {
-    expect(resumableSet({ markers: [], items: [turnItem('turn-1', 'running')] })).toEqual([])
+    expect(
+      resumableSet({ markers: [], items: [turnItem('turn-1', 'running')] }).candidates
+    ).toEqual([])
   })
 
   it('refuses when the session has no resume cursor', () => {
-    expect(resumableSet({ markers: [marker()], chain: [] })).toEqual([])
+    expect(resumableSet({ markers: [marker()], chain: [] }).candidates).toEqual([])
   })
 
   // A cursor that moved since teardown is a different conversation than the one we marked.
   it('refuses when the resume cursor drifted after the marker was written', () => {
     expect(
-      resumableSet({ markers: [marker({ providerHandleRoot: 'codex:"other-thread"' })] })
+      resumableSet({ markers: [marker({ providerHandleRoot: 'codex:"other-thread"' })] }).candidates
     ).toEqual([])
   })
 
@@ -346,14 +385,12 @@ describe('the resumable set', () => {
   // leaf, so a key comparison goes stale ~1.4s after the marker is written and Claude is refused
   // forever. A resume that advances the leaf is continuity, not a fork.
   it('still offers a Claude session whose leaf advanced after the marker was written', () => {
-    const candidates = structuredAgentSessionResumableSet({
+    const { candidates } = structuredAgentSessionResumableSet({
       markers: [marker({ providerHandleRoot: CLAUDE_ROOT })],
       getRecord: () => claudeRecord('5aed93d6-advanced-leaf'),
       supportsRecord: () => true,
-      activity: () => undefined,
       latestPrompt: () => '',
-      latestUserItemId: () => null,
-      now: NOW
+      latestUserItemId: () => null
     })
 
     expect(candidates).toHaveLength(1)
@@ -365,23 +402,34 @@ describe('the resumable set', () => {
         markers: [marker({ providerHandleRoot: CLAUDE_ROOT })],
         getRecord: () => claudeRecord(null, 'prov-session-2'),
         supportsRecord: () => true,
-        activity: () => undefined,
         latestPrompt: () => '',
-        latestUserItemId: () => null,
-        now: NOW
-      })
+        latestUserItemId: () => null
+      }).candidates
     ).toEqual([])
   })
 
-  it('refuses a marker that has outlived its expiry', () => {
-    expect(
-      resumableSet({ markers: [marker()], now: NOW + AGENT_SESSION_RESUME_MARKER_TTL_MS + 1 })
-    ).toEqual([])
+  // An offer has no expiry: it ends only by the user's own actions, however old it is.
+  it('still offers a months-old marker', () => {
+    const monthsAgo = NOW - 90 * 24 * 60 * 60 * 1000
+    expect(resumableSet({ markers: [marker({ recordedAt: monthsAgo })] }).candidates).toHaveLength(
+      1
+    )
   })
 
-  // The user moving on is what withdraws an offer.
-  it('refuses once the user has sent a newer message', () => {
-    expect(resumableSet({ markers: [marker()], latestUserItemId: 'user-newer' })).toEqual([])
+  // The user moving on is what withdraws an offer — and it is reported for DELETION, not merely
+  // filtered, so the record does not have to be re-filtered on every read forever.
+  it('withdraws and reports for deletion once the user has sent a newer message', () => {
+    const withdrawn = marker()
+    const set = resumableSet({ markers: [withdrawn], latestUserItemId: 'user-newer' })
+
+    expect(set.candidates).toEqual([])
+    expect(set.superseded).toEqual([withdrawn])
+  })
+
+  // Structural refusals are NOT endings: a record this host cannot see right now must not delete
+  // a durable offer the user still owns.
+  it('does not report a structurally refused marker for deletion', () => {
+    expect(resumableSet({ markers: [marker()], chain: [] }).superseded).toEqual([])
   })
 
   // Teardown already judged the chat working; what the journal says after the restart — a turn
@@ -395,11 +443,11 @@ describe('the resumable set', () => {
     ['the provider asks the user', [turnItem('turn-1', 'interrupted'), pendingApproval()]],
     ['the journal holds no turn', []]
   ])('still offers the marked chat when %s', (_label, items) => {
-    expect(resumableSet({ markers: [marker()], items })).toHaveLength(1)
+    expect(resumableSet({ markers: [marker()], items }).candidates).toHaveLength(1)
   })
 
   it('offers a send that never became a turn', () => {
-    const candidates = resumableSet({
+    const { candidates } = resumableSet({
       markers: [marker({ work: { kind: 'submission', id: 'msg-1' } })],
       items: []
     })
@@ -408,9 +456,25 @@ describe('the resumable set', () => {
     expect(candidates[0]?.work).toEqual({ kind: 'submission', id: 'msg-1' })
   })
 
-  // A marker from a build that recorded only a working lead has no journal position to read from.
-  it('offers a marker with no journal cursor, with no activity to name', () => {
-    const [candidate] = resumableSet({ markers: [marker()] })
+  // The description IS the marker's stop-time snapshot; the journal cannot change it after the
+  // restart, whatever rows a reattached provider writes.
+  it('carries the marker snapshot as the offer activity, untouched by the journal', () => {
+    const activity = {
+      state: 'done' as const,
+      prompts: [],
+      tasks: [{ kind: 'agent' as const, label: 'Review loop 4' }]
+    }
+    const { candidates } = resumableSet({
+      markers: [marker({ activity })],
+      items: [turnItem('turn-1', 'completed'), turnItem('wake', 'running')]
+    })
+
+    expect(candidates[0]?.activity).toEqual(activity)
+  })
+
+  // A marker from a build that recorded no snapshot has no activity to name.
+  it('offers a marker with no snapshot, with no activity to name', () => {
+    const [candidate] = resumableSet({ markers: [marker()] }).candidates
 
     expect(candidate).toBeDefined()
     expect(candidate).not.toHaveProperty('activity')

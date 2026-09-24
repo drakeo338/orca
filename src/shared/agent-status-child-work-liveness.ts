@@ -29,7 +29,7 @@ export function isAgentChildWorkKind(kind: AgentChildWorkKind): boolean {
  *  waits on this rule before stopping an unheld child, so a producer that reported a failure IN
  *  PLACE rather than settling it would pin `working` AND keep that child alive until quit, an
  *  explicit close, or `ended`. */
-function isLiveChildWork(child: AgentChildWorkLivenessCandidate): boolean {
+export function isLiveChildWork(child: AgentChildWorkLivenessCandidate): boolean {
   return child.state !== 'done' && child.state !== 'idle'
 }
 

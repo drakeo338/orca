@@ -11,7 +11,6 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionResumeMarker } from '../../../shared/agent-session-resume-marker'
-import { structuredAgentSessionRestartActivity } from './structured-agent-session-restart-cut-off'
 import { structuredAgentSessionResumableSet } from './structured-agent-session-restart-resume-set'
 
 export const SESSION = 'session-working-1'
@@ -204,33 +203,13 @@ export function resumableSet(input: {
   markers: AgentSessionResumeMarker[]
   items?: AgentJournalRenderItem[]
   chain?: AgentSessionRecord['providerHandleChain']
-  now?: number
   latestUserItemId?: string | null
-  epoch?: string
-  /** Revisions a later row in `items` overwrote. */
-  history?: AgentJournalRenderItem[]
 }) {
-  const items = input.items ?? [turnItem('turn-1', 'interrupted')]
   return structuredAgentSessionResumableSet({
     markers: input.markers,
     getRecord: () => record(input.chain === undefined ? {} : { chain: input.chain }),
     supportsRecord: () => true,
-    // In these fixtures an item's sequence stands for the row that last revised it; `history` adds
-    // the earlier revisions a later one overwrote.
-    activity: (entry) =>
-      structuredAgentSessionRestartActivity({
-        marker: entry,
-        items,
-        revisionsSinceCursor:
-          entry.journalCursor && entry.journalCursor.epoch === (input.epoch ?? EPOCH)
-            ? [...(input.history ?? []), ...items]
-                .filter((item) => item.sequence > (entry.journalCursor?.sequence ?? Infinity))
-                .sort((left, right) => left.sequence - right.sequence)
-                .map(({ itemId, body }) => ({ itemId, body }))
-            : null
-      }),
     latestPrompt: () => 'fix the auth bug',
-    latestUserItemId: () => input.latestUserItemId ?? null,
-    now: input.now ?? NOW
+    latestUserItemId: () => input.latestUserItemId ?? null
   })
 }

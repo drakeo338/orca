@@ -8,14 +8,15 @@ import {
 } from './structured-agent-session-host-test-data'
 
 // What the user hit: the lead had finished, its subagent had not. The offer names the subagent
-// from the row the child's close settled, which lands before eviction's own settlement.
-it('offers a chat whose subagent the restart stopped, named from its journal', async () => {
+// from the roster snapshot taken BEFORE the child stopped — the close that follows settles the
+// row as unverifiable, and that settlement must not erase the description.
+it('offers a chat whose subagent the restart stopped, named from the stop-time snapshot', async () => {
   const { host, marker } = await interruptedRestart('children')
   expect(marker?.work).toEqual({ kind: 'turn', id: 'settled-turn' })
   expect(await host.restartResume.list()).toMatchObject([
     {
       sessionId: SESSION,
-      activity: { midReply: false, prompts: [], tasks: [{ kind: 'agent', label: 'Review loop 4' }] }
+      activity: { state: 'done', prompts: [], tasks: [{ kind: 'agent', label: 'Review loop 4' }] }
     }
   ])
 })

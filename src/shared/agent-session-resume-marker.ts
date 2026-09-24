@@ -1,23 +1,28 @@
 // What a teardown recorded about a session that was genuinely working when the app went away.
 //
 // A marker is written ONLY by the teardown path, from the live runtime — never derived from a
-// persisted `running` row, which survives a crash and would resurrect work nobody is doing. It is
-// the first of two records a resume needs: the journal's own turn record has to name the same turn
-// before anything is handed a provider child again.
+// persisted `running` row, which survives a crash and would resurrect work nobody is doing. The
+// marker is both the offer and its description: what the session was doing is captured on it at
+// the stop, because that fact exists only in memory at that moment — the provider rewrites the
+// journal in its own words on reattach.
 //
-// The capsule is consumed before offers enter runtime memory; unused witnesses also expire.
+// A marker has no expiry. It ends only by the user's own actions: a newer message in that chat, a
+// successful resume, a dismissal, or closing the chat — each of which deletes it.
 
 import { z } from 'zod'
-import type { AgentJournalCursor } from './agent-session-journal-types'
+import { AGENT_STATUS_STATES } from './agent-status-types'
+import { AGENT_CHILD_WORK_KINDS } from './agent-status-child-work'
+import {
+  AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH,
+  AGENT_SESSION_RESTART_ACTIVITY_MAX_PROMPTS,
+  AGENT_SESSION_RESTART_ACTIVITY_MAX_TASKS
+} from './agent-session-restart-activity'
+import type { AgentSessionRestartActivity } from './agent-session-restart-activity'
 
 /** Why the app went away. Recorded because an update install is a restart the user did not choose,
  *  and the surface that offers the resume says so. */
 export const AGENT_SESSION_RESUME_TRIGGERS = ['quit', 'update'] as const
 export type AgentSessionResumeTrigger = (typeof AGENT_SESSION_RESUME_TRIGGERS)[number]
-
-/** A marker older than this is ignored and pruned: relaunching a week later must not restart a turn
- *  the user has long since forgotten, and an obligation with no expiry strands forever. */
-export const AGENT_SESSION_RESUME_MARKER_TTL_MS = 24 * 60 * 60 * 1000
 
 /** How an acted-on offer ended without the agent carrying on. `refused` is a definite no from the
  *  host or provider; `unconfirmed` means the continuation may have gone out and nothing proved it. */
@@ -61,17 +66,15 @@ export type AgentSessionResumeMarker = {
   /** Stable teardown identity for continuation deduplication, not launch ancestry. */
   teardownId: string
   /**
-   * Where this session's journal stood right before teardown stopped its child. Everything the
-   * teardown cuts off lands after it — the adapter marking the subagents and background tasks it
-   * can no longer hear from `unverifiable` as the child closes, then eviction cancelling prompts
-   * and failing tool calls — so the journal alone names what the session was doing, for display;
-   * the marker keeps no copy of it.
+   * What the session was doing, captured at the same stop-time snapshot that decided the offer.
+   * The dialog row, the status bar and the wire candidate read ONLY this; nothing re-reads the
+   * journal after the restart for the description.
    *
-   * Absent on markers from builds that recorded only a working lead. Optional so an older build
-   * strips it and still reads the marker; `work` keeps its two kinds for the same reason, because
-   * a kind that build cannot parse makes it reject the whole capsule.
+   * Absent on markers from builds that recorded no snapshot. Optional so an older build strips it
+   * and still reads the marker; `work` keeps its two kinds for the same reason, because a kind
+   * that build cannot parse makes it reject the whole capsule.
    */
-  journalCursor?: AgentJournalCursor
+  activity?: AgentSessionRestartActivity
 }
 
 const MAX_FIELD_LENGTH = 512
@@ -84,6 +87,18 @@ const agentSessionResumeWorkSchema = z.object({
   id: markerField
 })
 
+const activityLabel = z.string().max(AGENT_SESSION_RESTART_ACTIVITY_MAX_LABEL_LENGTH)
+
+const agentSessionRestartActivitySchema = z.object({
+  state: z.enum(AGENT_STATUS_STATES),
+  prompts: z
+    .array(z.object({ kind: z.enum(['approval', 'question']), label: activityLabel }))
+    .max(AGENT_SESSION_RESTART_ACTIVITY_MAX_PROMPTS),
+  tasks: z
+    .array(z.object({ kind: z.enum(AGENT_CHILD_WORK_KINDS), label: activityLabel }))
+    .max(AGENT_SESSION_RESTART_ACTIVITY_MAX_TASKS)
+})
+
 /**
  * The single parse boundary for a marker.
  *
@@ -93,6 +108,8 @@ const agentSessionResumeWorkSchema = z.object({
  * turned into a typed one exactly once, here, and never read field-by-field off `unknown`.
  *
  * Unknown keys pass: a marker written by a slightly newer build must not read as malformed.
+ * The activity is display only, so one this build cannot read is dropped rather than costing
+ * the whole offer.
  */
 const agentSessionResumeMarkerSchema = z.object({
   sessionId: markerField,
@@ -102,23 +119,16 @@ const agentSessionResumeMarkerSchema = z.object({
   trigger: z.enum(AGENT_SESSION_RESUME_TRIGGERS),
   providerHandleRoot: markerField,
   teardownId: markerField,
-  journalCursor: z
-    .object({ epoch: markerField, sequence: z.number().int().nonnegative() })
-    .optional()
+  activity: agentSessionRestartActivitySchema.optional().catch(undefined)
 })
 
 /** The marker this value describes, or null when it is not one. Null is always a drop, never a
  *  throw: a malformed advisory marker must never make a user's sessions unreadable. */
 export function parseAgentSessionResumeMarker(value: unknown): AgentSessionResumeMarker | null {
   const parsed = agentSessionResumeMarkerSchema.safeParse(value)
-  return parsed.success ? parsed.data : null
-}
-
-export function isExpiredAgentSessionResumeMarker(
-  marker: AgentSessionResumeMarker,
-  now: number
-): boolean {
-  // A marker from the future is a clock that moved backwards, not a fresh one; treat it as expired
-  // rather than let it outlive every TTL.
-  return now < marker.recordedAt || now - marker.recordedAt > AGENT_SESSION_RESUME_MARKER_TTL_MS
+  if (!parsed.success) {
+    return null
+  }
+  const { activity, ...marker } = parsed.data
+  return activity === undefined ? marker : { ...marker, activity }
 }

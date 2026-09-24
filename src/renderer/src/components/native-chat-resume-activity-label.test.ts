@@ -7,26 +7,37 @@ describe('resumeActivityLabel', () => {
   })
 
   it('names a lead that was mid-reply', () => {
-    expect(resumeActivityLabel({ midReply: true, prompts: [], tasks: [] })?.summary).toBe(
+    expect(resumeActivityLabel({ state: 'working', prompts: [], tasks: [] })?.summary).toBe(
       'Was mid-reply'
     )
   })
 
-  // The prompt is what the user was being asked, so it replaces the mid-reply wording.
+  // A blocked lead names the prompt the user was being asked, not a reply of its own.
   it('names the prompt a waiting chat lost', () => {
     expect(
       resumeActivityLabel({
-        midReply: true,
+        state: 'blocked',
         prompts: [{ kind: 'approval', label: 'Bash' }],
         tasks: []
       })?.summary
     ).toBe('Waiting for your approval: Bash')
   })
 
+  // A settled lead says nothing about itself; its children are the whole story.
+  it('says nothing for a settled lead beyond its tasks', () => {
+    expect(
+      resumeActivityLabel({
+        state: 'done',
+        prompts: [],
+        tasks: [{ kind: 'agent', label: 'Review loop 4' }]
+      })?.summary
+    ).toBe('Subagent running: Review loop 4')
+  })
+
   it('tells subagents apart from monitoring, as the sidebar does', () => {
     expect(
       resumeActivityLabel({
-        midReply: false,
+        state: 'done',
         prompts: [],
         tasks: [
           { kind: 'agent', label: 'Review loop 4' },
@@ -42,7 +53,7 @@ describe('resumeActivityLabel', () => {
   it('counts several of a kind instead of naming them', () => {
     expect(
       resumeActivityLabel({
-        midReply: false,
+        state: 'done',
         prompts: [],
         tasks: [
           { kind: 'agent', label: 'One' },
@@ -52,5 +63,9 @@ describe('resumeActivityLabel', () => {
         ]
       })?.summary
     ).toBe('2 subagents running · Monitoring 2 background tasks')
+  })
+
+  it('returns null for a settled lead with nothing running', () => {
+    expect(resumeActivityLabel({ state: 'done', prompts: [], tasks: [] })).toBeNull()
   })
 })

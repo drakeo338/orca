@@ -11,10 +11,15 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
-import { structuredAgentSessionAgentStatus } from '../../../shared/structured-agent-session-agent-status'
+import {
+  structuredAgentSessionAgentStatus,
+  type StructuredAgentSessionAgentStatus
+} from '../../../shared/structured-agent-session-agent-status'
 import { projectStructuredAgentSessionStatus } from '../../../shared/structured-agent-session-projection'
 
-export function structuredAgentSessionShowsWork(
+/** The full row the sidebar's fold would show, for callers that need the lead's own state beside
+ *  the working answer — the teardown snapshot records both from this one computation. */
+export function structuredAgentSessionShownStatus(
   journal: {
     items: readonly AgentJournalRenderItem[]
     submissions: readonly AgentJournalSubmission[]
@@ -22,12 +27,21 @@ export function structuredAgentSessionShowsWork(
   backgroundTasks: readonly AgentSessionBackgroundTask[] | null | undefined,
   /** The session's lease fence, as the status feed passes it: a send from an older one is not work. */
   fence: number | undefined
-): boolean {
+): StructuredAgentSessionAgentStatus {
   const status = projectStructuredAgentSessionStatus(journal.items, journal.submissions, fence)
-  return (
-    structuredAgentSessionAgentStatus({
-      status,
-      ...(backgroundTasks ? { backgroundTasks: [...backgroundTasks] } : {})
-    }).state !== 'done'
-  )
+  return structuredAgentSessionAgentStatus({
+    status,
+    ...(backgroundTasks ? { backgroundTasks: [...backgroundTasks] } : {})
+  })
+}
+
+export function structuredAgentSessionShowsWork(
+  journal: {
+    items: readonly AgentJournalRenderItem[]
+    submissions: readonly AgentJournalSubmission[]
+  },
+  backgroundTasks: readonly AgentSessionBackgroundTask[] | null | undefined,
+  fence: number | undefined
+): boolean {
+  return structuredAgentSessionShownStatus(journal, backgroundTasks, fence).state !== 'done'
 }

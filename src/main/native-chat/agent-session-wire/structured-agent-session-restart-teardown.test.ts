@@ -133,8 +133,13 @@ it('marks a settled chat whose subagent was still running', async () => {
   await host.flushAllStreamedEvents()
   const [offered] = await new AgentSessionRecoveryCapsule(root).list(NOW)
   expect(offered?.work).toEqual({ kind: 'turn', id: 'settled' })
-  // Where the journal stood once the child stopped: the settlement's rows land after it.
-  expect(offered?.journalCursor).toMatchObject({ sequence: expect.any(Number) })
+  // The description is captured BEFORE the stop, off the roster the sidebar was still showing;
+  // eviction clears that roster and settles the rows moments later.
+  expect(offered?.activity).toEqual({
+    state: 'done',
+    prompts: [],
+    tasks: [{ kind: 'agent', label: 'Review loop 4' }]
+  })
 })
 
 // The snapshot is kept only once the stop is proven: a child that may still be running was not cut

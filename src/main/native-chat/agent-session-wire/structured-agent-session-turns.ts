@@ -43,7 +43,6 @@ export type AgentSessionTurnContext = {
   publish: () => void
   /** Drains provider lifecycle already accepted by the execution host. */
   flushStreamedEvents: () => Promise<void>
-  hasPendingStreamedEvents?: () => boolean
   /** Re-derives authorization after submission persistence, immediately before provider dispatch. */
   beforeDispatch?: () => void
   now: () => number
@@ -55,26 +54,6 @@ export type TurnOutcome<TValue> =
 
 function invalid(message: string): { ok: false; refusal: AgentSessionWireRefusal } {
   return { ok: false, refusal: { code: 'agent_session_operation_invalid', message } }
-}
-
-/** Best effort: drains accepted provider events until none are pending or the admission bound
- *  passes. Never itself a refusal: a provider that keeps streaming is not a reason to fail a send
- *  the user asked for, and the pre-dispatch check judges whatever the journal holds by then. */
-async function drainAdmissionEvidence(ctx: AgentSessionTurnContext): Promise<void> {
-  const deadline = Date.now() + AGENT_SESSION_ADMISSION_BARRIER_TIMEOUT_MS
-  do {
-    const remaining = deadline - Date.now()
-    if (
-      remaining <= 0 ||
-      !(await withTimeout(
-        ctx.flushStreamedEvents().then(() => true),
-        remaining,
-        false
-      ))
-    ) {
-      return
-    }
-  } while (ctx.hasPendingStreamedEvents?.())
 }
 
 /** A thrown adapter error is indistinguishable from a lost reply, so it settles
@@ -91,14 +70,7 @@ async function dispatchSafely(
       clientMessageId,
       body,
       fence: ctx.fence,
-      ...(ctx.beforeDispatch
-        ? {
-            beforeDispatch: async () => {
-              await drainAdmissionEvidence(ctx)
-              ctx.beforeDispatch?.()
-            }
-          }
-        : {}),
+      ...(ctx.beforeDispatch ? { beforeDispatch: async () => ctx.beforeDispatch?.() } : {}),
       ...(requestedAt === undefined ? {} : { requestedAt })
     })
   } catch (error) {
