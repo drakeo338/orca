@@ -10,9 +10,13 @@ import {
   readManagedHookHostIdentity,
   scopeManagedHookHostIdentity
 } from './managed-hook-owner-identity'
+import {
+  defaultGrokHomePath,
+  GROK_HOME_PATH_MAX_LENGTH,
+  normalizeGrokHomePath
+} from '../../shared/grok-session-paths'
 
 const execFileAsync = promisify(execFile)
-const GROK_HOME_MAX_LENGTH = 4096
 const GROK_HOME_PROBE_TIMEOUT_MS = 8_000
 
 export type ManagedHookInstallSummary = {
@@ -20,29 +24,11 @@ export type ManagedHookInstallSummary = {
   errors: number
 }
 
-function defaultGrokHome(home: string): string {
-  return `${home.replace(/\/+$/, '') || home}/.grok`
-}
-
 function hasControlCharacter(value: string): boolean {
   return Array.from(value).some((character) => {
     const code = character.charCodeAt(0)
     return code <= 0x1f || code === 0x7f
   })
-}
-
-function normalizeGrokHome(candidate: string): string | null {
-  if (
-    candidate.length === 0 ||
-    candidate.length > GROK_HOME_MAX_LENGTH ||
-    candidate !== candidate.trim() ||
-    !candidate.startsWith('/') ||
-    candidate.includes('\\') ||
-    hasControlCharacter(candidate)
-  ) {
-    return null
-  }
-  return candidate.replace(/\/+$/, '') || '/'
 }
 
 function resolveLoginShell(): string {
@@ -54,7 +40,7 @@ function resolveLoginShell(): string {
 }
 
 export async function resolveRelayGrokHome(home: string, signal?: AbortSignal): Promise<string> {
-  const fallback = defaultGrokHome(home)
+  const fallback = defaultGrokHomePath(home)
   try {
     const shell = resolveLoginShell()
     const shellName = basename(shell)
@@ -63,10 +49,10 @@ export async function resolveRelayGrokHome(home: string, signal?: AbortSignal): 
     // GROK_HOME without opening two additional SSH exec channels.
     const { stdout } = await execFileAsync(
       shell,
-      [mode, `printenv GROK_HOME | head -c ${GROK_HOME_MAX_LENGTH + 1}`],
+      [mode, `printenv GROK_HOME | head -c ${GROK_HOME_PATH_MAX_LENGTH + 1}`],
       { encoding: 'utf8', timeout: GROK_HOME_PROBE_TIMEOUT_MS, signal }
     )
-    return normalizeGrokHome(stdout.split(/\r?\n/, 1)[0] ?? '') ?? fallback
+    return normalizeGrokHomePath(stdout.split(/\r?\n/, 1)[0] ?? '') ?? fallback
   } catch {
     signal?.throwIfAborted()
     return fallback

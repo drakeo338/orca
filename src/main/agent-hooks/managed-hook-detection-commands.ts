@@ -8,6 +8,7 @@ import { normalizeDisabledTuiAgents } from '../../shared/tui-agent-selection'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { TuiAgentDetectionCommand } from '../ipc/tui-agent-detection-commands'
 import { parseClaudeCliVersion } from '../claude/claude-session-end-hook-capability'
+import { normalizeGrokHomePath } from '../../shared/grok-session-paths'
 
 export type ManagedHookDetectionSettings = Partial<
   Pick<GlobalSettings, 'agentCmdOverrides' | 'disabledTuiAgents' | 'agentStatusHooksEnabled'>
@@ -49,9 +50,10 @@ export function detectedManagedHookAgents(values: unknown): AgentHookTarget[] {
 export function readManagedHookDetectionResult(value: unknown): {
   agents: AgentHookTarget[]
   claudeVersion: string | null
+  grokHome: string | null
 } {
   if (value === null || typeof value !== 'object') {
-    return { agents: [], claudeVersion: null }
+    return { agents: [], claudeVersion: null, grokHome: null }
   }
   const agents = detectedManagedHookAgents('agents' in value ? value.agents : null)
   const versions = 'versions' in value ? value.versions : null
@@ -59,10 +61,12 @@ export function readManagedHookDetectionResult(value: unknown): {
     versions !== null && typeof versions === 'object' && 'claude' in versions
       ? versions.claude
       : null
+  const rawGrokHome = 'grokHome' in value ? value.grokHome : null
   return {
     agents,
     claudeVersion: parseClaudeCliVersion(
       typeof rawClaudeVersion === 'string' ? rawClaudeVersion : null
-    )
+    ),
+    grokHome: normalizeGrokHomePath(typeof rawGrokHome === 'string' ? rawGrokHome : '')
   }
 }

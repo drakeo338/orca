@@ -18,7 +18,7 @@ const {
   isGitBashAvailableMock: vi.fn()
 }))
 
-vi.mock('child_process', () => {
+vi.mock('node:child_process', () => {
   const execFileWithPromisify = Object.assign(vi.fn(), {
     [Symbol.for('nodejs.util.promisify.custom')]: execFileAsyncMock
   })
@@ -240,6 +240,34 @@ describe('hasAbsoluteCommandPath', () => {
 })
 
 describe('PreflightHandler', () => {
+  it('reports the login-shell Grok home when Grok is detected', async () => {
+    execFileAsyncMock.mockImplementation(async (_file, args) => {
+      const script = String(args[1])
+      if (script.includes('GROK_HOME')) {
+        return { stdout: '/srv/grok\n' }
+      }
+      return { stdout: '__ORCA_AGENT_PATH__/home/dev/.local/bin/grok\n' }
+    })
+    const requestHandlers = new Map<string, (params: Record<string, unknown>) => Promise<unknown>>()
+    const dispatcher = {
+      onRequest: vi.fn(
+        (method: string, handler: (params: Record<string, unknown>) => Promise<unknown>) => {
+          requestHandlers.set(method, handler)
+        }
+      )
+    }
+    new PreflightHandler(dispatcher as never)
+
+    await expect(
+      requestHandlers.get('preflight.detectAgents')!({
+        commands: [{ id: 'grok', cmd: 'grok' }]
+      })
+    ).resolves.toEqual({
+      agents: ['grok'],
+      grokHome: '/srv/grok'
+    })
+  })
+
   it('reports a requested version from the resolved execution-host binary', async () => {
     execFileAsyncMock.mockResolvedValue({
       stdout: '__ORCA_AGENT_PATH__/home/dev/.local/bin/claude\n'
