@@ -56,6 +56,7 @@ export function createStructuredSessionMocks() {
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
     ownerWorktreeId: widened<string | null>('wt-1'),
     fileLinkContext: widened<NativeChatFileLinkContext | null>(DEFAULT_FILE_LINK_CONTEXT),
+    launchFailureReason: nullable<string>(),
     retryLaunch: vi.fn<(...args: never[]) => unknown>(),
     lifecycleLookup: vi.fn<(worktreeId: string, sessionId: string) => void>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
@@ -94,7 +95,9 @@ export function createStructuredSessionMocks() {
 
   const moduleFactories = {
     structuredAgentSessionClient: () => ({
-      callStructuredAgentSession: mocks.call
+      callStructuredAgentSession: mocks.call,
+      // The pane activates the host status feed for its startup phase; nothing here drives it.
+      subscribeStructuredAgentSessionStatus: async () => ({ unsubscribe: () => {} })
     }),
     useStructuredAgentSession: async () => {
       const { useStructuredAgentSessionOutbox } =
@@ -190,7 +193,9 @@ export function createStructuredSessionMocks() {
       useStructuredAgentSessionLaunchLifecycle: (worktreeId: string, sessionId: string) => {
         mocks.lifecycleLookup(worktreeId, sessionId)
         return mocks.launchLifecycle
-      }
+      },
+      getStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
+      useStructuredAgentSessionLaunchFailureReason: () => mocks.launchFailureReason
     }),
     useNativeChatFontScale: () => ({
       useNativeChatFontScale: () => ({ scale: 1 })
@@ -247,6 +252,7 @@ export function createStructuredSessionMocks() {
     mocks.launchLifecycle = null
     mocks.ownerWorktreeId = 'wt-1'
     mocks.fileLinkContext = DEFAULT_FILE_LINK_CONTEXT
+    mocks.launchFailureReason = null
     mocks.retryLaunch.mockReset()
     mocks.lifecycleLookup.mockReset()
     mocks.controllerProps = null

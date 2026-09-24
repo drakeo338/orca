@@ -62,6 +62,7 @@ export function useStructuredAgentSessionHold(args: {
       },
       (error: unknown) => {
         const message = holdRefusalMessage(error)
+        console.warn('[structured-agent-session] hold failed:', error)
         if (current) {
           setRefusal(message === null ? null : { holdKey, message })
         }

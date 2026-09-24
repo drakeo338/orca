@@ -1,5 +1,6 @@
-import { isAgentSessionLaunchArgs } from './agent-session-launch-inputs'
 import { isAgentSessionRewindRecord, type AgentSessionRewindRecord } from './agent-session-rewind'
+import { isAgentSessionLaunchArgs } from './agent-session-launch-args'
+import { isAgentSessionSurfaceTabId } from './agent-session-surface-tab-id'
 import { isAgentSessionConversationName } from './agent-session-conversation-name'
 /**
  * Durable agent-session record and its single-writer lease.
@@ -133,13 +134,16 @@ export type AgentSessionRecord = {
   /** The directory the provider first launched in, in the execution host's path syntax. Floating
    *  sessions resume here; worktree and folder ids still resolve by id to their durable place. */
   workspacePath?: string
-  /** Provider options acknowledged for the next turn, restored across owner replacement. */
+  /** Provider options the user chose, replayed whenever a new owner starts the session. */
   options?: Record<string, string>
   rewind?: AgentSessionRewindRecord
   conversationCommand?: AgentSessionConversationCommandRecord
   /** The name Orca gave this conversation, so a later acquisition need not name it again. */
   conversationName?: string
   launchArgs?: AgentSessionLaunchArgs
+  /** The id of the tab that shows this conversation on every client: host-owned and pinned once;
+   *  readers copy it, never derive it. Older records are backfilled at load with the derived id. */
+  surfaceTabId?: string
   lease: AgentSessionLease
   createdAt: number
   updatedAt: number
@@ -154,6 +158,8 @@ export type AgentSessionOptionsReplacement = {
 
 const MAX_ID_LENGTH = 512
 const MAX_PATH_LENGTH = 4096
+const MAX_LAUNCH_ENV_ENTRIES = 256
+const MAX_LAUNCH_ENV_VALUE_LENGTH = 65_536
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
 
 function isBoundedString(value: unknown, max: number): value is string {
@@ -241,6 +247,22 @@ export function isAgentSessionOptions(value: unknown): value is Record<string, s
     entries.every(
       ([key, option]) =>
         isBoundedString(key, MAX_ID_LENGTH) && isBoundedString(option, MAX_ID_LENGTH)
+    )
+  )
+}
+
+export function isAgentSessionLaunchEnv(value: unknown): value is AgentSessionLaunchEnv {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false
+  }
+  const entries = Object.entries(value)
+  return (
+    entries.length <= MAX_LAUNCH_ENV_ENTRIES &&
+    entries.every(
+      ([key, entry]) =>
+        isBoundedString(key, MAX_ID_LENGTH) &&
+        typeof entry === 'string' &&
+        entry.length <= MAX_LAUNCH_ENV_VALUE_LENGTH
     )
   )
 }
@@ -337,6 +359,7 @@ export function isAgentSessionRecord(value: unknown): value is AgentSessionRecor
     (record.conversationName === undefined ||
       isAgentSessionConversationName(record.conversationName)) &&
     (record.launchArgs === undefined || isAgentSessionLaunchArgs(record.launchArgs)) &&
+    (record.surfaceTabId === undefined || isAgentSessionSurfaceTabId(record.surfaceTabId)) &&
     !Object.hasOwn(record, 'launchEnv') &&
     isAgentSessionLease(record.lease) &&
     record.lease.sessionId === record.sessionId &&

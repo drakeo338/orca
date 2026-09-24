@@ -1,10 +1,11 @@
 import { settlePostAcquisitionAttachFailure } from './structured-agent-session-attach-failure'
 import {
-  AgentSessionAcquisitionExitUnprovenError,
-  AgentSessionAcquisitionRootExitObservedError,
-  AgentSessionAcquisitionRefusal,
-  isAgentSessionPreSpawnError,
-  type StructuredAgentSessionAdapter
+  failedAcquisitionRefusal,
+  failedAcquisitionSettlement
+} from './structured-agent-session-failed-create-refusal'
+import type {
+  StructuredAgentSessionAdapter,
+  StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
 // The host supplies owner authority; this flow reserves, proves, and publishes the session.
 
@@ -56,7 +57,8 @@ export type AttachFlowInput = {
   onAttached: (
     attached: AttachedJournal,
     acquisitionGeneration: string | null,
-    acquiredOwner: boolean
+    acquiredOwner: boolean,
+    providerChildPhase: StructuredAgentSessionProviderChildPhase
   ) => Promise<void> | void
   /** Host-owned provider sink, bound to the journal inside `onAttached`. */
   eventSink?: StructuredAgentSessionEventSink
@@ -66,16 +68,6 @@ export type AttachFlowInput = {
   beforeJournalOpen?: () => Promise<void> | void
   /** Closes and removes partial publication after journal attachment fails. */
   onAttachFailed?: () => Promise<void>
-}
-
-/** A refusal raised while resolving the launch arrives wrapped as pre-spawn proof; keep both. */
-function acquisitionRefusalOf(error: unknown): AgentSessionAcquisitionRefusal | null {
-  if (error instanceof AgentSessionAcquisitionRefusal) {
-    return error
-  }
-  return isAgentSessionPreSpawnError(error) && error.cause instanceof AgentSessionAcquisitionRefusal
-    ? error.cause
-    : null
 }
 
 export async function performAttach(
@@ -102,6 +94,7 @@ export async function performAttach(
   let record: AgentSessionRecord
   let acquisitionGeneration: string | null = null
   let acquiredOwner = false
+  let providerChildPhase: StructuredAgentSessionProviderChildPhase = 'ready'
   let reservedRecord: AgentSessionRecord | null = null
   let unsupportedReservationSettlementAttempted = false
   let replayed = false
@@ -171,38 +164,13 @@ export async function performAttach(
       )
       record = acquired.record
       acquisitionGeneration = acquired.acquisitionGeneration
+      providerChildPhase = acquired.providerChildPhase
       acquiredOwner = true
     }
   } catch (error) {
-    const refusal = acquisitionRefusalOf(error)
     const spawnToken = reservedRecord?.lease.reservedSpawnToken
     if (reservedRecord && spawnToken && !unsupportedReservationSettlementAttempted) {
       // Settle processless proof and failed operation atomically.
-      const exitProof = isAgentSessionPreSpawnError(error)
-        ? 'processless'
-        : error instanceof AgentSessionAcquisitionExitUnprovenError
-          ? 'unproven'
-          : error instanceof AgentSessionAcquisitionRootExitObservedError
-            ? 'root-exit-observed'
-            : 'exit-proven'
-      const outcome =
-        error instanceof AgentSessionAcquisitionExitUnprovenError
-          ? {
-              status: 'failed' as const,
-              code: 'agent_session_ownership_unknown',
-              message: error.message
-            }
-          : refusal
-            ? {
-                status: 'failed' as const,
-                code: refusal.code,
-                message: refusal.message
-              }
-            : {
-                status: 'failed' as const,
-                code: 'agent_session_operation_invalid',
-                message: error instanceof Error ? error.message : String(error)
-              }
       try {
         await store.settleFailedAcquisition({
           sessionId,
@@ -210,8 +178,7 @@ export async function performAttach(
           spawnToken,
           callerKey: input.callerKey,
           operationId: params.envelope.clientOperationId,
-          outcome,
-          exitProof,
+          ...failedAcquisitionSettlement(error),
           now: input.now()
         })
       } catch (settlementError) {
@@ -221,17 +188,16 @@ export async function performAttach(
         )
       }
     }
-    if (refusal) {
-      return { ok: false, refusal: { code: refusal.code, message: refusal.message } }
-    }
-    return {
-      ok: false,
-      refusal: classifyStoreFailure(
-        error,
-        store.getRecord(sessionId)?.lease.runtimeFence ?? null,
-        store.getRecord(sessionId)
-      )
-    }
+    return (
+      failedAcquisitionRefusal(error) ?? {
+        ok: false,
+        refusal: classifyStoreFailure(
+          error,
+          store.getRecord(sessionId)?.lease.runtimeFence ?? null,
+          store.getRecord(sessionId)
+        )
+      }
+    )
   }
 
   let attached: AttachedJournal
@@ -245,7 +211,7 @@ export async function performAttach(
       providerHistoryWindow
     })
     await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
-    await input.onAttached(attached, acquisitionGeneration, acquiredOwner)
+    await input.onAttached(attached, acquisitionGeneration, acquiredOwner, providerChildPhase)
     await store.recordOperationOutcome({
       callerKey: input.callerKey,
       operationId: params.envelope.clientOperationId,
@@ -265,7 +231,8 @@ export async function performAttach(
       sessionId,
       fence,
       page: readAgentSessionHydrationPage(attached.journal, fence),
-      unconfirmedClientMessageIds: attached.unconfirmedClientMessageIds
+      unconfirmedClientMessageIds: attached.unconfirmedClientMessageIds,
+      ...(record.surfaceTabId ? { tabId: record.surfaceTabId } : {})
     }
   }
 }

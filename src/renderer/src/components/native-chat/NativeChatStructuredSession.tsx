@@ -24,6 +24,8 @@ import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-a
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
 import { NativeChatDeliveryRetry } from './NativeChatDeliveryRetry'
+import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
+import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 
 function encodeQuestionAnswer(questionId: string, answer: string): string {
@@ -36,6 +38,9 @@ export function NativeChatStructuredSession(
   const ownerWorktreeId = useNativeChatTabOwnerWorktreeId(props.tabId)
   const fileLinkContext = useNativeChatFileLinkContext(props.tabId)
   const provisionalLaunch = useNativeChatProvisionalLaunch(ownerWorktreeId, props.sessionId)
+  const { sendThroughRelaunch } = provisionalLaunch
+  // The host's own word on whether the provider child has answered startup yet.
+  const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
   const controller = useStructuredAgentSession({
     ...props,
     transportEnabled: provisionalLaunch.transportEnabled
@@ -160,12 +165,14 @@ export function NativeChatStructuredSession(
       : null
     return {
       send: (text: string, attachments: readonly { id: string; path: string }[]): boolean =>
-        controller.send(
-          text,
-          attachments.map((attachment) => ({
-            path: attachment.path,
-            previewUri: attachment.path
-          }))
+        sendThroughRelaunch(() =>
+          controller.send(
+            text,
+            attachments.map((attachment) => ({
+              path: attachment.path,
+              previewUri: attachment.path
+            }))
+          )
         ),
       dispatchCommand: (text: string) =>
         dispatchStructuredAgentSessionComposerCommand(text, {
@@ -194,7 +201,15 @@ export function NativeChatStructuredSession(
       runtimeEnvironmentId:
         props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
     }
-  }, [controller, optionPickerRequest, ownerWorktreeId, props.agent, props.sessionId, props.target])
+  }, [
+    controller,
+    optionPickerRequest,
+    ownerWorktreeId,
+    props.agent,
+    props.sessionId,
+    props.target,
+    sendThroughRelaunch
+  ])
 
   return (
     <div
@@ -308,10 +323,13 @@ export function NativeChatStructuredSession(
       />
       <NativeChatLaunchRetry
         lifecycle={provisionalLaunch.lifecycle}
+        failureReason={provisionalLaunch.failureReason}
         onRetry={provisionalLaunch.retry}
       />
       <NativeChatStructuredSessionStatus
         sessionId={props.sessionId}
+        agentLabel={structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')}
+        startupPhase={startupPhase}
         error={controller.error}
         composerError={composerError}
         isVisible={props.isVisible}
