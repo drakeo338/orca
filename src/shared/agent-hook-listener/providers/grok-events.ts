@@ -177,7 +177,9 @@ export function normalizeGrokEvent(
   const resolution = foldAgentLeadStatus({
     leadState,
     childWorkLiveness:
-      isTurnEnd && !sessionBoundary
+      // Why: idle_prompt means "turn over, user idle", not "tasks done" (measured: it fires with
+      // a subagent still running), so the idle restatement folds with the same inventory.
+      (isTurnEnd || isIdlePrompt) && !sessionBoundary
         ? grokChildWorkLivenessAfterTurnEnd(state, paneKey, hookPayload)
         : null
   })
@@ -220,7 +222,7 @@ export function normalizeGrokEvent(
     lastAssistantMessage: snapshot.lastAssistantMessage,
     lastAssistantMessageIsToolOutput: snapshot.lastAssistantMessageIsToolOutput,
     ...(resolution.workingMode ? { workingMode: resolution.workingMode } : {}),
-    // Why: derived from the main agent, so the idle backstop that settles a cancelled turn held open by a task still reads interrupted.
+    // Why: derived from the main agent, so any later restatement that settles a cancelled turn still reads interrupted.
     ...(mainAgent.outcome === 'cancellation' ? { interrupted: true } : {}),
     ...(sessionBoundary ? { sessionBoundary: true } : {}),
     mainAgent
