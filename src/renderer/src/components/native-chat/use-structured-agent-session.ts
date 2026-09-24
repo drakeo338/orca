@@ -18,6 +18,7 @@ import { useStructuredAgentSessionTransportState } from './use-structured-agent-
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
+import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
@@ -32,13 +33,20 @@ export function useStructuredAgentSession(args: {
   transportEnabled?: boolean
 }) {
   const { agent, isVisible, sessionId, target, transportEnabled = true } = args
-  const { state, loadingOlder, loadOlder, mutate, writeError, providerVisible } =
-    useStructuredAgentSessionTransport({
-      sessionId,
-      target,
-      isVisible,
-      enabled: transportEnabled
-    })
+  const {
+    state,
+    loadingOlder,
+    olderHistoryGeneration,
+    loadOlder,
+    mutate,
+    writeError,
+    providerVisible
+  } = useStructuredAgentSessionTransport({
+    sessionId,
+    target,
+    isVisible,
+    enabled: transportEnabled
+  })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
@@ -46,7 +54,8 @@ export function useStructuredAgentSession(args: {
     optionSnapshot,
     optionSurface,
     setStructuredOption,
-    threadGoal: threadGoalSupport
+    threadGoal: threadGoalSupport,
+    contextUsage: contextUsageSupport
   } = useStructuredAgentSessionOptions({
     agent,
     sessionId,
@@ -55,6 +64,7 @@ export function useStructuredAgentSession(args: {
     providerVisible,
     fence: state.fence,
     turnId: transportState.turnId,
+    unloadedTurnRevisions: state.unloadedTurnRevisions,
     mutate
   })
   const outboxController = useStructuredAgentSessionOutbox({
@@ -69,6 +79,10 @@ export function useStructuredAgentSession(args: {
     support: threadGoalSupport,
     mutate
   })
+  const contextUsage = useStructuredAgentSessionContextUsage(
+    transportState.journalItems,
+    contextUsageSupport
+  )
 
   const railOutline = useStructuredAgentSessionRailOutline({
     sessionId,
@@ -112,6 +126,7 @@ export function useStructuredAgentSession(args: {
     hasOlder: transportEnabled && state.hasOlder,
     railOutline: transportEnabled ? railOutline : null,
     loadingOlder: transportEnabled && loadingOlder,
+    olderHistoryGeneration,
     loadOlder,
     prompts,
     outbox,
@@ -153,6 +168,7 @@ export function useStructuredAgentSession(args: {
     optionSurface,
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,
     setStructuredOption,
-    threadGoal
+    threadGoal,
+    contextUsage
   }
 }

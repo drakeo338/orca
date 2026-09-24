@@ -34,6 +34,7 @@ describe('Claude structured processless acquisition', () => {
           throw fault
         },
         getSettings: async () => ({}),
+        getContextUsage: async () => ({}),
         supportedModels: async () => [],
         interrupt: async () => undefined,
         cancelAsyncMessage: async () => {},

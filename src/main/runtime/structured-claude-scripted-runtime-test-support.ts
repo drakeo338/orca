@@ -126,6 +126,10 @@ export function createScriptedClaudeRuntime(sessionIds: readonly string[]) {
           announce()
           return Promise.resolve(initialized)
         },
+        getContextUsage: () => {
+          child.calls.push('get_context_usage')
+          return Promise.resolve({})
+        },
         getSettings: () => {
           child.calls.push('get_settings')
           settingsReads += 1

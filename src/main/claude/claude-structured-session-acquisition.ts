@@ -35,7 +35,7 @@ import { persistClaudeTurnResumePoint } from './claude-structured-resume-point'
 import { withAgentSessionCreatePhase } from '../observability/agent-session-instrumentation'
 import { resolveClaudeAcquisitionLaunch } from './claude-structured-acquisition-launch'
 import {
-  bindClaudeJournalReadingControl,
+  bindClaudeConnectionJournalControls,
   createClaudeJournalFailureHandler
 } from './claude-structured-session-journal-control'
 
@@ -185,7 +185,12 @@ export async function acquireClaudeSession({
       )
     )
     attempt.connection = connection
-    unbindReadingControl = bindClaudeJournalReadingControl(input.events, connection, translator)
+    unbindReadingControl = bindClaudeConnectionJournalControls(
+      input.events,
+      connection,
+      translator,
+      deps.now ? { now: deps.now } : {}
+    )
     acquisitions.assertCurrent(sessionId, attempt)
     const emit = (event: Parameters<typeof callbacks.emit>[2]): void =>
       callbacks.deliver(attempt, sessionId, () => callbacks.emit(liveSession, input.events, event))
