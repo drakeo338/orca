@@ -12645,6 +12645,7 @@
                   "d6a8b109f1": "Registrada",
                   "965fb4c9cb": "No está en el PATH",
                   "pathUnknown": "No se pudo comprobar el PATH",
+                  "checkFailed": "No se pudo comprobar",
                   "aeee102e9b": "No registrada"
                 }
               }

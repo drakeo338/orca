@@ -19,14 +19,14 @@ function getOrcaCliBadgeVariant(
 export function OrcaCliRegistrationStatusRow(props: {
   readiness: AgentCapabilityReadiness
   installDisabledReason: string | null
-}): React.JSX.Element | null {
+}): React.JSX.Element {
   const { readiness } = props
-  if (readiness.orcaCliUnverifiable) {
-    return null
-  }
-  const registration = getOrcaCliRegistrationStatus(readiness)
+  // Why: the step counts as done here, so say why instead of showing nothing.
+  const registration = readiness.orcaCliUnverifiable
+    ? null
+    : getOrcaCliRegistrationStatus(readiness, props.installDisabledReason)
   const commandPath = readiness.orcaCliStatus?.commandPath
-  const detail = props.installDisabledReason ?? registration.detail
+  const detail = props.installDisabledReason ?? registration?.detail
 
   return (
     <div className="mt-5 flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
@@ -42,9 +42,20 @@ export function OrcaCliRegistrationStatusRow(props: {
                 'Orca CLI'
               )}
             </span>
-            <Badge variant={getOrcaCliBadgeVariant(registration.tone)}>{registration.label}</Badge>
+            {registration ? (
+              <Badge variant={getOrcaCliBadgeVariant(registration.tone)}>
+                {registration.label}
+              </Badge>
+            ) : null}
           </div>
-          {registration.registered && commandPath ? (
+          {!registration ? (
+            <p className="text-xs leading-snug text-muted-foreground">
+              {translate(
+                'auto.components.settings.BrowserUsePane.remoteManaged',
+                'CLI registration is managed on the Orca server that runs your agents.'
+              )}
+            </p>
+          ) : registration.registered && commandPath ? (
             <p className="text-xs leading-snug text-muted-foreground">
               {translate(
                 'auto.components.feature.wall.OrcaCliRegistrationStatusRow.fd07e4468c',

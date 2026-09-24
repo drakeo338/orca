@@ -24,8 +24,7 @@ import {
 import { FullDiskAccessSetupPrompt } from './FullDiskAccessSetupPrompt'
 import { OrcaCliRegistrationStatusRow } from './OrcaCliRegistrationStatusRow'
 import { isOrcaCliRegistrationNeeded } from './orca-cli-registration-status'
-import { ensureOrcaCliAvailableForAgentSkillTerminal } from '@/lib/agent-skill-cli-prerequisite'
-import { ensureWslCliAvailableForAgentSkillTerminal } from '../settings/CliSkillRuntimeSetup'
+import { ensureAgentRuntimeCliRegistered } from '@/lib/orca-cli-install-status'
 import { translate } from '@/i18n/i18n'
 
 export function AgentCapabilitiesSetupAction(): React.JSX.Element {
@@ -74,9 +73,7 @@ export function AgentCapabilitiesSetupAction(): React.JSX.Element {
       )
       try {
         // Why: the feature setup run returns before touching the CLI when nothing is selected.
-        await (activeSkillRuntime.agentRuntime?.runtime === 'wsl'
-          ? ensureWslCliAvailableForAgentSkillTerminal(activeSkillRuntime.agentRuntime)
-          : ensureOrcaCliAvailableForAgentSkillTerminal())
+        await ensureAgentRuntimeCliRegistered(activeSkillRuntime.agentRuntime)
       } finally {
         setSetupBusyLabel(null)
       }

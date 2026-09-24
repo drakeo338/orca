@@ -176,13 +176,13 @@ describe('useOrcaCliInstallStatus', () => {
     expect(latestState).toMatchObject({ status: null, checked: true, registered: false })
   })
 
-  it('re-reads when setup state changes and drops a stale earlier response', async () => {
+  it('re-reads when the CLI install state changes and drops a stale earlier response', async () => {
     const first = deferred<CliInstallStatus>()
     getInstallStatus.mockReturnValueOnce(first.promise)
     getInstallStatus.mockResolvedValueOnce(cliStatus())
     await render(HOST_RUNTIME)
     await act(async () => {
-      notifyOrchestrationSetupStateChanged()
+      notifyOrcaCliInstallStateChanged()
     })
     await flush()
     expect(latestState?.registered).toBe(true)
@@ -192,6 +192,43 @@ describe('useOrcaCliInstallStatus', () => {
 
     expect(getInstallStatus).toHaveBeenCalledTimes(2)
     expect(latestState?.registered).toBe(true)
+  })
+
+  it('does not force a CLI read when only orchestration setup state changes', async () => {
+    getInstallStatus.mockResolvedValue(cliStatus())
+    await render(HOST_RUNTIME)
+    await flush()
+
+    await act(async () => {
+      notifyOrchestrationSetupStateChanged()
+    })
+    await flush()
+
+    expect(getInstallStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('reuses a WSL read across alt-tabs longer than a host read', async () => {
+    getWslInstallStatus.mockResolvedValue(cliStatus())
+    await render({
+      installDisabledReason: null,
+      agentRuntime: { runtime: 'wsl', wslDistro: 'Ubuntu', label: 'WSL' }
+    })
+    await flush()
+    expect(getWslInstallStatus).toHaveBeenCalledTimes(1)
+
+    advancePastFreshWindow()
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await flush()
+    expect(getWslInstallStatus).toHaveBeenCalledTimes(1)
+
+    now += 10_000
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await flush()
+    expect(getWslInstallStatus).toHaveBeenCalledTimes(2)
   })
 
   it('re-reads every mounted instance when the CLI install state changes', async () => {

@@ -14613,7 +14613,8 @@
                   "d6a8b109f1": "Registered",
                   "965fb4c9cb": "Not on PATH",
                   "aeee102e9b": "Not registered",
-                  "pathUnknown": "Could not check PATH"
+                  "pathUnknown": "Could not check PATH",
+                  "checkFailed": "Could not check"
                 }
               }
             }

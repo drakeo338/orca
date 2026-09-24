@@ -12711,6 +12711,7 @@
                   "d6a8b109f1": "등록됨",
                   "965fb4c9cb": "PATH에 없음",
                   "pathUnknown": "PATH를 확인할 수 없음",
+                  "checkFailed": "확인할 수 없음",
                   "aeee102e9b": "등록되지 않음"
                 }
               }

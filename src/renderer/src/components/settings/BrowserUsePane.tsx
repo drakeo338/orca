@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   ORCA_CLI_SKILL_INSTALL_COMMAND,
@@ -78,6 +78,11 @@ export function BrowserUseSetup({
   const cliStatus = orcaCli.status
   // Why: only the first probe disables the step; focus re-reads must not flash it.
   const cliLoading = !orcaCli.checked
+  // Why: the skill panel re-reads the CLI on every new reader, and each shared-status publish re-renders this pane.
+  const getPrerequisiteStatus = useCallback(
+    () => readOrcaCliInstallStatus(activeSkillRuntime),
+    [activeSkillRuntime]
+  )
 
   useEffect(() => {
     if (!browserUseEnabled) {
@@ -247,7 +252,7 @@ export function BrowserUseSetup({
             terminalShellOverride={activeSkillRuntime.terminalShellOverride}
             terminalRuntime={activeSkillRuntime.agentRuntime}
             preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-            getPrerequisiteStatus={() => readOrcaCliInstallStatus(activeSkillRuntime)}
+            getPrerequisiteStatus={getPrerequisiteStatus}
             onBeforeOpenTerminal={async () => {
               useAppStore.getState().recordFeatureInteraction('agent-browser-setup')
               await (activeSkillRuntime.agentRuntime?.runtime === 'wsl'

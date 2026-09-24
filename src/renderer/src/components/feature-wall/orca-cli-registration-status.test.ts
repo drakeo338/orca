@@ -96,18 +96,29 @@ describe('getOrcaCliRegistrationStatus', () => {
     })
   })
 
-  it('reports a missing command, or no readable status, as not registered', () => {
+  it('reports a missing command, or a runtime that needs repair, as not registered', () => {
     expect(getOrcaCliRegistrationStatus(NOT_REGISTERED)).toEqual({
       label: 'Not registered',
       tone: 'pending',
       registered: false,
       detail: 'Register /usr/local/bin/orca.'
     })
-    expect(getOrcaCliRegistrationStatus({ ...NOT_REGISTERED, orcaCliStatus: null })).toEqual({
+    expect(
+      getOrcaCliRegistrationStatus({ ...NOT_REGISTERED, orcaCliStatus: null }, 'Install WSL first')
+    ).toEqual({
       label: 'Not registered',
       tone: 'pending',
       registered: false,
       detail: null
+    })
+  })
+
+  it('reports a failed status read as a failed check, not as unregistered', () => {
+    expect(getOrcaCliRegistrationStatus({ ...NOT_REGISTERED, orcaCliStatus: null })).toEqual({
+      label: 'Could not check',
+      tone: 'error',
+      registered: false,
+      detail: 'Failed to load CLI status.'
     })
   })
 })

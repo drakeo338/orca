@@ -12725,6 +12725,7 @@
                   "d6a8b109f1": "已注册",
                   "965fb4c9cb": "不在 PATH 中",
                   "pathUnknown": "无法检查 PATH",
+                  "checkFailed": "无法检查",
                   "aeee102e9b": "未注册"
                 }
               }

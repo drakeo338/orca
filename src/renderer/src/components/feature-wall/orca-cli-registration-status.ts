@@ -18,7 +18,8 @@ export type OrcaCliRegistrationStatus = {
 }
 
 export function getOrcaCliRegistrationStatus(
-  readiness: OrcaCliReadiness
+  readiness: OrcaCliReadiness,
+  installDisabledReason: string | null = null
 ): OrcaCliRegistrationStatus {
   if (readiness.orcaCliChecking) {
     return {
@@ -43,6 +44,21 @@ export function getOrcaCliRegistrationStatus(
     }
   }
   const status = readiness.orcaCliStatus
+  // Why: no status without a repair reason means the read itself failed, which says nothing about registration.
+  if (!status && !installDisabledReason) {
+    return {
+      label: translate(
+        'auto.components.feature.wall.orca.cli.registration.status.checkFailed',
+        'Could not check'
+      ),
+      tone: 'error',
+      registered: false,
+      detail: translate(
+        'auto.components.settings.BrowserUsePane.180a9abf3a',
+        'Failed to load CLI status.'
+      )
+    }
+  }
   const detail = status?.detail ?? null
   if (status?.supported === false) {
     return {

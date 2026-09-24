@@ -12645,6 +12645,7 @@
                   "d6a8b109f1": "登録済み",
                   "965fb4c9cb": "PATH にありません",
                   "pathUnknown": "PATH を確認できませんでした",
+                  "checkFailed": "確認できませんでした",
                   "aeee102e9b": "未登録"
                 }
               }

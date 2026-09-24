@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CliInstallStatus } from '../../../shared/cli-install-types'
 import { isOrcaCliAvailableOnPath } from '@/lib/agent-skill-cli-prerequisite'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
-import { ORCHESTRATION_SETUP_STATE_EVENT } from '@/lib/orchestration-setup-state'
 import {
   getOrcaCliInstallTargetKey,
   readOrcaCliInstallStatus,
@@ -36,6 +35,8 @@ type TargetEntry = {
 
 // Why: focus and visibilitychange both fire on return; one read answers both.
 const FOCUS_REREAD_FRESH_MS = 1_000
+// Why: a WSL read spawns wsl.exe several times, so alt-tabs reuse it like WSL skill discovery does.
+const WSL_FOCUS_REREAD_FRESH_MS = 10_000
 const UNCHECKED_SNAPSHOT: CliStatusSnapshot = Object.freeze({
   status: null,
   checked: false,
@@ -78,7 +79,10 @@ function readTarget(key: string, force: boolean): void {
   if (!force && entry.inFlightReadId !== null) {
     return
   }
-  if (!force && entry.settledAt !== null && Date.now() - entry.settledAt < FOCUS_REREAD_FRESH_MS) {
+  const runtime = readRuntime()
+  const freshMs =
+    runtime.agentRuntime?.runtime === 'wsl' ? WSL_FOCUS_REREAD_FRESH_MS : FOCUS_REREAD_FRESH_MS
+  if (!force && entry.settledAt !== null && Date.now() - entry.settledAt < freshMs) {
     return
   }
   const readId = ++nextReadId
@@ -95,7 +99,7 @@ function readTarget(key: string, force: boolean): void {
     entry.settledAt = Date.now()
     publish(entry, { status, checked: true, loading: false })
   }
-  readOrcaCliInstallStatus(readRuntime()).then(settle, () => settle(null))
+  readOrcaCliInstallStatus(runtime).then(settle, () => settle(null))
 }
 
 function readInterestedTargets(force: boolean): void {
@@ -128,7 +132,6 @@ function watchTarget(key: string, readRuntime: () => OrcaCliSkillRuntime): () =>
   if (interestedReaderCount === 1) {
     // Why: users register the CLI from Settings or a shell, so re-read on return.
     window.addEventListener('focus', handleWindowFocus)
-    window.addEventListener(ORCHESTRATION_SETUP_STATE_EVENT, handleCliStateChange)
     window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
     document.addEventListener('visibilitychange', handleVisibilityChange)
   }
@@ -138,7 +141,6 @@ function watchTarget(key: string, readRuntime: () => OrcaCliSkillRuntime): () =>
     interestedReaderCount -= 1
     if (interestedReaderCount === 0) {
       window.removeEventListener('focus', handleWindowFocus)
-      window.removeEventListener(ORCHESTRATION_SETUP_STATE_EVENT, handleCliStateChange)
       window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
