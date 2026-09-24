@@ -55,8 +55,8 @@ function namesInjectedSession(value: string, sessionId: string, env: NodeJS.Proc
 }
 
 /**
- * The address the host gives this session: a structured worker keeps the handle it was minted, any
- * other session is `session:<id>`. Only for text that must match what the host writes.
+ * The mailbox key the host binds this session to: a structured worker keeps the handle it was
+ * minted, any other session is `session:<id>`. Never shown to the agent as its address.
  */
 export function injectedSessionAddress(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const sessionId = readInjectedAgentSessionId(env)

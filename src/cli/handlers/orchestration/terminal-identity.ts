@@ -4,7 +4,6 @@ import { RuntimeClientError } from '../../runtime-client'
 import { getTerminalHandle } from '../../selectors'
 import { hasStructuredSessionMarker } from '../../../shared/structured-session-marker'
 import { readInjectedAgentSessionId } from '../../../shared/agent-session-caller-env'
-import { injectedSessionAddress } from '../../session-caller-flags'
 
 /**
  * The caller's terminal handle, or `undefined` when an injected agent session id names the caller:
@@ -168,9 +167,10 @@ function getClientErrorMessage(err: unknown): string | undefined {
   return typeof message === 'string' ? message : undefined
 }
 
-/** How check output names its caller: the handle, or the session's address. */
+/** How check output names its caller: the handle, or `session:<id>`, a structured worker's too. */
 export function orchestrationCallerLabel(handle: string | undefined): string {
-  return handle ?? injectedSessionAddress() ?? 'unknown'
+  const sessionId = readInjectedAgentSessionId()
+  return handle ?? (sessionId ? `session:${sessionId}` : 'unknown')
 }
 
 export async function resolveCoordinatorTerminalHandle(

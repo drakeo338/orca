@@ -22,11 +22,13 @@ import {
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   isRecordedStructuredWorkerSession,
+  resolveStructuredWorkerIdentity,
   resolveStructuredWorkerIdentityForSession
 } from '../structured-worker-authority'
 import { structuredWorkerHostScope } from '../structured-worker-identity'
 import type { OrchestrationDb } from './db'
 import type { OrchestrationCallerIdentity } from './orchestration-caller-identity'
+import type { MessageRow } from './types'
 
 export type AgentSessionRecordReader = {
   getRecord: (sessionId: string) => AgentSessionRecord | null
@@ -199,4 +201,27 @@ export function hasLostStructuredWorkerIdentity(
     identity.orcaSessionId !== null &&
     isRecordedStructuredWorkerSession(identity.orcaSessionId, db)
   )
+}
+
+/**
+ * How an agent is shown a mailbox address. A structured worker's handle is only its mailbox key: it
+ * reads as `session:<id>`, the one address that worker is taught, and routes back to that mailbox.
+ */
+export function agentVisibleOrchestrationAddress(
+  address: string,
+  db: OrchestrationDb | null | undefined
+): string {
+  const worker = resolveStructuredWorkerIdentity(address, db)
+  return worker ? formatOrchestrationActor({ kind: 'session', id: worker.sessionId }) : address
+}
+
+export function withAgentVisibleAddresses(
+  messages: readonly MessageRow[],
+  db: OrchestrationDb | null | undefined
+): MessageRow[] {
+  return messages.map((message) => ({
+    ...message,
+    from_handle: agentVisibleOrchestrationAddress(message.from_handle, db),
+    to_handle: agentVisibleOrchestrationAddress(message.to_handle, db)
+  }))
 }
