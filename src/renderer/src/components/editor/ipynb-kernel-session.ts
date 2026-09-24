@@ -159,6 +159,8 @@ export function restartKernel(filePath: string): void {
 /** Switching interpreters restarts a running kernel; otherwise queued cells wait for the new one. */
 export function selectEnvironment(filePath: string, environment: PythonEnvironment): void {
   setEnvironment(filePath, environment)
+  // A pick replaces an open setup prompt; the new env reopens it if it lacks ipykernel too.
+  updateSession(filePath, ({ setup }) => ({ setup: setup?.phase === 'idle' ? null : setup }))
   if (getSession(filePath).status === 'off') {
     void start(filePath)
   } else {

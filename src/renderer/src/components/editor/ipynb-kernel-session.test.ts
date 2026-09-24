@@ -187,6 +187,20 @@ describe('notebook kernel session', () => {
     expect(getSession(FILE)).toMatchObject({ status: 'ready', setup: null })
   })
 
+  it('closes the setup prompt when another Python is picked, and runs the cells there', async () => {
+    const other = { path: '/other/bin/python', name: 'other', version: '3.13.0' }
+    notebookApi.startKernel.mockResolvedValueOnce({
+      status: 'missing-ipykernel',
+      externallyManaged: false
+    })
+    await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
+    session.selectEnvironment(FILE, other)
+    expect(getSession(FILE).setup).toBeNull()
+    await vi.waitFor(() => expect(getSession(FILE).status).toBe('ready'))
+    expect(notebookApi.startKernel).toHaveBeenLastCalledWith({ filePath: FILE, python: other.path })
+    expect(notebookApi.execute).toHaveBeenCalledWith({ filePath: FILE, code: 'x' })
+  })
+
   it('drops an install result once its tab has closed and reopened', async () => {
     notebookApi.startKernel.mockResolvedValueOnce({
       status: 'missing-ipykernel',
