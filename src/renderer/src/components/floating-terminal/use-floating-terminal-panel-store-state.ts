@@ -13,7 +13,6 @@ export function useFloatingTerminalPanelStoreState() {
     (state) => state.layoutByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? null
   )
   const ensureWorktreeRootGroup = useAppStore((state) => state.ensureWorktreeRootGroup)
-  const createTab = useAppStore((state) => state.createTab)
   const createBrowserTab = useAppStore((state) => state.createBrowserTab)
   const activateTab = useAppStore((state) => state.activateTab)
   const setActiveTab = useAppStore((state) => state.setActiveTab)
@@ -39,7 +38,6 @@ export function useFloatingTerminalPanelStoreState() {
     activeGroupId,
     layout,
     ensureWorktreeRootGroup,
-    createTab,
     createBrowserTab,
     activateTab,
     setActiveTab,

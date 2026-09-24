@@ -181,6 +181,8 @@ describe('FloatingTerminalPanel close behavior', () => {
       'floating-group',
       undefined
     )
+    // Why: createTab itself activates the new tab within the floating group.
+    expect(mocks.activateTab).not.toHaveBeenCalled()
     expect(mocks.focusTerminalTabSurface).toHaveBeenCalledWith('created-tab')
   })
 

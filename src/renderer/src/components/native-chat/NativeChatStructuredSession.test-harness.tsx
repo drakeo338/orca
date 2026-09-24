@@ -6,6 +6,8 @@ import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
 import type { NativeChatFileLinkContext } from './native-chat-file-link'
+import type { NativeChatOlderPageResult } from './native-chat-pagination'
+import type { StructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
 import type {
   SessionOptionSetResult,
@@ -30,6 +32,7 @@ type StructuredSessionMessageListProps = {
   showLiveTurnActivity?: boolean
   isWorking?: boolean
   runtimeContext?: unknown
+  session?: { hasMore: boolean; loadingEarlier: boolean; loadEarlier: () => Promise<void> }
 }
 
 const DEFAULT_FILE_LINK_CONTEXT: NativeChatFileLinkContext = {
@@ -81,7 +84,12 @@ export function createStructuredSessionMocks() {
     supportsBackgroundTaskStopAll: true,
     backgroundTasks: [] as AgentSessionBackgroundTask[],
     settledBackgroundTasks: [] as AgentSessionBackgroundTask[],
-    stopBackgroundTask: vi.fn<StopBackgroundTaskSpy>()
+    threadGoal: nullable<StructuredAgentSessionThreadGoal>(),
+    stopBackgroundTask: vi.fn<StopBackgroundTaskSpy>(),
+    hasOlder: false,
+    loadingOlder: false,
+    olderHistoryGeneration: 0,
+    loadOlder: vi.fn<() => Promise<NativeChatOlderPageResult>>()
   }
 
   const moduleFactories = {
@@ -105,6 +113,7 @@ export function createStructuredSessionMocks() {
             submissions: mocks.submissions as never
           })
           return {
+            journalItems: [],
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
@@ -125,9 +134,10 @@ export function createStructuredSessionMocks() {
                   ]),
             status: mocks.status,
             error: outbox.error,
-            hasOlder: false,
-            loadingOlder: false,
-            loadOlder: vi.fn<() => Promise<void>>(),
+            hasOlder: mocks.hasOlder,
+            loadingOlder: mocks.loadingOlder,
+            olderHistoryGeneration: mocks.olderHistoryGeneration,
+            loadOlder: mocks.loadOlder,
             prompts: mocks.promptItems,
             outbox: outbox.outbox,
             blockedClientMessageId: outbox.blockedClientMessageId,
@@ -143,6 +153,7 @@ export function createStructuredSessionMocks() {
               supportsStopAll: mocks.supportsBackgroundTaskStopAll
             },
             turnId: mocks.turnId,
+            threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,
             stopBackgroundTask: (taskId?: string) =>
               mocks.stopBackgroundTask(props.sessionId, taskId),
@@ -261,6 +272,11 @@ export function createStructuredSessionMocks() {
     mocks.stopBackgroundTask.mockReset()
     mocks.backgroundTasks = []
     mocks.settledBackgroundTasks = []
+    mocks.threadGoal = null
+    mocks.hasOlder = false
+    mocks.loadingOlder = false
+    mocks.olderHistoryGeneration = 0
+    mocks.loadOlder.mockReset()
   }
 
   return { mocks, moduleFactories, resetStructuredSessionMocks }

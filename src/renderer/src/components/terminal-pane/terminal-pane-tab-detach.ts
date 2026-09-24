@@ -167,7 +167,6 @@ export function detachTerminalPaneToTab(args: {
     targetTabId: tab.id
   })
   afterCreateStore.setActiveTab(tab.id)
-  // Why: an unscoped write targets the main window's workspace even when this detach is in the floating panel.
   afterCreateStore.setActiveTabType('terminal', args.worktreeId)
 
   return { tab, leafId: sourceLeafId, ptyId }

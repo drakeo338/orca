@@ -16,9 +16,7 @@ const storeBox = vi.hoisted(() => ({
 }))
 
 const mocks = vi.hoisted(() => ({
-  activateTab: vi.fn(),
   createTab: vi.fn(),
-  setActiveTabForWorktree: vi.fn(),
   setTabBarOrder: vi.fn(),
   queueTabStartupCommand: vi.fn(),
   focusTerminalTabSurface: vi.fn(),
@@ -152,8 +150,6 @@ beforeEach(() => {
       agentDefaultEnv: {}
     },
     createTab: mocks.createTab,
-    activateTab: mocks.activateTab,
-    setActiveTabForWorktree: mocks.setActiveTabForWorktree,
     setTabBarOrder: mocks.setTabBarOrder,
     queueTabStartupCommand: mocks.queueTabStartupCommand,
     tabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [{ id: EXISTING_TAB_ID }] },
@@ -196,8 +192,6 @@ describe('FloatingTerminalWindowControls default-agent launch', () => {
     clickLaunch()
 
     expect(mocks.focusTerminalTabSurface).toHaveBeenCalledExactlyOnceWith(NEW_AGENT_TAB_ID)
-    expect(mocks.activateTab).not.toHaveBeenCalled()
-    expect(mocks.setActiveTabForWorktree).not.toHaveBeenCalled()
   })
 
   it('leaves focus to a structured chat, which focuses its own composer', () => {
@@ -216,7 +210,7 @@ describe('FloatingTerminalWindowControls default-agent launch', () => {
     clickLaunch()
 
     expect(toast.error).toHaveBeenCalledWith('Could not build launch command for Claude.')
-    expect(mocks.activateTab).not.toHaveBeenCalled()
+    expect(mocks.focusTerminalTabSurface).not.toHaveBeenCalled()
   })
 
   // Why: the floating workspace now resolves to its configured directory, so workspace kind no
