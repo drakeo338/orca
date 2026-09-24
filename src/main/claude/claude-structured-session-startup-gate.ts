@@ -144,12 +144,20 @@ export function rejectClaudeStartupWrites(session: ClaudeSession, reason: string
   return held.length > 0
 }
 
+/** Why a held prompt was rejected when Orca itself stopped a child still starting. */
+export const CLAUDE_STARTUP_ABANDONED_REJECTION =
+  'Claude never finished starting, so Orca stopped it. Send again to retry.'
+
 /** Startup cannot land any more; nothing held was written, so all of it is rejected. */
-export function failClaudeStartupGate(session: ClaudeSession, error: Error): void {
+export function failClaudeStartupGate(
+  session: ClaudeSession,
+  error: Error,
+  rejection = providerStartupFailureRejection(error)
+): void {
   const gate = session.startup
   if (gate.state === 'pending') {
     gate.state = 'failed'
     gate.failure = error
   }
-  rejectClaudeStartupWrites(session, providerStartupFailureRejection(error))
+  rejectClaudeStartupWrites(session, rejection)
 }

@@ -8,14 +8,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
+import { CLAUDE_STARTUP_ABANDONED_REJECTION } from '../../claude/claude-structured-session-startup-gate'
 import {
   fakeClaude,
   PROVIDER_SESSION_ID
 } from '../../claude/claude-structured-session-test-support'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { structuredClaudeLifecycleEvent } from '../../runtime/structured-claude-runtime-adapter'
-import type { AgentSessionSubscribeEvent } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   HOST_TEST_NOW as NOW,
@@ -167,10 +168,7 @@ describe('a chat left while its Claude CLI is still starting', () => {
     // Never written, so it is refused with why rather than left in doubt; the user can resend it.
     expect(
       publishedSubmissions(events).findLast((entry) => entry.clientMessageId === held)
-    ).toMatchObject({
-      dispatchState: 'rejected',
-      reason: expect.stringContaining('before it finished starting')
-    })
+    ).toMatchObject({ dispatchState: 'rejected', reason: CLAUDE_STARTUP_ABANDONED_REJECTION })
   })
 
   it('gives the message it wrote at startup a full grace to open its turn', async () => {

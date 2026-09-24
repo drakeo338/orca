@@ -18,6 +18,10 @@ import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session
 import { closeProcessRegistry } from '../../shared/child-process/close-process-registry'
 import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
+import {
+  CLAUDE_STARTUP_ABANDONED_REJECTION,
+  failClaudeStartupGate
+} from './claude-structured-session-startup-gate'
 
 /** The root's own exit was seen first-hand; only its descendants went unverified. */
 export function claudeRootExitObserved(
@@ -94,6 +98,14 @@ async function finalizeClaudePublishedSession(
   input: CloseClaudePublishedSessionInput,
   session: ClaudeSession
 ): Promise<boolean> {
+  // Orca is stopping a start that never landed; the CLI did not fail, so the reason says so.
+  if (session.startup.state === 'pending') {
+    failClaudeStartupGate(
+      session,
+      new Error('claude session closed before startup completed'),
+      CLAUDE_STARTUP_ABANDONED_REJECTION
+    )
+  }
   retireClaudeDispatchWaiters(session)
   // Settle every in-flight permission callback so closing leaves no dangling promise; `null`
   // writes no response, and the SDK ignores any post-cleanup answer regardless.
