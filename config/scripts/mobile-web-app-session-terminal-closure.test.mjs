@@ -460,7 +460,7 @@ const MERMAID_PACKAGE = 'node_modules/mermaid/'
  *   modules        4221 -> 4219   (-2)
  *   local modules  1035 -> 1033   (-2)
  */
-const SESSION_ROUTE_MODULES = 4219
+const SESSION_ROUTE_MODULES = 4221
 
 /** What the page enters this route through once the route is a switch with a `.web.tsx` sibling. */
 const ROUTE_ENTRY = [
