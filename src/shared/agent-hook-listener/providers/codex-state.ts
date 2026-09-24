@@ -1,7 +1,12 @@
 import type { AgentMainAgentStatus, ParsedAgentStatusPayload } from '../../agent-status-types'
-import { continueMainAgentStatus } from '../../agent-lead-status-fold'
 import {
-  codexRosterEffectiveState,
+  continueMainAgentStatus,
+  foldAgentLeadStatus,
+  mainAgentTurnInterrupted,
+  type AgentLeadStatusResolution
+} from '../../agent-lead-status-fold'
+import {
+  codexRosterChildWorkLiveness,
   codexRosterToSnapshots,
   finishCodexSubagent,
   seedCodexSubagentRoster,
@@ -72,9 +77,20 @@ export function codexOutcomeRestatedByStop(
     : {}
 }
 
-/** The `mainAgent` fact a Codex row publishes. Its combined `state` still comes from
- *  `codexRosterEffectiveState`, whose waiting-child rule the shared fold cannot express yet;
- *  moving that combine onto the fold is a separate slice with its own story table. */
+/** The combined row state for a Codex pane: the root record and its roster through the same
+ *  fold every other lane uses. */
+export function resolveCodexPaneStatus(
+  state: HookListenerState,
+  paneKey: string,
+  record: Pick<CodexLeadTurnState, 'state'>
+): AgentLeadStatusResolution {
+  return foldAgentLeadStatus({
+    leadState: record.state,
+    childWorkLiveness: codexRosterChildWorkLiveness(state.codexSubagentRosterByPaneKey.get(paneKey))
+  })
+}
+
+/** The `mainAgent` fact a Codex row publishes, straight from the root record. */
 export function codexMainAgentStatusForPayload(
   record: CodexLeadTurnState | undefined
 ): AgentMainAgentStatus | undefined {
@@ -85,12 +101,6 @@ export function codexMainAgentStatusForPayload(
         stateStartedAt: record.stateStartedAt
       }
     : undefined
-}
-
-/** The row's `interrupted` flag for readers that predate `mainAgent`, derived from the main agent's
- *  verdict so any restatement of the cancelled turn (a late Stop, a child's drain) still carries it. */
-export function codexMainAgentTurnInterrupted(record: CodexLeadTurnState | undefined): boolean {
-  return record?.state === 'done' && record.outcome === 'cancellation'
 }
 
 export function seedCodexStateFromSnapshot(
@@ -209,19 +219,20 @@ export function reconcileRemoteCodexState(
   if (!lead) {
     return payload
   }
+  const resolution = resolveCodexPaneStatus(state, paneKey, lead)
   // Child lifecycle hooks commonly omit the root prompt. Preserve the last known
   // turn label while merging their roster/state so relay restarts do not blank it.
   const prompt =
     agentId && payload.prompt.length === 0 && previous?.agentType === 'codex'
       ? previous.prompt
       : payload.prompt
-  const effectiveState = codexRosterEffectiveState(roster, lead.state)
   return {
     ...payload,
     prompt,
-    state: effectiveState,
+    state: resolution.stateName,
+    workingMode: resolution.workingMode,
     interrupted:
-      effectiveState === 'done' && codexMainAgentTurnInterrupted(lead) ? true : undefined,
+      resolution.stateName === 'done' && mainAgentTurnInterrupted(lead) ? true : undefined,
     model: lead.model ?? payload.model,
     subagents: codexRosterToSnapshots(roster),
     // Why: main's cache outlives a relay restart, so it is the main agent fact for a relayed row too.

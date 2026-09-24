@@ -20,6 +20,8 @@ export function foldMainAgentWithRowChildWork(
   return foldAgentLeadStatus({
     leadState,
     childWorkLiveness: agentChildWorkLivenessFromEvidence({
+      // Only the Codex lane feeds a child's wait into the fold, and Codex never folds here.
+      hasWaitingChildWork: false,
       hasLiveAgentWork: row.payload.subagents?.some((child) => child.state === 'working') === true,
       hasLiveNonAgentWork: row.claudeRunningNonAgentTask === true
     })
