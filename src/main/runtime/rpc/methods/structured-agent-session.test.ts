@@ -458,9 +458,9 @@ describe('method routing', () => {
     )
   })
 
-  it('treats a create that reserved a different tab as a different request', async () => {
+  it('refuses a create whose declared fingerprint omits the tab it reserved', async () => {
     // The tab id is part of the intent fingerprint, so a payload whose declared digest omits it
-    // is refused rather than replayed as the blank create it looks like.
+    // is refused rather than admitted as the blank create it looks like.
     const worktree = 'id:workspace-1'
     const params = {
       envelope: envelope({
@@ -482,21 +482,28 @@ describe('method routing', () => {
     expect(hostCalls.attach).not.toHaveBeenCalled()
   })
 
-  it('refuses a reserved tab id that could not prefix a pane key', async () => {
-    const worktree = 'id:workspace-1'
-    const response = await call(
-      'agentSession.create',
-      {
-        envelope: envelope({ expectedRuntimeFence: null, payloadFingerprint: 'x'.repeat(64) }),
-        worktree,
-        agent: 'codex',
-        tabId: 'agent-session:with-colon'
-      },
-      STRUCTURED_CLIENT
-    )
-    expect(response.ok).toBe(false)
-    expect(hostCalls.attach).not.toHaveBeenCalled()
-  })
+  it.each(['agent-session:with-colon', 'web-terminal-local-surface'])(
+    'refuses a reserved tab id that is not a host tab id: %s',
+    async (tabId) => {
+      const worktree = 'id:workspace-1'
+      const response = await call(
+        'agentSession.create',
+        {
+          // A well-formed digest, so only the tab id can be what the schema refuses.
+          envelope: envelope({ expectedRuntimeFence: null, payloadFingerprint: '0'.repeat(64) }),
+          worktree,
+          agent: 'codex',
+          tabId
+        },
+        STRUCTURED_CLIENT
+      )
+      expect(response).toMatchObject({
+        ok: false,
+        error: { code: 'invalid_argument', message: expect.stringContaining('Invalid chat tab ID') }
+      })
+      expect(hostCalls.attach).not.toHaveBeenCalled()
+    }
+  )
 
   it.each(['claude', 'codex'])(
     'forwards a %s history resume through create preparation',

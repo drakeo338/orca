@@ -7,7 +7,6 @@
  * indistinguishable from an owner whose identity cannot be verified.
  */
 
-import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -21,6 +20,7 @@ import {
   isAgentSessionRecord,
   type AgentSessionRecord
 } from '../../shared/agent-session-record'
+import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
 import { agentSessionStoreBackupPath as backupPath } from './agent-session-record-store-write'
 export { saveAgentSessionStore } from './agent-session-record-store-write'
 import { parseVisibleSessionIds } from './agent-session-visible-tab-index'

@@ -5,7 +5,6 @@
 // the record store's compare-and-swap, which also owns the idempotency row, so
 // a retried attach replays instead of reserving a second owner.
 
-import { randomUUID } from 'node:crypto'
 import type {
   AgentSessionJournalIdentity,
   AgentSessionProviderHandle
@@ -25,6 +24,7 @@ import type {
   AgentSessionOwnerRuntimeKind,
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
+import { structuredAgentSessionTabId } from '../../../shared/structured-agent-session-projection'
 import {
   AGENT_SESSION_WIRE_REFUSAL_CODES,
   type AgentSessionMutationEnvelope,
@@ -64,8 +64,8 @@ export type AgentSessionAttachParams = {
   runtimeKind: AgentSessionOwnerRuntimeKind
   /** Host-resolved defaults for a create-by-intent; remote attach schemas do not accept them. */
   options?: Readonly<Record<string, string>>
-  /** The tab id a create reserves for this chat; absent lets the host mint one. Never on the
-   *  attach fingerprint: which tab shows the chat is not which conversation this attaches to. */
+  /** The tab id a create reserves for this chat; absent records the id clients derive. Never on
+   *  the attach fingerprint: which tab shows the chat is not which conversation it attaches to. */
   surfaceTabId?: string
   launchArgs?: string[]
   /** Omitted only for create-by-intent; the adapter proves the durable handle. */
@@ -317,9 +317,10 @@ export function reserveRequestFor(input: {
     provider: params.provider,
     accountHome: params.accountHome,
     ...(params.options ? { options: params.options } : {}),
-    // Minted here, on the create path only: a record that already exists keeps its own tab id.
+    // Create path only: an existing record keeps its own. Unreserved, it is the id every client
+    // still derives, so nothing keyed by it moves until those readers copy the recorded one.
     ...(params.envelope.expectedRuntimeFence === null
-      ? { surfaceTabId: params.surfaceTabId ?? randomUUID() }
+      ? { surfaceTabId: params.surfaceTabId ?? structuredAgentSessionTabId(input.sessionId) }
       : {}),
     ...(authority.launchArgs ? { launchArgs: authority.launchArgs } : {}),
     ...(authority.launchEnv ? { launchEnv: authority.launchEnv } : {}),

@@ -138,8 +138,8 @@ export type AgentSessionRecord = {
   /** The name Orca gave this conversation, so a later acquisition need not name it again. */
   conversationName?: string
   launchArgs?: AgentSessionLaunchArgs
-  /** The id of the tab that shows this conversation on every client: host-owned, minted once,
-   *  never derived. Older records are backfilled at load with the string clients used to derive. */
+  /** The id of the tab that shows this conversation on every client: host-owned and pinned once;
+   *  readers copy it, never derive it. Older records are backfilled at load with the derived id. */
   surfaceTabId?: string
   lease: AgentSessionLease
   createdAt: number

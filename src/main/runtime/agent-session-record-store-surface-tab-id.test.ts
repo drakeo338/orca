@@ -120,6 +120,24 @@ describe('surface tab id', () => {
     expect(await readFile(filePath, 'utf-8')).toBe(settled)
   })
 
+  it('refills the id when another holder rewrites the file, without forcing a save', async () => {
+    const store = await open()
+    await store.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
+    const filePath = agentSessionStorePath(directory)
+    const raw = JSON.parse(await readFile(filePath, 'utf-8'))
+    // An older build's write, which never carries the field.
+    delete raw.records['session-alpha'].surfaceTabId
+    raw.visibleSessionIds = []
+    const external = JSON.stringify(raw)
+    await writeFile(filePath, external)
+
+    // A transaction that changes nothing still reloads the externally changed file first.
+    await store.setSessionTabVisibility('session-alpha', false)
+    expect(store.getRecord('session-alpha')?.surfaceTabId).toBe(LEGACY_TAB_ID)
+    // The reload marked every lease unadjudicated; a refill must not persist that verdict.
+    expect(await readFile(filePath, 'utf-8')).toBe(external)
+  })
+
   it('quarantines a persisted record whose tab id contains a colon', async () => {
     const first = await open()
     await first.reserveOwner(reserveRequest())

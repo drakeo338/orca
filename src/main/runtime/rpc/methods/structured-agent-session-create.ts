@@ -41,8 +41,9 @@ export type PreparedStructuredAgentSessionCreate = {
 /**
  * What a client's create intent fingerprints, recomputed host-side. `resumeFrom` is part of the
  * intent, not a detail of it: without it a retry of "adopt this conversation" would replay as, or
- * conflict with, a blank create. `tabId` likewise: a retry that reserved another tab is another
- * request. The canonicalizer drops `undefined`, so plain creates keep the digest they always had.
+ * conflict with, a blank create. `tabId` is covered so the declared digest spans the payload, but
+ * replay keys on the attach fingerprint, so a retry naming another tab is answered with the one the
+ * record holds. The canonicalizer drops `undefined`, so plain creates keep the digest they had.
  */
 export function structuredAgentSessionCreateIntentFingerprint(params: {
   envelope: AgentSessionMutationEnvelope
@@ -79,7 +80,7 @@ export async function prepareStructuredAgentSessionCreateForWorktree(args: {
    *  the saved selection. Narrowed by the caller, so `{}` never reaches the reservation. */
   options?: Readonly<Record<string, string>>
   /** The tab id the caller reserved for this chat, so its placement is recorded before the reply;
-   *  absent lets the host mint one. Beside `options`, after the fingerprint, for the same reason. */
+   *  absent records the id clients derive. Beside `options`, after the fingerprint, likewise. */
   tabId?: string
 }): Promise<PreparedStructuredAgentSessionCreate> {
   // Adoption replay may need the record loaded from disk before source discovery can be skipped.

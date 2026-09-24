@@ -565,16 +565,16 @@ describe('structured session acquisition options', () => {
 })
 
 describe('the tab id a create records', () => {
-  async function createWith(surfaceTabId?: string) {
+  async function openStore() {
     root = await mkdtemp(join(tmpdir(), 'orca-surface-tab-id-'))
-    const store = await AgentSessionRecordStore.open({
-      directory: join(root, 'store'),
-      hostId: 'local'
-    })
-    const result = await performAttach({
+    return AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  }
+
+  function attachWith(store: AgentSessionRecordStore, surfaceTabId?: string) {
+    return performAttach({
       store,
       adapter: adapter({ origin: 'created' }),
-      journalRoot: root,
+      journalRoot: root!,
       authority: {
         spawnToken: 'spawn-a',
         claimKeyId: 'key-1',
@@ -591,22 +591,32 @@ describe('the tab id a create records', () => {
       now: () => NOW,
       onAttached: () => {}
     })
-    return { store, result }
   }
 
   it('pins the id the caller reserved on the record and answers with it', async () => {
-    const { store, result } = await createWith('chat-tab-1')
+    const store = await openStore()
+    const result = await attachWith(store, 'chat-tab-1')
 
     expect(result).toMatchObject({ ok: true, value: { tabId: 'chat-tab-1' } })
     expect(store.getRecord(SESSION)?.surfaceTabId).toBe('chat-tab-1')
   })
 
-  it('mints one when the caller reserved none, and answers with that', async () => {
-    const { store, result } = await createWith()
+  it('records the id clients derive when the caller reserved none', async () => {
+    const store = await openStore()
+    const result = await attachWith(store)
 
-    expect(result).toMatchObject({ ok: true })
-    const minted = result.ok ? result.value.tabId : undefined
-    expect(minted).toMatch(/^[0-9a-f-]{36}$/)
-    expect(store.getRecord(SESSION)?.surfaceTabId).toBe(minted)
+    // Every reader still keys by the derived id, so an unreserved chat must not record another.
+    const derived = `structured-agent-session-${SESSION}`
+    expect(result).toMatchObject({ ok: true, value: { tabId: derived } })
+    expect(store.getRecord(SESSION)?.surfaceTabId).toBe(derived)
+  })
+
+  it('answers a retry that names another tab with the one the record holds', async () => {
+    const store = await openStore()
+    await attachWith(store, 'chat-tab-1')
+    const retried = await attachWith(store, 'chat-tab-2')
+
+    expect(retried).toMatchObject({ ok: true, value: { tabId: 'chat-tab-1' } })
+    expect(store.getRecord(SESSION)?.surfaceTabId).toBe('chat-tab-1')
   })
 })

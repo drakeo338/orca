@@ -54,8 +54,8 @@ export function structuredAgentSessionCreateFingerprint(input: {
       // `canonicalize` drops undefined, so a plain create keeps the digest it has always had.
       // Adopting a conversation is a different intent and must not replay as a blank create.
       resumeFrom: input.resumeFrom,
-      // The reserved tab, for the same reason a terminal launch fingerprints its pane: a retry
-      // that reserved another tab is a different request. The host digests the same field.
+      // The host digests the same field; a retry naming another tab still replays with the
+      // recorded one, since the host owns the id.
       tabId: input.tabId
     }
   })
