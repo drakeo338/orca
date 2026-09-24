@@ -30,7 +30,6 @@ import type {
   AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionWireRefusalCode } from '../../../shared/agent-session-wire-refusals'
-import { boundJournalStatusText } from '../agent-session-journal/journal-prompt-body-bounds'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
 import {
   ownerRestartFailedOutcome,
@@ -41,6 +40,7 @@ import type { StructuredAgentSessionMutationContext } from './structured-agent-s
 import type { AgentSessionMutationSessionPreparation } from './structured-agent-session-mutation-admission'
 import { isResumableStructuredAgentSessionRecord } from './structured-agent-session-resume-eligibility'
 import { rewindRefusal } from './structured-rewind-refusal'
+import { recordStructuredAgentSessionStartFailure } from './structured-agent-session-start-failure-row'
 
 /**
  * What a refused resume means for the send that ran it. `transient`: the resume met a lease
@@ -194,9 +194,7 @@ function ownerRestartFailedRefusal(
   }
 }
 
-/** The same status row a start that failed leaves in the chat, so the reason outlives the error
- *  strip. The journal is made readable for it when the failed attach left none behind. Keyed by
- *  the send, not the clock: a resend of the same id that fails again adds no second row. */
+/** The same status row a start that failed leaves in the chat, keyed by the send. */
 async function recordFailedRestart(
   context: SendPreparationContext,
   envelope: AgentSessionMutationEnvelope,
@@ -204,27 +202,12 @@ async function recordFailedRestart(
 ): Promise<void> {
   const { sessionId } = envelope
   try {
-    if (!context.sessions.has(sessionId)) {
-      await context.restoreReadable(sessionId)
-    }
-    const session = context.sessions.get(sessionId)
-    if (!session) {
-      return
-    }
-    const settlementId = `failed-restart:${envelope.clientOperationId}`
-    await session.journal.appendLifecycleBatch({
-      settlementId,
-      fence: session.fence,
-      recovered: true,
-      mutations: [
-        {
-          kind: 'item',
-          identity: { provider: 'orca', clientMessageId: settlementId },
-          body: { kind: 'status', text: boundJournalStatusText(text) }
-        }
-      ]
-    })
-    context.publish(sessionId, session.journal)
+    await recordStructuredAgentSessionStartFailure(
+      context,
+      sessionId,
+      `failed-restart:${envelope.clientOperationId}`,
+      text
+    )
   } catch (error) {
     context.deps.onEventSinkError?.({ sessionId, error })
   }

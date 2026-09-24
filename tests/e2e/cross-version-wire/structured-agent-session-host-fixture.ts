@@ -102,6 +102,9 @@ export function installableHost(
 ): StructuredAgentSessionHost {
   const host = {
     ...hostCalls,
+    // A create answers its attach; the real host adds only a failed start's readable chat, on a
+    // refusal. Reassembled like `restartResume`, so the manifest still names `attach`.
+    create: (...args: unknown[]) => hostCalls.attach(...args),
     restartResume: {
       list: hostCalls.restartResumableList,
       listFailures: hostCalls.restartResumableFailures,

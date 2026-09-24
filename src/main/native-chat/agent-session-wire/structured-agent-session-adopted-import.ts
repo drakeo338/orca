@@ -1,7 +1,7 @@
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionAttachParams, AttachedJournal } from './structured-agent-session-attach'
-import { agentSessionJournalCloseRetries } from '../agent-session-journal/journal-close-retry'
+import type { AgentSessionAttachParams } from './structured-agent-session-attach'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { JournalReplacementItem } from '../agent-session-journal/journal-epoch-replacement'
 import {
   importLegacyTranscriptIntoJournal,
@@ -58,39 +58,24 @@ async function readAdoptedTranscript(
 // Import before publication so the first visible chat agrees with the provider's resumed context.
 export async function importAdoptedTranscript(
   params: AgentSessionAttachParams,
-  attached: AttachedJournal,
-  record: AgentSessionRecord,
-  prepared: JournalReplacementItem[] | null
-): Promise<void> {
-  try {
-    await applyAdoptedTranscript(params, attached, record, prepared)
-  } catch (error) {
-    // Publication has not taken ownership of this provisional journal yet.
-    await agentSessionJournalCloseRetries.closeOrRetain(attached.journal)
-    throw error
-  }
-}
-
-async function applyAdoptedTranscript(
-  params: AgentSessionAttachParams,
-  attached: AttachedJournal,
+  journal: AgentSessionJournal,
   record: AgentSessionRecord,
   prepared: JournalReplacementItem[] | null
 ): Promise<void> {
   const adopt = params.adopt
   // A new journal contains only its epoch row; replay must preserve subsequent durable writes.
-  if (!adopt || attached.journal.cursor().sequence > 1) {
+  if (!adopt || journal.cursor().sequence > 1) {
     return
   }
   if (prepared) {
-    await attached.journal.replaceEpochItems('legacy_import', record.lease.runtimeFence, prepared)
+    await journal.replaceEpochItems('legacy_import', record.lease.runtimeFence, prepared)
     return
   }
   if (!adopt.transcriptPath) {
     throw new Error('agent_session_identity_required')
   }
   const imported = await importLegacyTranscriptIntoJournal({
-    journal: attached.journal,
+    journal,
     agent: params.agent,
     sessionId:
       adopt.providerHandle.kind === 'claude'

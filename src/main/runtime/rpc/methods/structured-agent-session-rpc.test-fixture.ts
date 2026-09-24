@@ -151,6 +151,8 @@ export function hostStub(): StructuredAgentSessionHost {
         unconfirmedClientMessageIds: []
       }
     })),
+    // A create whose attach succeeded answers the attach; the failed-start answer is the host's.
+    create: vi.fn((...args: unknown[]) => hostCalls.attach(...args)),
     rewind: vi.fn(async () => ({ ok: true, value: { itemId: 'chosen', epoch: 'next' } })),
     send: vi.fn(async () => ({
       ok: true,

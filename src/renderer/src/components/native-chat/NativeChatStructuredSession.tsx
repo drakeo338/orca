@@ -39,7 +39,6 @@ export function NativeChatStructuredSession(
     fileLinkContext?.worktreeId,
     props.sessionId
   )
-  const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
   const controller = useStructuredAgentSession({
@@ -166,14 +165,12 @@ export function NativeChatStructuredSession(
       : null
     return {
       send: (text: string, attachments: readonly { id: string; path: string }[]): boolean =>
-        sendThroughRelaunch(() =>
-          controller.send(
-            text,
-            attachments.map((attachment) => ({
-              path: attachment.path,
-              previewUri: attachment.path
-            }))
-          )
+        controller.send(
+          text,
+          attachments.map((attachment) => ({
+            path: attachment.path,
+            previewUri: attachment.path
+          }))
         ),
       dispatchCommand: (text: string) =>
         dispatchStructuredAgentSessionComposerCommand(text, {
@@ -208,8 +205,7 @@ export function NativeChatStructuredSession(
     optionPickerRequest,
     props.agent,
     props.sessionId,
-    props.target,
-    sendThroughRelaunch
+    props.target
   ])
 
   return (

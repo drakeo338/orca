@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 // The launch client against the create wire contract: a failed create whose provider is proven
 // gone reads as failed (with its reason) and Retry starts it again; any other verdict stays unknown.
+// A current host answers such a create as a readable chat instead; this refusal is what a host that
+// predates that answer sends, and launch Retry is how a newer client recovers from it.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {

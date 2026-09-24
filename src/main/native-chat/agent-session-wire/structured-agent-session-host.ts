@@ -34,9 +34,7 @@ import type { StructuredAgentSessionAttachContext } from './structured-agent-ses
 import { listStructuredAgentSessionTabs } from './structured-agent-session-host-tabs'
 import {
   structuredAgentSessionMutationDelegates,
-  settleStructuredAgentSessionLateDispatch,
-  type StructuredAgentSessionMutationContext,
-  releaseStructuredAgentSessionUnansweredDispatches
+  type StructuredAgentSessionMutationContext
 } from './structured-agent-session-host-mutations'
 import { flushStructuredAgentSessionHost } from './structured-agent-session-host-teardown'
 import type {
@@ -251,6 +249,10 @@ export class StructuredAgentSessionHost {
     return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
   }
 
+  /** A create's answer: the attach's, or the conversation it made when only its start failed. */
+  create = (caller: StructuredAgentSessionCaller, params: AgentSessionAttachParams) =>
+    this.mutations.answerCreate(this.attach(caller, params), params)
+
   flushStreamedEvents = (sessionId: string): Promise<void> =>
     this.runtimeState.flushEventSink(sessionId)
 
@@ -329,12 +331,8 @@ export class StructuredAgentSessionHost {
   subscribe = (input: AgentSessionSubscribeInput): (() => void) =>
     this.backgroundTasks.subscribe(input)
 
-  settleLateDispatch = (input: Parameters<typeof settleStructuredAgentSessionLateDispatch>[1]) =>
-    settleStructuredAgentSessionLateDispatch(this.mutationContext(), input)
-
-  releaseUnansweredDispatches = (
-    input: Parameters<typeof releaseStructuredAgentSessionUnansweredDispatches>[1]
-  ) => releaseStructuredAgentSessionUnansweredDispatches(this.mutationContext(), input)
+  settleLateDispatch = this.mutations.settleLateDispatch
+  releaseUnansweredDispatches = this.mutations.releaseUnansweredDispatches
 
   publishBackgroundTaskState: StructuredAgentSessionBackgroundTaskChannel['publish'] = (...args) =>
     this.backgroundTasks.publish(...args)

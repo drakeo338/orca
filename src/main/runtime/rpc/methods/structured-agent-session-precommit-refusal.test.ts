@@ -49,7 +49,9 @@ function hostStub(): StructuredAgentSessionHost {
     cursor: { epoch: 'epoch-a', sequence: 0 },
     value: { sessionId: SESSION, fence: 1, page: {}, unconfirmedClientMessageIds: [] }
   }))
-  return { attach } as unknown as StructuredAgentSessionHost
+  // A create answers its attach here; only a failed start's readable chat differs, host-side.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the create route reaches only `attach`/`create`, both stubbed; a missing member fails the call.
+  return { attach, create: attach } as unknown as StructuredAgentSessionHost
 }
 
 const resolvedIntent = {

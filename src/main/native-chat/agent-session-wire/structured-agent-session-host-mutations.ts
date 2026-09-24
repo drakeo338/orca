@@ -1,5 +1,5 @@
 // Everything a client can ask an ATTACHED session to do: send a turn, cancel one, answer a prompt,
-// change an option, read the options back.
+// change an option, read the options back — and the answer a create gives when only its start failed.
 //
 // They share one shape — admit the envelope against the lease, run a plan, publish the journal — so
 // they share one path here rather than five copies in the host. The host keeps attach, holds and
@@ -23,6 +23,8 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { StructuredAgentSessionHolds } from './structured-agent-session-holds'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
+import type { AgentSessionAttachParams } from './structured-agent-session-attach'
+import { answerStructuredAgentSessionCreate } from './structured-agent-session-failed-create'
 import {
   admitAndRunAgentSessionMutation,
   type AgentSessionMutationRequest
@@ -288,6 +290,18 @@ export function structuredAgentSessionMutationDelegates(
       caller: StructuredAgentSessionCaller,
       params: Parameters<typeof changeStructuredAgentSessionThreadGoal>[2]
     ) => changeStructuredAgentSessionThreadGoal(context(), caller, params),
-    readOptions: (sessionId: string) => readStructuredAgentSessionOptions(context(), sessionId)
+    readOptions: (sessionId: string) => readStructuredAgentSessionOptions(context(), sessionId),
+    settleLateDispatch: (input: Parameters<typeof settleStructuredAgentSessionLateDispatch>[1]) =>
+      settleStructuredAgentSessionLateDispatch(context(), input),
+    releaseUnansweredDispatches: (
+      input: Parameters<typeof releaseStructuredAgentSessionUnansweredDispatches>[1]
+    ) => releaseStructuredAgentSessionUnansweredDispatches(context(), input),
+    answerCreate: (
+      attached: Parameters<typeof answerStructuredAgentSessionCreate>[0],
+      params: AgentSessionAttachParams
+    ) =>
+      answerStructuredAgentSessionCreate(attached, params, (read) =>
+        context().serialize(params.envelope.sessionId, () => read(context()))
+      )
   }
 }

@@ -3,9 +3,10 @@ import {
   failedAcquisitionRefusal,
   failedAcquisitionSettlement
 } from './structured-agent-session-failed-create-refusal'
-import type {
-  StructuredAgentSessionAdapter,
-  StructuredAgentSessionProviderChildPhase
+import {
+  AgentSessionPreSpawnError,
+  type StructuredAgentSessionAdapter,
+  type StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
 // The host supplies owner authority; this flow reserves, proves, and publishes the session.
 
@@ -32,15 +33,14 @@ import type { StructuredAgentSessionEventSink } from './structured-agent-session
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 import { readAgentSessionHydrationPage } from './agent-session-history-page'
 import { acquireOwner } from './structured-agent-session-acquisition'
-import {
-  importAdoptedTranscript,
-  prepareAdoptedTranscript
-} from './structured-agent-session-adopted-import'
+import { prepareAdoptedTranscript } from './structured-agent-session-adopted-import'
+import { foundAgentSessionConversation } from './structured-agent-session-conversation-founding'
 import {
   withAgentSessionCreatePhase,
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { JournalReplacementItem } from '../agent-session-journal/journal-epoch-replacement'
 
 export type AttachFlowInput = {
   store: AgentSessionRecordStore
@@ -159,6 +159,7 @@ export async function performAttach(
       ownerAlreadyAdmitted: agentSessionLeaseAdmitsWriter(record.lease)
     })
     if (!agentSessionLeaseAdmitsWriter(record.lease)) {
+      await foundConversationBeforeSpawn(input, record, preparedTranscript.items)
       const acquired = await withAgentSessionCreatePhase('acquire_owner', input.recordPhase, () =>
         acquireOwner(input, record)
       )
@@ -210,7 +211,6 @@ export async function performAttach(
       adapter: input.adapter,
       providerHistoryWindow
     })
-    await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
     await input.onAttached(attached, acquisitionGeneration, acquiredOwner, providerChildPhase)
     await store.recordOperationOutcome({
       callerKey: input.callerKey,
@@ -234,6 +234,24 @@ export async function performAttach(
       unconfirmedClientMessageIds: attached.unconfirmedClientMessageIds,
       ...(record.surfaceTabId ? { tabId: record.surfaceTabId } : {})
     }
+  }
+}
+
+/** Nothing has spawned yet, so a failure here settles the reservation as processless. */
+async function foundConversationBeforeSpawn(
+  input: AttachFlowInput,
+  record: AgentSessionRecord,
+  adoptedItems: JournalReplacementItem[] | null
+): Promise<void> {
+  try {
+    await foundAgentSessionConversation({
+      record,
+      params: input.params,
+      journalRoot: input.journalRoot,
+      adoptedItems
+    })
+  } catch (error) {
+    throw new AgentSessionPreSpawnError(error)
   }
 }
 

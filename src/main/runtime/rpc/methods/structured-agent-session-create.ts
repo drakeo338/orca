@@ -127,7 +127,7 @@ export async function commitStructuredAgentSessionCreate(args: {
   activate: boolean
 }): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const { prepared } = args
-  const result = await prepared.host.attach(args.caller, prepared.attachParams)
+  const result = await prepared.host.create(args.caller, prepared.attachParams)
   if (!result.ok || !prepared.tab) {
     return result
   }

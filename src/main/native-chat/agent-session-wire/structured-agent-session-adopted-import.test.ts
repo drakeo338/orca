@@ -15,6 +15,7 @@ import { performAttach, type AttachFlowInput } from './structured-agent-session-
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { agentSessionJournalCloseRetries } from '../agent-session-journal/journal-close-retry'
 import * as legacyImport from '../agent-session-journal/journal-legacy-import'
+import { restoreStructuredAgentSessionRead } from './structured-agent-session-read-restore'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'codex_adopting_session'
@@ -210,7 +211,7 @@ describe('adopting a provider conversation on create', () => {
     }
   )
 
-  it('still releases acquisition and closes the provisional journal on an import write failure', async () => {
+  it('fails an import write before any spawn and closes the founding journal', async () => {
     root = await mkdtemp(join(tmpdir(), 'orca-adopt-write-failure-'))
     const transcriptPath = join(root, 'rollout.jsonl')
     await writeCodexRollout(transcriptPath, 'valid source')
@@ -220,9 +221,29 @@ describe('adopting a provider conversation on create', () => {
     const close = vi.spyOn(agentSessionJournalCloseRetries, 'closeOrRetain')
     const sessionAdapter = adapter()
     await expect(attach(transcriptPath, sessionAdapter)).rejects.toThrow('disk write failed')
-    expect(sessionAdapter.acquire).toHaveBeenCalledTimes(1)
-    expect(sessionAdapter.releaseAcquisition).toHaveBeenCalledTimes(1)
+    // The conversation is founded before a child exists, so nothing was spawned to release.
+    expect(sessionAdapter.acquire).not.toHaveBeenCalled()
+    expect(sessionAdapter.releaseAcquisition).not.toHaveBeenCalled()
     expect(close).toHaveBeenCalledTimes(1)
+    expect(store?.getRecord(SESSION)?.lease.claimStatus).toBe('released')
+  })
+
+  it('keeps the adopted history readable when the first start fails', async () => {
+    root = await mkdtemp(join(tmpdir(), 'orca-adopt-failed-start-'))
+    const transcriptPath = join(root, 'rollout.jsonl')
+    await writeCodexRollout(transcriptPath, 'history before the failed start')
+    const sessionAdapter = adapter()
+    vi.mocked(sessionAdapter.acquire).mockRejectedValueOnce(new Error('codex exited (code 1)'))
+
+    await expect(attach(transcriptPath, sessionAdapter)).resolves.toMatchObject({ ok: false })
+
+    // A send restarts from the record alone, with no adopt source, so the history must already
+    // be in the conversation the create founded.
+    const restored = await restoreStructuredAgentSessionRead(store!, root, SESSION)
+    expect(JSON.stringify(restored?.journal.snapshot().items)).toContain(
+      'history before the failed start'
+    )
+    await restored?.journal.close()
   })
 
   it('prepares a valid source once before acquisition and imports those exact items', async () => {

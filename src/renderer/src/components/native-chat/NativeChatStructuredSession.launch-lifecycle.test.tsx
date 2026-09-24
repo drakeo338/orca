@@ -121,7 +121,10 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     )
   })
 
-  it('relaunches a failed start on send, then delivers the message once it publishes', async () => {
+  // A host answers a create whose agent died starting as a published chat, and a send restarts
+  // the agent there. A launch that still reads failed was refused before the host made anything
+  // (or by a host that predates that answer), so only launch Retry, a fresh create, recovers it.
+  it('parks a send into a failed launch until launch Retry publishes it, without relaunching', async () => {
     mocks.mode = 'outbox'
     mocks.launchLifecycle = 'failed'
     mocks.call.mockResolvedValue({
@@ -130,11 +133,12 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     })
     const { rerender } = render(sessionView())
 
-    expect(composerSend()('restart and say hi', [])).toBe(true)
-    // The relaunch is launch Retry's own: a new create operation under the same session.
-    expect(mocks.retryLaunch).toHaveBeenCalledExactlyOnceWith('wt-1', 'session-1')
+    expect(composerSend()('say hi once it starts', [])).toBe(true)
+    expect(mocks.retryLaunch).not.toHaveBeenCalled()
     expect(mocks.call).not.toHaveBeenCalled()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mocks.retryLaunch).toHaveBeenCalledExactlyOnceWith('wt-1', 'session-1')
     mocks.launchLifecycle = 'published'
     rerender(sessionView())
     await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
@@ -145,7 +149,7 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     )
   })
 
-  it('keeps the message queued with the reason shown when the relaunch fails again', async () => {
+  it('keeps the message queued with the reason shown while the launch stays failed', async () => {
     mocks.mode = 'outbox'
     mocks.launchLifecycle = 'failed'
     mocks.call.mockResolvedValue({
