@@ -7,6 +7,7 @@ import type { AgentSessionWireRefusal } from './agent-session-wire-refusals'
 
 export * from './agent-session-wire-refusals'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
+import type { AgentSessionContextUsage } from './agent-session-context-usage'
 // ─── Structured agent-session wire contract ─────────────────────────────────
 // The shapes `agentSession.*` accepts and publishes. Phase 2 builds provider
 // adapters and clients against exactly these types, so everything here must be
@@ -210,6 +211,9 @@ export type AgentSessionStatusSummary = {
   status: StructuredAgentSessionProjectedStatus | null
   /** Present only while this host has the provider child executing the session. */
   hostExecutionOwned?: true
+  /** With `hostExecutionOwned`: whether that child has proven its start. `starting` is a
+   *  published session whose provider has not yet answered startup; absent on older hosts. */
+  hostExecutionPhase?: 'starting' | 'ready'
   latestPrompt: string
   /** Provider model in force for the next turn; absent until the host has read the options. */
   model?: string
@@ -316,6 +320,8 @@ export type AgentSessionAttachResult = {
   page: AgentSessionHistoryPage
   /** Submissions the crash boundary settled as `unknown` while attaching. */
   unconfirmedClientMessageIds: string[]
+  /** The host-owned id of the tab that shows this chat. Absent from hosts that predate it. */
+  tabId?: string
 }
 
 export type AgentSessionSendResult = {
@@ -412,6 +418,10 @@ export type AgentSessionOptionsResult = {
    *  latest goal the whole journal records, for a client whose loaded page
    *  starts after it. */
   threadGoal?: { current: AgentJournalThreadGoal | null }
+  /** Present only where this session writes context facts to its turn rows.
+   *  `current` is the newest of each part the whole journal records, for a
+   *  client whose loaded page starts after the row that carries it. */
+  contextUsage?: { current: AgentSessionContextUsage }
   models: AgentSessionModelOption[]
   /** Session/account/transport support. Absent means unknown, never unsupported. */
   fastModeSupport?: AgentSessionFastModeSupport
