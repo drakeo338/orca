@@ -9,6 +9,12 @@ import {
   type TypeCyclableTab
 } from '@/components/terminal/tab-type-cycle'
 import type { AppState } from '@/store/types'
+import {
+  selectEmptyFloatingWorkspacePanelVisible,
+  selectFloatingWorkspacePanelVisible,
+  type EmptyFloatingWorkspacePanelState,
+  type FloatingWorkspacePanelVisibilityState
+} from '@/store/floating-workspace-panel-selector'
 import { resolveBrowserWorkspaceOwner } from './browser-workspace-source-resolution'
 import { TOGGLE_FLOATING_TERMINAL_EVENT } from './floating-terminal'
 import { focusTerminalTabSurface } from './focus-terminal-tab-surface'
@@ -40,8 +46,6 @@ type FloatingWorkspaceTabSwitchStore = Pick<
 >
 
 const FLOATING_WORKSPACE_PANEL_SELECTOR = '[data-floating-terminal-panel]'
-const EMPTY_FLOATING_WORKSPACE_PANEL_SELECTOR =
-  '[data-floating-terminal-panel][aria-hidden="false"] [data-floating-terminal-empty-state]'
 
 type EmptyFloatingWorkspaceCloseShortcutEvent = Pick<
   KeyboardEvent,
@@ -198,10 +202,14 @@ export function isFloatingWorkspacePanelVisible(
   return Boolean(doc.querySelector('[data-floating-terminal-panel][aria-hidden="false"]'))
 }
 
-export function isEmptyFloatingWorkspacePanelVisible(
-  doc: Pick<Document, 'querySelector'> | null = typeof document === 'undefined' ? null : document
-): boolean {
-  return Boolean(doc?.querySelector(EMPTY_FLOATING_WORKSPACE_PANEL_SELECTOR))
+/** Opens the floating panel unless it is already on screen. */
+export function revealFloatingWorkspacePanel(state: FloatingWorkspacePanelVisibilityState): void {
+  if (
+    state.settings?.floatingTerminalEnabled === true &&
+    !selectFloatingWorkspacePanelVisible(state)
+  ) {
+    window.dispatchEvent(new CustomEvent(TOGGLE_FLOATING_TERMINAL_EVENT))
+  }
 }
 
 export function isFloatingWorkspacePanelFocused(
@@ -215,6 +223,15 @@ export function isFloatingWorkspacePanelFocused(
 // Used for routing ownership when activeElement is transiently body/null during blur/IME churn (F6/F7).
 export function isEventTargetInsideFloatingWorkspacePanel(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && target.closest(FLOATING_WORKSPACE_PANEL_SELECTOR) !== null
+}
+
+export function resolveKeyboardWorkspaceId(
+  target: EventTarget | null,
+  activeWorktreeId: string | null
+): string | null {
+  return isEventTargetInsideFloatingWorkspacePanel(target)
+    ? FLOATING_TERMINAL_WORKTREE_ID
+    : activeWorktreeId
 }
 
 export function isFloatingWorkspaceTerminalInputTarget(target: EventTarget | null): boolean {
@@ -241,13 +258,14 @@ export function shouldMinimizeFloatingWorkspacePanelOnCloseShortcut({
 }
 
 export function handleEmptyFloatingWorkspacePanelCloseShortcut(
+  state: EmptyFloatingWorkspacePanelState,
   event: EmptyFloatingWorkspaceCloseShortcutEvent,
   platform: NodeJS.Platform,
   keybindings?: KeybindingOverrides
 ): boolean {
   if (
     event.repeat ||
-    !isEmptyFloatingWorkspacePanelVisible() ||
+    !selectEmptyFloatingWorkspacePanelVisible(state) ||
     !keybindingMatchesAction('tab.close', event, platform, keybindings, { context: 'app' })
   ) {
     return false

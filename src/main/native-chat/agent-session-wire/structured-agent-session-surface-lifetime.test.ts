@@ -34,7 +34,8 @@ import {
   hostTestAttachParams,
   hostTestMessage,
   hostTestOperationId,
-  resetHostTestOperationIds
+  resetHostTestOperationIds,
+  hostTestLaunchDirectory
 } from './structured-agent-session-host-test-data'
 
 const CALLER = { callerKey: 'client-1' }
@@ -77,6 +78,7 @@ function openHost(
     now: () => NOW,
     onEventSinkError: ({ error }) => hostErrors.push(error),
     statusSink,
+    resolveLaunchDirectory: hostTestLaunchDirectory,
     ...(probeOwner ? { probeOwner: probeOwner as never } : {}),
     ...(handoffTransport ? { handoffTransport } : {})
   })
@@ -428,6 +430,17 @@ describe('a session with a turn in flight', () => {
 
     emitTurnLifecycle('completed', 2)
     await host.flushStreamedEvents(SESSION)
+
+    await waitForEviction()
+  })
+
+  // Codex settles an admitted send only on its echo, which may never come; eviction retires it.
+  it('is evicted with an admitted send outstanding once no turn runs', async () => {
+    await attach()
+    await host.hold(SESSION, SURFACE)
+    await sendPending('admitted, never echoed')
+
+    host.release(SESSION, SURFACE)
 
     await waitForEviction()
   })

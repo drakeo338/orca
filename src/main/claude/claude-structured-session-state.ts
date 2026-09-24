@@ -3,6 +3,7 @@ import type {
   AgentSessionJournalIdentity
 } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
+import type { StructuredAgentSessionStartedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type {
   ClaudeStreamJsonConnection,
   openClaudeStreamJsonConnection
@@ -18,6 +19,7 @@ import type {
 } from '../../shared/agent-session-wire'
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
+import type { ClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
 
 export type ClaudeAuthDiagnostic = {
   apiKeySourceConfigured: boolean
@@ -52,6 +54,8 @@ export type ClaudeStructuredSessionEvent =
       fence: number
     }
   | { type: 'auth-diagnostic'; sessionId: string; diagnostic: ClaudeAuthDiagnostic }
+  /** Startup facts applied and saved options restored; held prompts are about to be written. */
+  | StructuredAgentSessionStartedEvent
   | {
       type: 'ended'
       sessionId: string
@@ -63,6 +67,8 @@ export type ClaudeStructuredSessionEvent =
       settlementRetryRequired?: boolean
       /** Host clock when the end was observed. */
       observedAt?: number
+      /** The child ended before proving startup, so reacquiring would repeat the same start. */
+      startupUnproven?: true
     }
 
 export type ClaudeLateDispatchOutcome =
@@ -89,21 +95,19 @@ export type ClaudeStructuredSessionAdapterDeps = {
   mintAcquisitionGeneration?: () => string
   now?: () => number
   requestTimeoutMs?: number
-  initTimeoutMs?: number
   persistHandle?: (input: {
     sessionId: string
     providerSessionId: string
     leafUuid: string | null
     fence: number
   }) => Promise<void>
-  /** Read the durable transcript branch after a child has flushed its final rows. */
-  readTranscriptLeaf?: (input: {
+  /** Advance the durable resume point in place at a turn end; bookkeeping, never a turn failure. */
+  persistResumePoint?: (input: {
+    sessionId: string
     providerSessionId: string
-    previousLeafUuid: string | null
-    intentionalRewindUuid?: string
-    /** Account-scoped Claude config root that owns this provider session. */
-    claudeConfigDir: string
-  }) => Promise<string | null>
+    leafUuid: string
+    fence: number
+  }) => Promise<void>
 }
 
 export type ClaudeDispatchWaiter = {
@@ -128,9 +132,10 @@ export type ClaudeDispatchWaiter = {
 export type ClaudeSession = {
   connection: ClaudeStreamJsonConnection
   providerSessionId: string
-  /** Durable transcript files live under this account's `projects` directory. */
-  claudeConfigDir: string
+  /** Latest main-chain message seen on the live stream, mid-turn included. */
   leafUuid: string | null
+  /** `leafUuid` at the last completed turn; the only leaf close and exit persist. */
+  turnEndLeafUuid: string | null
   fence: number
   acquisitionGeneration: string
   prompts: ClaudePromptRegistry
@@ -160,6 +165,8 @@ export type ClaudeSession = {
   dispatchSequence: number
   /** Fences overlapping option writes so a late completion cannot restore stale state. */
   optionMutationSequence: number
+  /** Latest resume point written at a turn end; close and exit persist after it settles. */
+  resumePointWrite?: { leafUuid: string; settled: Promise<void> }
   /** Shared durable-close write; a failed write clears this for a retry. */
   closePersistence?: Promise<void>
   /** Shared full close/finalization operation; a failed operation clears this for a retry. */
@@ -171,6 +178,8 @@ export type ClaudeSession = {
   translator: ClaudeJournalTranslator | null
   events: StructuredAgentSessionEventSink | undefined
   unbindReadingControl?: () => void
+  /** Published at spawn; init facts, option restore and queued prompts land when startup does. */
+  startup: ClaudeSessionStartupGate
 }
 
 export function mintClaudeAcquisitionGeneration(deps: ClaudeStructuredSessionAdapterDeps): string {

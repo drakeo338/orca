@@ -4,7 +4,9 @@ import type { RpcResponse } from '../../transport/types'
 import { BridgeErrorCaptureSchema } from './bridge-error-capture'
 import { BridgeInitRouteSchema, type BridgeInitRoute } from './bridge-init-route'
 import { BridgePageRouteGrantsSchema } from './bridge-page-route-grants'
+import { BridgeSafeAreaInsetsSchema } from './bridge-safe-area-insets'
 import { BridgeNotifySchema } from './bridge-notify-envelope'
+import { BRIDGE_BACK_FRAME } from './bridge-page-back'
 import { BRIDGE_ID_PATTERN, idSchema, methodSchema, versionSchema } from './bridge-frame-fields'
 
 export {
@@ -261,6 +263,10 @@ const BridgeHostMessageSchema = z.union([
     type: z.literal('state'),
     connection: BridgeConnectionSnapshotSchema
   }),
+  // One Back press, and nothing else: the shell pops what it pushed, so a frame naming where to go
+  // back to would be naming a screen the page cannot see. Sent only to a page whose `ready` listed
+  // `BRIDGE_BACK_FRAME`, because an older page's reader refuses the whole frame.
+  z.object({ v: versionSchema, type: z.literal(BRIDGE_BACK_FRAME) }),
   z.object({
     v: versionSchema,
     type: z.literal('end'),
@@ -281,6 +287,8 @@ const BridgeHostMessageSchema = z.union([
     connection: BridgeConnectionSnapshotSchema,
     grants: BridgeGrantsSchema,
     route: BridgeInitRouteSchema.optional(),
+    /** How much of the WebView is under a system bar; absent reads as zeros. */
+    safeAreaInsets: BridgeSafeAreaInsetsSchema.optional(),
     host: BridgeInitHostSchema.optional(),
     storage: BridgeInitStorageSchema.optional(),
     /**

@@ -73,22 +73,23 @@ describe('agent launch caller placement and telemetry', () => {
     expect(createdTabOptions(store)).toMatchObject({ launchAgent: profile.args.agent })
   })
 
-  it.each(cases)('decides whether %s takes the global selection', async (_id, profile) => {
+  // Why uniform: the store scopes activation to the launch's own workspace, so no caller — the
+  // floating panel included — needs to opt out of the selection to protect the main window's.
+  it.each(cases)('selects the tab %s opens within its own workspace', async (_id, profile) => {
     await launch(profile)
 
-    const takesSelection = profile.args.activate !== false
-    expect(createdTabOptions(store)?.activate).toBe(takesSelection ? undefined : false)
-    expect(store.setActiveTabType.mock.calls.length).toBe(takesSelection ? 1 : 0)
-    if (takesSelection) {
-      expect(store.setActiveTabType).toHaveBeenCalledWith('terminal')
-    }
+    expect(createdTabOptions(store)).not.toHaveProperty('activate')
+    expect(store.setActiveTabType).toHaveBeenCalledExactlyOnceWith(
+      'terminal',
+      profile.args.worktreeId
+    )
   })
 
   it.each(cases)('persists the tab-bar order after %s launches', async (_id, profile) => {
     await launch(profile)
 
     // Why: without this the stored order falls back to terminals-first and the new tab jumps to
-    // index 0. It runs for every call site, including the one that does not take the selection.
+    // index 0. It runs for every call site.
     expect(store.setTabBarOrder).toHaveBeenCalledTimes(1)
     expect(store.setTabBarOrder.mock.calls[0]?.[0]).toBe(profile.args.worktreeId)
     expect(store.setTabBarOrder.mock.calls[0]?.[1]).toContain('tab-1')

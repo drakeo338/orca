@@ -7,6 +7,7 @@ import { computerUseErrorRecoveryData } from '../../../shared/computer-use-error
 import { COMPUTER_ERROR_CODES } from '../../../shared/runtime-types'
 import { LINEAR_ERROR_CODES } from '../../../shared/linear/agent-access'
 import { AGENT_SESSION_RPC_ERROR_CODES } from '../../../shared/agent-session-host-authority'
+import { AgentSessionRefusalError } from '../../native-chat/agent-session-wire/structured-agent-session-refusal-error'
 import { ARTIFACT_SHARING_DISABLED_CODE } from '../../../shared/artifact-sharing-gate'
 import { AGENT_SKILL_SHARING_DISABLED_CODE } from '../../../shared/agent-skill-sharing-gate'
 import {
@@ -25,6 +26,8 @@ import { AUTOMATION_OWNER_CONFLICT_CODES } from '../../../shared/automation-owne
 import { ARCHIVE_HOOK_FAILED_REMOVAL_CODE } from '../../../shared/worktree/archive-hook-removal-gate'
 import { NESTED_WORKER_DEPTH_EXCEEDED_CODE } from '../../../shared/nested-worker-depth'
 import { WORKTREE_CREATE_COLLISION_CODE } from '../../../shared/new-workspace/worktree-create-collision'
+import { AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE } from '../../../shared/agent-launch-pane-already-live'
+import { AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE } from '../../../shared/agent-launch-session-already-exists'
 
 export function successResponse(id: string, meta: RpcEnvelopeMeta, result: unknown): RpcSuccess {
   return {
@@ -56,6 +59,8 @@ export function errorResponse(
 // change user-visible error codes.
 const RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   WORKTREE_CREATE_COLLISION_CODE,
+  AGENT_LAUNCH_PANE_ALREADY_LIVE_CODE,
+  AGENT_LAUNCH_SESSION_ALREADY_EXISTS_CODE,
   'agent_launch_replay_unsupported',
   'runtime_unavailable',
   'selector_not_found',
@@ -203,6 +208,15 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
       (error as { code: string }).code,
       message,
       (error as { data?: unknown }).data
+    )
+  }
+  // Same code a bare-code throw of this refusal gets; the message is the refusal's own text.
+  if (error instanceof AgentSessionRefusalError) {
+    return errorResponse(
+      id,
+      meta,
+      RUNTIME_PASSTHROUGH_CODES.has(error.code) ? error.code : 'runtime_error',
+      message
     )
   }
   if (RUNTIME_PASSTHROUGH_CODES.has(message)) {

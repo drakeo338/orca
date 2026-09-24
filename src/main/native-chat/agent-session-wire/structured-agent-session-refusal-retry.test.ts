@@ -24,7 +24,8 @@ import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
   hostTestAttachParams,
-  hostTestMessage
+  hostTestMessage,
+  hostTestLaunchDirectory
 } from './structured-agent-session-host-test-data'
 import type { StructuredAgentSessionHandoffTransport } from './structured-agent-session-handoff-types'
 
@@ -100,6 +101,8 @@ async function createHarness(options: { attached?: boolean; transport?: boolean 
     }),
     cancelTurn: async () => ({ cancelled: true }),
     answerPrompt: async () => undefined,
+    // A failed acquisition is proven gone, as the real adapters prove it.
+    releaseAcquisition: async () => true,
     setOption
   }
   const host = new StructuredAgentSessionHost({
@@ -107,6 +110,7 @@ async function createHarness(options: { attached?: boolean; transport?: boolean 
     adapter,
     journalRoot: root,
     claimKeyId: 'key-1',
+    resolveLaunchDirectory: hostTestLaunchDirectory,
     mintSpawnToken: () => 'spawn-a',
     now: () => NOW,
     ...(options.transport ? { handoffTransport: handoffTransport() } : {})
@@ -247,7 +251,9 @@ const UNREACHABLE = new Set<Pair>([
   'agentSession.setOption:agent_session_journal_unreadable',
   'agentSession.send:agent_session_journal_unreadable',
   // Send reconstructs doubt from its global tombstone instead of refusing it.
-  'agentSession.send:agent_session_operation_unknown'
+  'agentSession.send:agent_session_operation_unknown',
+  // Only a send restarts a lost owner.
+  'agentSession.setOption:agent_session_owner_restart_failed'
 ])
 
 describe('agentSessionRefusalOperationState host oracle', () => {
@@ -372,6 +378,19 @@ describe('agentSessionRefusalOperationState host oracle', () => {
         })
       )
     }
+
+    const unrecoverable = await createHarness()
+    await unrecoverable.host.close(SESSION)
+    unrecoverable.host.deps.adapter.acquire = async () => {
+      throw new Error('no provider thread to resume')
+    }
+    record(
+      await assertHostAgreement(
+        unrecoverable,
+        { method: 'agentSession.send', operationId: operationId() },
+        'agent_session_owner_restart_failed'
+      )
+    )
 
     const allPairs = METHODS.flatMap((method) =>
       AGENT_SESSION_WIRE_REFUSAL_CODES.map((code) => `${method}:${code}` as Pair)

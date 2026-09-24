@@ -18,6 +18,7 @@ import type { WorkspaceSpaceSlice } from './slices/workspace-space'
 import type {
   ClaudeUsageSlice,
   CodexUsageSlice,
+  MuseUsageSlice,
   OpenCodeUsageSlice
 } from './slices/usage-provider-slices'
 import type { BrowserSlice } from './slices/browser'
@@ -43,6 +44,7 @@ import type { NewIssueDraftSlice } from './slices/new-issue-draft'
 import type { TaskCreationDraftsSlice } from './slices/task-creation-drafts'
 import type { RemoteServerUpdatesSlice } from './slices/remote-server-updates'
 import type { TerminalQuickCommandHostsSlice } from './slices/terminal-quick-command-hosts'
+import type { StructuredSessionWorkspacePathSlice } from './slices/structured-session-workspace-paths'
 
 export type AppState = RepoSlice &
   SparsePresetsSlice &
@@ -64,6 +66,7 @@ export type AppState = RepoSlice &
   ClaudeUsageSlice &
   CodexUsageSlice &
   OpenCodeUsageSlice &
+  MuseUsageSlice &
   BrowserSlice &
   RateLimitSlice &
   SshSlice &
@@ -86,4 +89,5 @@ export type AppState = RepoSlice &
   NewIssueDraftSlice &
   TaskCreationDraftsSlice &
   RemoteServerUpdatesSlice &
-  TerminalQuickCommandHostsSlice
+  TerminalQuickCommandHostsSlice &
+  StructuredSessionWorkspacePathSlice

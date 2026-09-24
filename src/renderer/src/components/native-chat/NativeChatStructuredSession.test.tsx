@@ -20,6 +20,7 @@ vi.mock('@/runtime/structured-agent-session-client', () =>
 vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAgentSession())
 vi.mock('./use-native-chat-font-scale', () => moduleFactories.useNativeChatFontScale())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
+vi.mock('./use-native-chat-tab-owner', () => moduleFactories.useNativeChatTabOwner())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())
 vi.mock('./NativeChatComposer', () => moduleFactories.nativeChatComposer())
@@ -149,6 +150,33 @@ describe('NativeChatStructuredSession', () => {
     )
 
     expect(mocks.messageListProps?.isVisible).toBe(isVisible)
+  })
+
+  // The list stops auto-loading on a failed page and re-arms on a new paging
+  // generation, so both the page result and the generation must reach it.
+  it('hands the list the controller older-history state, generation, and page result', async () => {
+    mocks.hasOlder = true
+    mocks.loadingOlder = true
+    mocks.olderHistoryGeneration = 3
+    mocks.loadOlder.mockResolvedValueOnce('failed')
+    render(
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="structured-tab-older"
+        sessionId="session-older"
+        target={{ kind: 'local' }}
+        agent="codex"
+      />
+    )
+
+    expect(mocks.messageListProps?.session).toMatchObject({
+      hasMore: true,
+      loadingEarlier: true,
+      olderHistoryGeneration: 3
+    })
+    await expect(mocks.messageListProps?.session?.loadEarlier()).resolves.toBe('failed')
+    expect(mocks.loadOlder).toHaveBeenCalledOnce()
   })
 
   // Turn status and transcript image previews shipped Codex-first. Every

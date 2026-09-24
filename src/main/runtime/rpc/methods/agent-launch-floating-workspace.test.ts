@@ -58,6 +58,18 @@ describe('agent.launch with the real floating workspace resolver', () => {
     })
   })
 
+  // Why here: the runtime resolvers this crosses are @ts-nocheck, so only a call that runs them
+  // proves the floating workspace resolves to a location a structured session can be filed under.
+  it.each(selectors)('files a structured session for %s on the local host', async (selector) => {
+    const runtime = new OrcaRuntimeService()
+
+    await expect(
+      runtime.getStructuredAgentSessionCreateSupport(selector, 'codex')
+    ).resolves.toEqual({
+      supported: true
+    })
+  })
+
   describe.each([true, false])('structured preference %s', (structuredPreference) => {
     it.each(selectors)('routes %s by preference, not by workspace kind', async (selector) => {
       const runtime = new OrcaRuntimeService()
