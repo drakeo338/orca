@@ -17583,6 +17583,11 @@
         "notFound": "未找到文件：{{value0}}",
         "unverifiable": "无法检查 {{value0}}：{{value1}}",
         "unresolved": "无法解析此工作区中的 {{value0}}"
+      },
+      "contextMenu": {
+        "orchestrationAddressCopied": "已复制编排地址",
+        "orchestrationAddressCopyFailed": "复制编排地址失败",
+        "copyOrchestrationAddress": "复制编排地址"
       }
     },
     "tab": {

@@ -17618,6 +17618,11 @@
         "notFound": "ファイルが見つかりません: {{value0}}",
         "unverifiable": "{{value0}} をチェックできませんでした: {{value1}}",
         "unresolved": "このワークスペースで {{value0}} を解決できませんでした"
+      },
+      "contextMenu": {
+        "orchestrationAddressCopied": "オーケストレーションアドレスをコピーしました",
+        "orchestrationAddressCopyFailed": "オーケストレーションアドレスのコピーに失敗しました",
+        "copyOrchestrationAddress": "オーケストレーションアドレスをコピー"
       }
     },
     "tab": {
