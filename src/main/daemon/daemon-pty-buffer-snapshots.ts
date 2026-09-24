@@ -178,11 +178,12 @@ export abstract class DaemonPtyBufferSnapshots extends DaemonPtySessionControl {
         ignoreCleanEnd: true,
         wslDistro: this.wslDistrosBySessionId.get(sessionId)
       })
-      if (!restoreInfo) {
+      if (!restoreInfo || !checkpoint.liveSnapshot) {
         return liveSnapshot
       }
+      // Why the live window, not the checkpoint: rebasing counts older rows against live, so a deep base could not be bounded.
       return await buildDurableCheckpointSnapshot({
-        liveSnapshot: checkpoint.snapshot,
+        liveSnapshot: checkpoint.liveSnapshot,
         restoreInfo,
         scrollbackRows
       })

@@ -57,13 +57,13 @@ const DEFAULT_SCROLLBACK = 5000
 const CONPTY_DA1_RESPONSE = '\x1b[?61;4c'
 
 export class HeadlessEmulator {
-  private terminal: Terminal
-  private serializer: SerializeAddon
+  protected terminal: Terminal
+  protected serializer: SerializeAddon
   private oscText: TerminalOscCwdTitleScanner
   private mouseModes = new TerminalMouseModeMirror()
   private readonly pathFlavor?: 'posix' | 'win32'
   private readonly remotePosixFileUriAuthority: boolean
-  private restoredOscLinks: TerminalOscLinkRange[] = []
+  protected restoredOscLinks: TerminalOscLinkRange[] = []
   private disposed = false
   private onQueryReply: ((reply: string) => void) | null
   private conptyDa1OverrideInstalled = false

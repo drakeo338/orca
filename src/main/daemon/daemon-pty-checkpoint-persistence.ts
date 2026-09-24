@@ -106,52 +106,46 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
       // Why require drainedRecords: an older daemon still empties the pending
       // queue on includeSnapshot but omits the field. Treating absence as []
       // would compact stale disk history and reset the log.
+      // Why drained only: a teardown take's records repeat held bytes Session.prepareForFinalSnapshot
+      // already emitted, so they are in drainedRecords and the live snapshot too.
       const snapshot =
         take.drainedRecords === undefined || opts.forceLiveSnapshot === true || take.overflowed
           ? take.snapshot
-          : await this.buildDurableHistorySnapshot(
-              sessionId,
-              take.snapshot,
-              [...take.drainedRecords, ...take.records],
-              {
-                pendingRecordsAreComplete: take.seq === 1,
-                ...(opts.requireContinuityProof === true
-                  ? { requiredPreviousPendingOutputSeq: take.seq - 1 }
-                  : {})
-              }
-            )
+          : await this.buildDurableHistorySnapshot(sessionId, take.snapshot, take.drainedRecords, {
+              pendingRecordsAreComplete: take.seq === 1,
+              ...(opts.requireContinuityProof === true
+                ? { requiredPreviousPendingOutputSeq: take.seq - 1 }
+                : {})
+            })
       const checkpoint = await this.historyManager.checkpoint(sessionId, snapshot, {
         pendingOutputSeq: take.seq
       })
       if (checkpoint === 'retryable') {
-        // Why take.records is dropped, not appended: the pending output this take drained went into the snapshot that
-        // failed to land, so appending the held tail at the next contiguous seq would splice it over that hole and
-        // defeat the log's seq-gap detection. A stale prefix beats an undetectable hole.
         this.sessionsNeedingFullCheckpoint.add(sessionId)
         this.sessionsNeedingLiveCheckpoint.add(sessionId)
         this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
         this.markSessionDirty(sessionId)
-        return { checkpoint, snapshot: take.snapshot }
+        return { checkpoint, snapshot: take.snapshot, liveSnapshot: take.snapshot }
       }
       if (checkpoint === 'unavailable') {
         this.sessionsNeedingFullCheckpoint.delete(sessionId)
         this.sessionsNeedingLiveCheckpoint.delete(sessionId)
         this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
-        return { checkpoint, snapshot: take.snapshot }
+        return { checkpoint, snapshot: take.snapshot, liveSnapshot: take.snapshot }
       }
       this.lastFullCheckpointAt.set(sessionId, Date.now())
-      if (take.records.length > 0 && snapshot === take.snapshot) {
-        // Why: live-window fallback still lacks held parser-state bytes; keep them as a post-checkpoint log tail.
-        await this.historyManager.appendIncrements(sessionId, take.seq, take.records)
-      }
       this.sessionsNeedingLiveCheckpoint.delete(sessionId)
       this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
-      return { checkpoint: 'committed', snapshot }
+      return { checkpoint: 'committed', snapshot, liveSnapshot: take.snapshot }
     }
     this.sessionsNeedingFullCheckpoint.delete(sessionId)
     this.sessionsNeedingLiveCheckpoint.delete(sessionId)
     this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
-    return { checkpoint: 'unavailable', snapshot: take?.snapshot ?? null }
+    return {
+      checkpoint: 'unavailable',
+      snapshot: take?.snapshot ?? null,
+      liveSnapshot: take?.snapshot ?? null
+    }
   }
 
   protected async buildDurableHistorySnapshot(
@@ -182,7 +176,8 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
       return await buildDurableCheckpointSnapshot({
         liveSnapshot,
         restoreInfo,
-        pendingRecords
+        pendingRecords,
+        pendingRecordsAreComplete: opts.pendingRecordsAreComplete
       })
     } catch (error) {
       console.warn('[history] durable history rebuild failed:', sessionId, error)

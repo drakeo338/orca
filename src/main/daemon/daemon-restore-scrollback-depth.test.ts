@@ -213,7 +213,7 @@ describe('STA-4091 previously recoverable restore depth', () => {
       }
     })
 
-    it('revokes persisted shell ownership when newer output starts a TUI', async () => {
+    it('takes terminal ownership from the live snapshot, not the persisted proof', async () => {
       const restoreInfo: ColdRestoreInfo = {
         snapshotAnsi: 'stale-tui',
         scrollbackAnsi: '',
@@ -229,11 +229,13 @@ describe('STA-4091 previously recoverable restore depth', () => {
         },
         terminalOwner: 'shell'
       }
-      const liveSnapshot = {
-        ...restoreInfo,
+      // Why no owner: the live recovery barrier already revoked it when the TUI started.
+      const { terminalOwner: _persistedOwner, ...liveState } = restoreInfo
+      const liveSnapshot: TerminalSnapshot = {
+        ...liveState,
         scrollbackLines: 0,
         outputSequence: 42
-      } as TerminalSnapshot
+      }
 
       const durable = await buildDurableCheckpointSnapshot({
         liveSnapshot,
