@@ -24,6 +24,7 @@ const notebookApi = {
   listPythonEnvironments: vi.fn(),
   startKernel: vi.fn(),
   installIpykernel: vi.fn(),
+  createVenv: vi.fn(),
   execute: vi.fn(),
   interrupt: vi.fn(),
   shutdownKernel: vi.fn(),
@@ -38,6 +39,7 @@ Object.defineProperty(globalThis, 'window', {
 })
 
 const session = await import('./ipynb-kernel-session')
+const { ipykernelInstallCommand, venvSetupCommand } = await import('./ipynb-kernel-setup-commands')
 const { getCellRun, getSession } = await import('./ipynb-kernel-store')
 
 function frame(value: KernelFrame): void {
@@ -105,7 +107,10 @@ describe('notebook kernel session', () => {
   })
 
   it('keeps cells queued through a missing-ipykernel install, then runs them', async () => {
-    notebookApi.startKernel.mockResolvedValueOnce({ status: 'missing-ipykernel' })
+    notebookApi.startKernel.mockResolvedValueOnce({
+      status: 'missing-ipykernel',
+      externallyManaged: false
+    })
     notebookApi.installIpykernel.mockResolvedValue({ ok: true, detail: '' })
     await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
     expect(notebookApi.execute).not.toHaveBeenCalled()
@@ -115,17 +120,66 @@ describe('notebook kernel session', () => {
     expect(notebookApi.execute).toHaveBeenCalledWith({ filePath: FILE, code: 'x' })
   })
 
-  it('writes an install failure into the waiting cell', async () => {
-    notebookApi.startKernel.mockResolvedValueOnce({ status: 'missing-ipykernel' })
-    notebookApi.installIpykernel.mockResolvedValue({
-      ok: false,
-      detail: 'error: externally-managed-environment'
+  it('keeps the dialog open with the install error and the cells still waiting', async () => {
+    notebookApi.startKernel.mockResolvedValueOnce({
+      status: 'missing-ipykernel',
+      externallyManaged: false
     })
+    notebookApi.installIpykernel.mockResolvedValue({ ok: false, detail: 'network unreachable' })
     await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
     await session.installIpykernel(FILE)
-    const outputs = JSON.stringify(getCellRun(FILE, 'a')?.outputs)
-    expect(outputs).toContain('externally-managed-environment')
-    expect(outputs).toContain('Installing ipykernel failed')
+    expect(getSession(FILE)).toMatchObject({
+      status: 'missing-ipykernel',
+      setupError: 'network unreachable',
+      queue: [{ key: 'a', code: 'x' }]
+    })
+    expect(getCellRun(FILE, 'a')).toBeUndefined()
+  })
+
+  it('says so when pip succeeds but the kernel still cannot load ipykernel', async () => {
+    notebookApi.startKernel.mockResolvedValue({
+      status: 'missing-ipykernel',
+      externallyManaged: false
+    })
+    notebookApi.installIpykernel.mockResolvedValue({ ok: true, detail: '' })
+    await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
+    await session.installIpykernel(FILE)
+    expect(getSession(FILE).status).toBe('missing-ipykernel')
+    expect(getSession(FILE).setupError).toContain('still cannot load it')
+  })
+
+  it('creates a .venv for a pip-locked Python and runs the waiting cells in it', async () => {
+    const created = { path: '/repo/.venv/bin/python', name: '.venv', version: '3.14.0' }
+    const system = { path: '/opt/homebrew/bin/python3', name: 'python3', version: '3.14.0' }
+    openFiles.current = [{ filePath: '/repo/nb.ipynb' }]
+    notebookApi.listPythonEnvironments.mockResolvedValue({ workspace: [], path: [system] })
+    notebookApi.startKernel
+      .mockResolvedValueOnce({ status: 'missing-ipykernel', externallyManaged: true })
+      .mockResolvedValueOnce({ status: 'ready' })
+    notebookApi.createVenv.mockResolvedValue({ ok: true, environment: created })
+    await session.runCells('/repo/nb.ipynb', [{ key: 'a', code: 'x' }], '/repo')
+    expect(getSession('/repo/nb.ipynb').externallyManaged).toBe(true)
+
+    await session.createVirtualEnvironment('/repo/nb.ipynb', '/repo', system)
+    expect(notebookApi.createVenv).toHaveBeenCalledWith({
+      filePath: '/repo/nb.ipynb',
+      rootPath: '/repo',
+      python: system.path
+    })
+    expect(notebookApi.startKernel).toHaveBeenLastCalledWith({
+      filePath: '/repo/nb.ipynb',
+      python: created.path
+    })
+    expect(notebookApi.execute).toHaveBeenCalledWith({ filePath: '/repo/nb.ipynb', code: 'x' })
+  })
+
+  it('builds the copyable venv command for each shell', () => {
+    expect(venvSetupCommand('/usr/bin/python3', '/my repo', false)).toBe(
+      "'/usr/bin/python3' -m venv '/my repo/.venv' && '/my repo/.venv/bin/python' -m pip install -U ipykernel"
+    )
+    expect(venvSetupCommand('C:\\py\\python.exe', 'C:\\repo', true)).toBe(
+      "& 'C:\\py\\python.exe' -m venv 'C:\\repo\\.venv'; & 'C:\\repo\\.venv\\Scripts\\python.exe' -m pip install -U ipykernel"
+    )
   })
 
   it('falls back to Python on PATH when there is no workspace env', async () => {
@@ -164,8 +218,8 @@ describe('notebook kernel session', () => {
   })
 
   it('quotes the copyable install command only when the path needs it', () => {
-    const posix = (path: string): string => session.ipykernelInstallCommand(path, false)
-    const windows = (path: string): string => session.ipykernelInstallCommand(path, true)
+    const posix = (path: string): string => ipykernelInstallCommand(path, false)
+    const windows = (path: string): string => ipykernelInstallCommand(path, true)
     const pip = ' -m pip install -U ipykernel'
     expect(posix('/v/bin/python')).toBe(`'/v/bin/python'${pip}`)
     expect(posix('/my env/bin/python')).toBe(`'/my env/bin/python'${pip}`)

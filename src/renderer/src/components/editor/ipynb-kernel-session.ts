@@ -2,71 +2,23 @@ import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import type {
+  CreateVenvResult,
   KernelFrameEvent,
   KernelStartResult,
   PythonEnvironment
 } from '../../../../shared/notebook-kernel-types'
-import { applyKernelOutput, type NotebookOutput } from './ipynb-kernel-outputs'
+import { applyKernelOutput } from './ipynb-kernel-outputs'
+import { fenced, noticeOutput, startRun, stopRuns } from './ipynb-kernel-runs'
 import {
   getSession,
   runningCellKey,
   setEnvironment,
   store,
   updateSession,
-  type CellRun,
-  type NotebookKernelSession,
   type QueuedCell
 } from './ipynb-kernel-store'
 
 const INTERRUPT_STALL_MS = 10_000
-/** Install's command as a shell line to copy; Install itself spawns without a shell. */
-export function ipykernelInstallCommand(
-  python: string,
-  windows = navigator.userAgent.includes('Windows')
-): string {
-  // Why single quotes: literal in POSIX shells and PowerShell; PowerShell runs a quoted path via `&`.
-  const program = windows
-    ? `& '${python.replaceAll("'", "''")}'`
-    : `'${python.replaceAll("'", "'\\''")}'`
-  return `${program} -m pip install -U ipykernel`
-}
-
-function startRun(): CellRun {
-  return {
-    outputs: [],
-    clearOnNextOutput: false,
-    executionCount: null,
-    startedAt: Date.now(),
-    finishedAt: null,
-    committed: false
-  }
-}
-
-/** Ends the executing run, if any, and drops every queued cell. */
-function stopRuns(session: NotebookKernelSession, extraOutputs: NotebookOutput[] = []) {
-  const key = runningCellKey(session)
-  const run = key === null ? null : session.runs[key]
-  return {
-    queue: [],
-    interruptStalled: false,
-    runs:
-      key === null || !run
-        ? session.runs
-        : {
-            ...session.runs,
-            [key]: { ...run, outputs: [...run.outputs, ...extraOutputs], finishedAt: Date.now() }
-          }
-  }
-}
-
-/** Orca's own notices (no Python, install failures) are written as markdown outputs of the cell. */
-function noticeOutput(markdown: string): NotebookOutput {
-  return { output_type: 'display_data', data: { 'text/markdown': markdown }, metadata: {} }
-}
-
-function fenced(text: string): string {
-  return text ? `\n\n\`\`\`\n${text}\n\`\`\`` : ''
-}
 
 /** Reports a failure in the first queued cell (a toast when nothing was queued) and drops the queue. */
 function failQueue(filePath: string, message: string, detail = ''): void {
@@ -149,7 +101,11 @@ async function start(filePath: string, rootPath: string | null = null): Promise<
     updateSession(filePath, () => ({ status: 'ready' }))
     pump(filePath)
   } else if (result.status === 'missing-ipykernel') {
-    updateSession(filePath, () => ({ status: 'missing-ipykernel' }))
+    updateSession(filePath, () => ({
+      status: 'missing-ipykernel',
+      externallyManaged: result.externallyManaged,
+      setupError: null
+    }))
   } else {
     failQueue(
       filePath,
@@ -221,34 +177,69 @@ export async function installIpykernel(filePath: string): Promise<void> {
   if (!environment) {
     return
   }
-  updateSession(filePath, () => ({ status: 'installing' }))
+  updateSession(filePath, () => ({ status: 'installing', setupError: null }))
   const result = await window.api.notebook.installIpykernel({ python: environment.path })
   if (!isOpen(filePath)) {
     return
   }
-  if (result.ok) {
-    await start(filePath)
+  if (!result.ok) {
+    updateSession(filePath, () => ({ status: 'missing-ipykernel', setupError: result.detail }))
     return
   }
-  failQueue(
-    filePath,
-    translate(
-      'auto.components.editor.IpynbViewer.installFailed',
-      'Installing ipykernel failed. Run `{{command}}` yourself, or create a virtual environment for this project with `{{venvCommand}}` and choose it as the kernel.',
-      {
-        command: ipykernelInstallCommand(environment.path),
-        // Windows installs the `py` launcher; `python3` there is often the Store stub.
-        venvCommand: `${navigator.userAgent.includes('Windows') ? 'py' : 'python3'} -m venv .venv`
-      }
-    ),
-    result.detail
-  )
+  await start(filePath)
+  if (isOpen(filePath) && getSession(filePath).status === 'missing-ipykernel') {
+    updateSession(filePath, () => ({
+      setupError: translate(
+        'auto.components.editor.IpynbViewer.installedButMissing',
+        'pip reported ipykernel as installed, but this Python still cannot load it.'
+      )
+    }))
+  }
+}
+
+/** Creates the notebook's `.venv` from `base` with ipykernel, then runs the notebook in it. */
+export async function createVirtualEnvironment(
+  filePath: string,
+  rootPath: string | null,
+  base: PythonEnvironment
+): Promise<void> {
+  // From the setup dialog, the cells waiting on ipykernel run in the new env; failures stay in the dialog.
+  const fromDialog = getSession(filePath).status === 'missing-ipykernel'
+  updateSession(filePath, (session) => ({
+    ...(fromDialog ? {} : stopRuns(session)),
+    status: 'creating-venv',
+    setupError: null
+  }))
+  let result: CreateVenvResult
+  try {
+    result = await window.api.notebook.createVenv({ filePath, rootPath, python: base.path })
+  } catch (error) {
+    result = { ok: false, detail: error instanceof Error ? error.message : String(error) }
+  }
+  if (!isOpen(filePath)) {
+    return
+  }
+  if (result.ok) {
+    setEnvironment(filePath, result.environment)
+    await start(filePath, rootPath)
+  } else if (fromDialog) {
+    updateSession(filePath, () => ({ status: 'missing-ipykernel', setupError: result.detail }))
+  } else {
+    failQueue(
+      filePath,
+      translate(
+        'auto.components.editor.IpynbViewer.venvFailed',
+        'Creating the virtual environment failed.'
+      ),
+      result.detail
+    )
+  }
 }
 
 /** Drops the cells waiting on ipykernel when the user backs out of installing it. */
 export function cancelPendingStart(filePath: string): void {
   if (getSession(filePath).status === 'missing-ipykernel') {
-    updateSession(filePath, () => ({ status: 'off', queue: [] }))
+    updateSession(filePath, () => ({ status: 'off', queue: [], setupError: null }))
   }
 }
 

@@ -1,13 +1,19 @@
 import { existsSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
-import type { PythonEnvironment, PythonEnvironments } from '../../shared/notebook-kernel-types'
+import type {
+  CreateVenvResult,
+  PythonEnvironment,
+  PythonEnvironments
+} from '../../shared/notebook-kernel-types'
+import { venvInterpreterPath } from '../../shared/notebook-venv-location'
 
 const PROBE = 'import sys, platform; print(sys.executable); print(platform.python_version())'
 const PROBE_TIMEOUT_MS = 10_000
 const WORKSPACE_ENV_DIRS = ['.venv', '.conda']
 const INSTALL_TIMEOUT_MS = 10 * 60_000
 const INSTALL_DETAIL_CHARS = 4000
+const VENV_TIMEOUT_MS = 2 * 60_000
 
 /** `.venv`/`.conda` interpreters from the notebook's folder up to the workspace root, nearest first. */
 export function findWorkspaceInterpreters(
@@ -111,4 +117,35 @@ export async function installIpykernel(python: string): Promise<{ ok: boolean; d
   } catch (error) {
     return { ok: false, detail: error instanceof Error ? error.message : String(error) }
   }
+}
+
+/** Creates (or reuses) `<parent>/.venv` from `python` and installs ipykernel into it. */
+export async function createNotebookVenv(
+  python: string,
+  parent: string
+): Promise<CreateVenvResult> {
+  const venvPath = join(parent, '.venv')
+  try {
+    // Without --clear, an existing .venv is kept and only its missing pieces are recreated.
+    const created = await runProcess({
+      program: python,
+      args: ['-m', 'venv', venvPath],
+      timeoutMs: VENV_TIMEOUT_MS
+    })
+    if (created.code !== 0) {
+      const detail = created.stderr.trim() || created.stdout.trim()
+      return { ok: false, detail: detail.slice(-INSTALL_DETAIL_CHARS) }
+    }
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : String(error) }
+  }
+  const interpreter = venvInterpreterPath(venvPath, process.platform === 'win32')
+  const installed = await installIpykernel(interpreter)
+  if (!installed.ok) {
+    return { ok: false, detail: installed.detail }
+  }
+  const environment = await describePython(interpreter)
+  return environment
+    ? { ok: true, environment }
+    : { ok: false, detail: `${interpreter} did not run after the environment was created.` }
 }

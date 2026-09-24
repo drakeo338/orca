@@ -1,10 +1,14 @@
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { runProcessMock } = vi.hoisted(() => ({ runProcessMock: vi.fn() }))
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess: runProcessMock }))
 
-import { findWorkspaceInterpreters, installIpykernel } from './python-environments'
+import {
+  createNotebookVenv,
+  findWorkspaceInterpreters,
+  installIpykernel
+} from './python-environments'
 
 function existing(...paths: string[]): (path: string) => boolean {
   return (path) => paths.includes(path)
@@ -54,5 +58,41 @@ describe('installIpykernel', () => {
       ['-m', 'ensurepip'],
       ['-m', 'pip', 'install', '-U', 'ipykernel']
     ])
+  })
+})
+
+describe('createNotebookVenv', () => {
+  beforeEach(() => runProcessMock.mockReset())
+
+  it('creates .venv in the parent, installs ipykernel into it, and describes it', async () => {
+    const venv = join('/repo', '.venv')
+    const venvPython =
+      process.platform === 'win32' ? `${venv}\\Scripts\\python.exe` : `${venv}/bin/python`
+    runProcessMock
+      .mockResolvedValueOnce({ code: 0, stdout: '', stderr: '' })
+      .mockResolvedValueOnce({ code: 0, stdout: '', stderr: '' })
+      .mockResolvedValueOnce({ code: 0, stdout: `${venvPython}\n3.14.0\n`, stderr: '' })
+    const result = await createNotebookVenv('/usr/bin/python3', '/repo')
+    expect(result).toMatchObject({ ok: true, environment: { path: venvPython, version: '3.14.0' } })
+    expect(
+      runProcessMock.mock.calls.map(([spec]) => [spec.program, ...spec.args.slice(0, 3)])
+    ).toEqual([
+      ['/usr/bin/python3', '-m', 'venv', venv],
+      [venvPython, '-m', 'pip', 'install'],
+      [venvPython, '-c', expect.any(String)]
+    ])
+  })
+
+  it('reports why venv creation failed', async () => {
+    runProcessMock.mockResolvedValueOnce({
+      code: 1,
+      stdout: '',
+      stderr:
+        'The virtual environment was not created successfully because ensurepip is not available.'
+    })
+    await expect(createNotebookVenv('/usr/bin/python3', '/repo')).resolves.toEqual({
+      ok: false,
+      detail: expect.stringContaining('ensurepip is not available')
+    })
   })
 })
