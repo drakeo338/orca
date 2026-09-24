@@ -8,9 +8,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  AgentSessionBackgroundTask,
+  AgentSessionStatusEvent
+} from '../../../shared/agent-session-wire'
+import { AGENT_STATUS_STALE_AFTER_MS } from '../../../shared/agent-status-types'
 import { projectStructuredAgentSessionStatusSummary } from '../../../shared/structured-agent-session-projection'
+import { AgentHookServer, _internals } from '../../agent-hooks/server'
 import { createClaudeJournalTranslator } from '../../claude/claude-structured-journal-translation'
 import { createCodexJournalTranslator } from '../../codex/codex-structured-journal-translation'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
@@ -26,10 +31,12 @@ let root: string
 const journals = createTrackedJournalOpener()
 
 beforeEach(async () => {
+  _internals.resetCachesForTests()
   root = await mkdtemp(join(tmpdir(), 'orca-subagent-recency-'))
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
@@ -52,10 +59,18 @@ async function openSession() {
     now: tick,
     journalDir: join(root, SESSION)
   })
+  // The roster the provider adapter reports, and the host's status row the feed writes into.
+  const roster: { tasks: AgentSessionBackgroundTask[] } = { tasks: [] }
+  const server = new AgentHookServer()
   const feed = new StructuredAgentSessionStatusFeed({
     sessions: new Map([[SESSION, indexedStatusFeedSession({ journal, hasProviderChild: true })]]),
     getRecord: () => null,
-    now: () => 1
+    now: () => 1,
+    readBackgroundTasks: () => ({ state: 'monitoring', tasks: roster.tasks }),
+    statusSink: () => ({
+      publish: (summary, subject) => server.ingestStructuredStatus(summary, subject),
+      forget: (subject) => server.dropStructuredStatus(subject)
+    })
   })
   const events: AgentSessionStatusEvent[] = []
   feed.subscribe({ id: 'list-1', emit: (event) => events.push(event) })
@@ -85,6 +100,8 @@ async function openSession() {
   }
   return {
     journal,
+    roster,
+    server,
     projected,
     tick,
     sink: deferred.sink,
@@ -229,6 +246,56 @@ describe("a subagent's work and the recency of the session that spawned it", () 
     handle(claudeResult('result-2'))
     await session.drain()
     expect(session.latestStatus().statusStartedAt).toBeGreaterThan(settled.statusStartedAt ?? 0)
+    translator.dispose()
+    session.close()
+  })
+
+  // A row live child work holds open is dated by when the host saw it, and mobile decays a working
+  // row whose evidence is older than the staleness window. The child's own rows are what keep it.
+  it("keeps the host's evidence fresh while a live subagent holds an idle Claude session open", async () => {
+    const session = await openSession()
+    const translator = createClaudeJournalTranslator({ sink: session.sink })
+    const handle = (event: ReturnType<typeof claudeFrame>): void =>
+      translator.handle({ ...event, observedAt: session.tick() })
+    await session.prompt('prompt-1', 'fan out')
+    handle(claudeUserTurn('user-1', 'fan out'))
+    handle(
+      claudeFrame({
+        type: 'assistant',
+        uuid: 'assistant-1',
+        parent_tool_use_id: null,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'Task', input: { description: 'x' } }]
+        }
+      })
+    )
+    session.roster.tasks = [{ id: 'task-1', kind: 'agent', state: 'working' }]
+    handle(claudeResult('result-1'))
+    await session.drain()
+    const settled = session.latestStatus()
+    expect(settled).toMatchObject({ status: 'idle', statusStartedAt: expect.any(Number) })
+    const [heldOpen] = session.server.getStatusSnapshot()
+    expect(heldOpen).toMatchObject({ state: 'working', mainAgent: { state: 'done' } })
+
+    const later = (heldOpen?.evidenceObservedAt ?? 0) + AGENT_STATUS_STALE_AFTER_MS + 1
+    vi.spyOn(Date, 'now').mockReturnValue(later)
+    handle(
+      claudeFrame({
+        type: 'assistant',
+        uuid: 'child-assistant-1',
+        parent_tool_use_id: 'toolu_1',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'still reviewing' }] }
+      })
+    )
+    await session.drain()
+
+    expect(session.server.getStatusSnapshot()[0]).toMatchObject({
+      state: 'working',
+      evidenceObservedAt: later,
+      stateStartedAt: heldOpen?.stateStartedAt,
+      mainAgent: { state: 'done', stateStartedAt: settled.statusStartedAt }
+    })
     translator.dispose()
     session.close()
   })
