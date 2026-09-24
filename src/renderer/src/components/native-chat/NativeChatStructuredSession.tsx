@@ -86,6 +86,7 @@ export function NativeChatStructuredSession(
       ...(controller.error ? { error: controller.error } : {}),
       hasMore: controller.hasOlder,
       loadingEarlier: controller.loadingOlder,
+      olderHistoryGeneration: controller.olderHistoryGeneration,
       loadEarlier: controller.loadOlder,
       readPhase:
         controller.status === 'loading'
@@ -186,6 +187,7 @@ export function NativeChatStructuredSession(
       optionSnapshot: controller.optionSnapshot,
       optionPickerRequest,
       sessionCommands: controller.sessionCommands,
+      contextUsage: controller.contextUsage,
       worktreeId: fileLinkContext?.worktreeId,
       onError: setComposerError,
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',

@@ -183,6 +183,9 @@ export function readStructuredAgentSessionOptions(
       conversationCommands: context.deps.adapter.compact ? ['clear', 'compact'] : ['clear'],
       ...(context.deps.adapter.supportsThreadGoal?.(sessionId)
         ? { threadGoal: { current: session.journal.threadGoal() } }
+        : {}),
+      ...(context.deps.adapter.recordsContextUsage?.(sessionId)
+        ? { contextUsage: { current: session.journal.contextUsage() } }
         : {})
     }
   })

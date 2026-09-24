@@ -432,8 +432,35 @@ const MERMAID_PACKAGE = 'node_modules/mermaid/'
  *
  *   modules        4216 -> 4218   (+2)
  *   local modules  1030 -> 1032   (+2)
+ *
+ * #22452 (`80f5aae0f9`) then added `src/shared/main-agent-status.ts` and
+ * `src/shared/agent-turn-outcome.ts`, which `agent-status-types.ts` on this route imports. Two local
+ * modules; the change was src/shared-only, so its own CI never ran this suite and main read two over.
+ *
+ *   modules        4218 -> 4220   (+2)
+ *   local modules  1032 -> 1034   (+2)
+ *
+ * Reverting #18790 then took `src/shared/agent-icons/freebuff.png` back out of
+ * `mobile-agent-icon-assets.ts`, undoing the one module #22119 pinned for it. Measured on the revert.
+ *
+ *   modules        4220 -> 4219   (-1)
+ *   local modules  1034 -> 1033   (-1)
+ *
+ * #22301 (`25d7c21fcb`) then added `src/shared/agent-session-context-usage.ts` and
+ * `src/shared/agent-session-context-usage-schema.ts`, which `agent-session-wire.ts` and
+ * `agent-session-journal-types.ts` on this route import. Two local modules; it touched nothing under
+ * `mobile/`, so its own CI never ran this suite.
+ *
+ *   modules        4219 -> 4221   (+2)
+ *   local modules  1033 -> 1035   (+2)
+ *
+ * The browser pane's double buffer then moved into one pacer module, replacing the frame-apply
+ * hook, the pane-layers hook and the layer-flip module. Measured on main after the squash.
+ *
+ *   modules        4221 -> 4219   (-2)
+ *   local modules  1035 -> 1033   (-2)
  */
-const SESSION_ROUTE_MODULES = 4218
+const SESSION_ROUTE_MODULES = 4219
 
 /** What the page enters this route through once the route is a switch with a `.web.tsx` sibling. */
 const ROUTE_ENTRY = [
