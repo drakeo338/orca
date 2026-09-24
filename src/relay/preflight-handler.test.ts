@@ -241,12 +241,18 @@ describe('hasAbsoluteCommandPath', () => {
 
 describe('PreflightHandler', () => {
   it('reports the login-shell Grok home when Grok is detected', async () => {
-    execFileAsyncMock.mockImplementation(async (_file, args) => {
-      const script = String(args[1])
-      if (script.includes('GROK_HOME')) {
-        return { stdout: '/srv/grok\n' }
-      }
+    execFileAsyncMock.mockImplementation(async () => {
       return { stdout: '__ORCA_AGENT_PATH__/home/dev/.local/bin/grok\n' }
+    })
+    runProcessMock.mockImplementation(async ({ args }: { args?: readonly string[] }) => {
+      const script = String(args?.[1] ?? '')
+      return {
+        code: 0,
+        signal: null,
+        stdout: script.includes('GROK_HOME') ? '/srv/grok\n' : '',
+        stderr: '',
+        timedOut: false
+      }
     })
     const requestHandlers = new Map<string, (params: Record<string, unknown>) => Promise<unknown>>()
     const dispatcher = {
