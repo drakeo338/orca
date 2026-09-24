@@ -1,6 +1,4 @@
-import { execFile } from 'node:child_process'
 import { homedir, userInfo } from 'node:os'
-import { promisify } from 'node:util'
 import path from 'node:path'
 import { buildRelayCommandEnv } from './relay-command-env'
 import {
@@ -8,8 +6,8 @@ import {
   GROK_HOME_PATH_MAX_LENGTH,
   normalizeGrokHomePath
 } from '../shared/grok-session-paths'
+import { runProcess } from '../shared/child-process/run-process'
 
-const execFileAsync = promisify(execFile)
 const GROK_HOME_PROBE_TIMEOUT_MS = 8_000
 
 function hasControlCharacter(value: string): boolean {
@@ -28,16 +26,16 @@ export async function resolveGrokHomeForRelay(): Promise<string | null> {
     }
     const shellName = path.basename(shell)
     const mode = shellName === 'sh' || shellName === 'dash' ? '-c' : '-lc'
-    const { stdout } = await execFileAsync(
-      shell,
-      [mode, `printenv GROK_HOME | head -c ${GROK_HOME_PATH_MAX_LENGTH + 1}`],
-      {
-        encoding: 'utf-8',
-        env: buildRelayCommandEnv(process.env, process.platform),
-        timeout: GROK_HOME_PROBE_TIMEOUT_MS
-      }
-    )
-    return normalizeGrokHomePath(stdout.split(/\r?\n/, 1)[0] ?? '') ?? fallback
+    const result = await runProcess({
+      program: shell,
+      args: [mode, `printenv GROK_HOME | head -c ${GROK_HOME_PATH_MAX_LENGTH + 1}`],
+      env: buildRelayCommandEnv(process.env, process.platform),
+      timeoutMs: GROK_HOME_PROBE_TIMEOUT_MS
+    })
+    if (result.code !== 0 || result.timedOut) {
+      return fallback
+    }
+    return normalizeGrokHomePath(result.stdout.split(/\r?\n/, 1)[0] ?? '') ?? fallback
   } catch {
     return fallback
   }
