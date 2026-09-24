@@ -59,7 +59,10 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve }
 }
 
+let probeRenders = 0
+
 function Probe(props: { runtime: OrcaCliSkillRuntime; enabled?: boolean }): null {
+  probeRenders += 1
   latestState = useOrcaCliInstallStatus(props.runtime, { enabled: props.enabled })
   return null
 }
@@ -122,6 +125,7 @@ afterEach(async () => {
   container?.remove()
   container = null
   latestState = null
+  probeRenders = 0
   instanceStates.length = 0
   Reflect.deleteProperty(window, 'api')
   Reflect.deleteProperty(globalThis, '__ORCA_WEB_CLIENT__')
@@ -135,7 +139,7 @@ describe('useOrcaCliInstallStatus', () => {
     await flush()
 
     expect(getInstallStatus).toHaveBeenCalledTimes(1)
-    expect(latestState).toMatchObject({ checked: true, loading: false, registered: false })
+    expect(latestState).toMatchObject({ checked: true, registered: false })
 
     getInstallStatus.mockResolvedValue(cliStatus())
     advancePastFreshWindow()
@@ -145,6 +149,22 @@ describe('useOrcaCliInstallStatus', () => {
     await flush()
 
     expect(latestState?.registered).toBe(true)
+  })
+
+  it('re-renders a reader once per re-read, not once more when the read starts', async () => {
+    getInstallStatus.mockResolvedValue(cliStatus())
+    await render(HOST_RUNTIME)
+    await flush()
+    const rendersAfterMount = probeRenders
+
+    advancePastFreshWindow()
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await flush()
+
+    expect(getInstallStatus).toHaveBeenCalledTimes(2)
+    expect(probeRenders - rendersAfterMount).toBe(1)
   })
 
   it('reads the WSL CLI for the runtime distro', async () => {
@@ -310,11 +330,11 @@ describe('useOrcaCliInstallStatus', () => {
     advancePastFreshWindow()
     await render(HOST_RUNTIME, true)
     expect(getInstallStatus).toHaveBeenCalledTimes(2)
-    expect(latestState).toMatchObject({ checked: true, loading: true, registered: true })
+    expect(latestState).toMatchObject({ checked: true, registered: true })
 
     second.resolve(cliStatus({ state: 'not_installed' }))
     await flush()
-    expect(latestState).toMatchObject({ checked: true, loading: false, registered: false })
+    expect(latestState).toMatchObject({ checked: true, registered: false })
   })
 
   it('never shows another target answer when the install target changes', async () => {
@@ -341,7 +361,7 @@ describe('useOrcaCliInstallStatus', () => {
     await flush()
 
     expect(getInstallStatus).not.toHaveBeenCalled()
-    expect(latestState).toMatchObject({ checked: false, loading: false })
+    expect(latestState).toMatchObject({ checked: false })
   })
 
   it('reports a remote runtime as unverifiable without reading the local CLI', async () => {

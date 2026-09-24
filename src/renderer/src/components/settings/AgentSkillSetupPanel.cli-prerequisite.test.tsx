@@ -7,6 +7,7 @@ import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { InstalledAgentSkillState } from '@/hooks/useInstalledAgentSkills'
 import { _orcaCliInstallStatusStoreForTests } from '@/hooks/use-orca-cli-install-status'
+import { ensureOrcaCliAvailableForAgentSkillTerminal } from '@/lib/agent-skill-cli-prerequisite'
 import { notifyOrcaCliInstallStateChanged } from '@/lib/orca-cli-install-state-event'
 import { BrowserUseSkillSetupCard } from '../feature-wall/BrowserUseSkillSetupCard'
 import { AgentSkillSetupPanel } from './AgentSkillSetupPanel'
@@ -120,6 +121,12 @@ function skillState(overrides: Partial<InstalledAgentSkillState> = {}): Installe
   }
 }
 
+function installButton(): HTMLButtonElement | undefined {
+  return Array.from(container?.querySelectorAll('button') ?? []).find(
+    (button) => button.textContent?.trim() === 'Install'
+  )
+}
+
 function noticeShown(): boolean {
   return container?.textContent?.includes(NOTICE) ?? false
 }
@@ -194,14 +201,33 @@ describe('AgentSkillSetupPanel CLI prerequisite notice', () => {
     expect(getInstallStatus).not.toHaveBeenCalled()
   })
 
+  it('re-derives a stale notice when opening setup finds the CLI already registered', async () => {
+    getInstallStatus.mockRejectedValueOnce(new Error('ipc down'))
+    await renderNode(
+      panel({
+        onBeforeOpenTerminal: async () => {
+          await ensureOrcaCliAvailableForAgentSkillTerminal()
+        }
+      })
+    )
+    expect(noticeShown()).toBe(true)
+
+    getInstallStatus.mockResolvedValue(cliStatus())
+    await act(async () => {
+      installButton()?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await flush()
+
+    expect(container?.querySelector('[data-testid="inline-command-terminal"]')).not.toBeNull()
+    expect(noticeShown()).toBe(false)
+  })
+
   it('opens the setup terminal without waiting on a CLI status read', async () => {
     getInstallStatus.mockResolvedValue(cliStatus({ state: 'not_installed' }))
     await renderNode(panel())
     getInstallStatus.mockReturnValue(new Promise<CliInstallStatus>(() => {}))
 
-    const install = Array.from(container?.querySelectorAll('button') ?? []).find(
-      (button) => button.textContent?.trim() === 'Install'
-    )
+    const install = installButton()
     expect(install).toBeDefined()
     await act(async () => {
       install?.dispatchEvent(new MouseEvent('click', { bubbles: true }))

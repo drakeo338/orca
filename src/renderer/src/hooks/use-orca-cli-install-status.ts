@@ -13,7 +13,6 @@ import { useActiveSkillDiscoveryRuntimeTarget } from './use-active-skill-discove
 export type OrcaCliInstallStatusState = {
   status: CliInstallStatus | null
   checked: boolean
-  loading: boolean
   registered: boolean
   /** This client cannot read the CLI on the host where agents run (paired web client or remote runtime). */
   unverifiable: boolean
@@ -23,7 +22,6 @@ export type OrcaCliInstallStatusState = {
 type CliStatusSnapshot = {
   status: CliInstallStatus | null
   checked: boolean
-  loading: boolean
 }
 
 type TargetEntry = {
@@ -39,8 +37,7 @@ const FOCUS_REREAD_FRESH_MS = 1_000
 const WSL_FOCUS_REREAD_FRESH_MS = 10_000
 const UNCHECKED_SNAPSHOT: CliStatusSnapshot = Object.freeze({
   status: null,
-  checked: false,
-  loading: false
+  checked: false
 })
 // Why: several readers stay mounted app-wide and a WSL read spawns wsl.exe, so
 // every reader shares one status and one read per install target.
@@ -87,9 +84,6 @@ function readTarget(key: string, force: boolean): void {
   }
   const readId = ++nextReadId
   entry.inFlightReadId = readId
-  if (!entry.snapshot.loading) {
-    publish(entry, { ...entry.snapshot, loading: true })
-  }
   // Why: a forced read supersedes an earlier one, whose older answer must not land.
   const settle = (status: CliInstallStatus | null): void => {
     if (entry.inFlightReadId !== readId) {
@@ -97,7 +91,7 @@ function readTarget(key: string, force: boolean): void {
     }
     entry.inFlightReadId = null
     entry.settledAt = Date.now()
-    publish(entry, { status, checked: true, loading: false })
+    publish(entry, { status, checked: true })
   }
   readOrcaCliInstallStatus(runtime).then(settle, () => settle(null))
 }
@@ -191,7 +185,6 @@ export function useOrcaCliInstallStatus(
   return {
     status: current.status,
     checked: unverifiable || current.checked,
-    loading: probeEnabled && (!current.checked || current.loading),
     registered: isOrcaCliAvailableOnPath(current.status),
     unverifiable,
     refresh
