@@ -4,13 +4,13 @@ import {
 } from '../../agent-status-types'
 import { isAskUserQuestionTool } from '../../agent-question-answered-intent'
 import { continueMainAgentStatus, foldAgentLeadStatus } from '../../agent-lead-status-fold'
-import type { AgentChildWorkKind } from '../../agent-status-child-work'
-import {
-  agentChildWorkLiveness,
-  type AgentChildWorkLiveness,
-  type AgentChildWorkLivenessCandidate
-} from '../../agent-status-child-work-liveness'
 import { clearPaneTurnCacheState, type HookListenerState } from '../listener-state'
+import {
+  grokChildWorkLivenessAfterTurnEnd,
+  grokIdentityField,
+  normalizeGrokSubagentLifecycleEvent,
+  restateGrokTaskInventory
+} from './grok-task-inventory'
 import { normalizeGrokPromptId } from '../listener-limits'
 import { resolvePrompt, resolveToolState, stripGrokUserQueryWrapper } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
@@ -21,33 +21,6 @@ import {
   isGrokPermissionNotification,
   isGrokRoutinePermissionPromptNotification
 } from './grok-tool-fields'
-
-function aliasedField(
-  payload: Record<string, unknown>,
-  primary: string,
-  alias: string
-): { present: boolean; value?: unknown } {
-  if (Object.hasOwn(payload, primary)) {
-    return { present: true, value: payload[primary] }
-  }
-  if (Object.hasOwn(payload, alias)) {
-    return { present: true, value: payload[alias] }
-  }
-  return { present: false }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function grokIdentityField(
-  hookPayload: Record<string, unknown>,
-  primary: string,
-  alias: string
-): string | undefined {
-  const value = readString(hookPayload, primary) ?? readString(hookPayload, alias)
-  return value && value.length <= 512 ? value : undefined
-}
 
 function isGrokSubagentEvent(hookPayload: Record<string, unknown>): boolean {
   return (
@@ -97,42 +70,6 @@ function grokTurnEndApplies(
   )
 }
 
-/** A finite `backgroundTasks[]` entry as child work. Grok lists only in-flight tasks, so none
- *  carries a settled state. Monitors are left out: they can run indefinitely and would hold the
- *  pane (and silence its completion) forever. */
-function grokFiniteTaskKind(task: unknown): AgentChildWorkKind | null {
-  if (!isRecord(task)) {
-    return null
-  }
-  return task.type === 'subagent' ? 'agent' : task.type === 'shell' ? 'command' : null
-}
-
-function grokRunningFiniteTasks(
-  hookPayload: Record<string, unknown>
-): AgentChildWorkLivenessCandidate[] {
-  const backgroundTasks = aliasedField(hookPayload, 'backgroundTasks', 'background_tasks')
-  if (!backgroundTasks.present || !Array.isArray(backgroundTasks.value)) {
-    return []
-  }
-  return backgroundTasks.value.flatMap((task) => {
-    const kind = grokFiniteTaskKind(task)
-    return kind ? [{ kind }] : []
-  })
-}
-
-/** What a turn end leaves running behind the main agent. A background subagent is agent work
- *  and keeps the pane `working`; a shell, or a still-active stop hook holding the turn, is watch
- *  work and reads as monitoring. */
-function grokChildWorkLivenessAfterTurnEnd(
-  hookPayload: Record<string, unknown>
-): AgentChildWorkLiveness {
-  const stopHookActive = aliasedField(hookPayload, 'stopHookActive', 'stop_hook_active')
-  return (
-    agentChildWorkLiveness(grokRunningFiniteTasks(hookPayload)) ??
-    (stopHookActive.value === true ? 'monitoring' : null)
-  )
-}
-
 function isGrokSessionBoundary(eventName: unknown, hookPayload: Record<string, unknown>): boolean {
   if (isGrokEvent(eventName, 'session_end')) {
     return true
@@ -149,9 +86,13 @@ export function normalizeGrokEvent(
   hookPayload: Record<string, unknown>,
   grokHome?: string
 ): ParsedAgentStatusPayload | null {
-  // Why: child sessions reuse their parent's pane route; their lifecycle cannot settle the parent.
-  if (isGrokSubagentEvent(hookPayload)) {
-    return null
+  // Why: child sessions reuse their parent's pane route; their lifecycle cannot settle the
+  // parent, but it maintains the task inventory and may re-derive a row that inventory holds open.
+  if (
+    isGrokSubagentEvent(hookPayload) ||
+    isGrokEvent(eventName, 'subagent_start', 'subagent_stop')
+  ) {
+    return normalizeGrokSubagentLifecycleEvent(state, eventName, paneKey, hookPayload)
   }
   if (isGrokEvent(eventName, 'session_start')) {
     // Why: SessionStart resets stale per-turn state but must not create a working row before any prompt/tool event.
@@ -222,14 +163,23 @@ export function normalizeGrokEvent(
     : isGrokEvent(eventName, 'stop_failure')
       ? ('failure' as const)
       : undefined
-  // Why: every turn end reports what it left running, and a task leaves only when it reports its
-  // own end or the session ends — a cancelled or failed turn with a still-running task reads
-  // monitoring exactly like a plain `stop`. Only a session boundary settles the pane whatever
-  // the inventory says.
+  // Why: a turn end that carries the inventory restates it; `stop_cancelled` carries none
+  // (measured), so the cancelled turn folds with the inventory Grok last reported — a cancelled
+  // or failed turn with a still-running task reads monitoring or working exactly like a plain
+  // `stop`. Only a session boundary settles the pane whatever the inventory says, and it clears
+  // the inventory with the process that owned it.
+  if (isTurnEnd) {
+    restateGrokTaskInventory(state, paneKey, hookPayload)
+  }
+  if (sessionBoundary) {
+    state.grokBackgroundTasksByPaneKey.delete(paneKey)
+  }
   const resolution = foldAgentLeadStatus({
     leadState,
     childWorkLiveness:
-      isTurnEnd && !sessionBoundary ? grokChildWorkLivenessAfterTurnEnd(hookPayload) : null
+      isTurnEnd && !sessionBoundary
+        ? grokChildWorkLivenessAfterTurnEnd(state, paneKey, hookPayload)
+        : null
   })
   const stateName = resolution.stateName
   const previousMainAgent = state.grokMainAgentStatusByPaneKey.get(paneKey)

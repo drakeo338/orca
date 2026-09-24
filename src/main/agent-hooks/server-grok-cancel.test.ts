@@ -1,5 +1,9 @@
-// Grok 1.0.41, measured: Ctrl+C mid-turn fires `stop_cancelled` listing the finite tasks the turn
-// left running, and Ctrl+C at the idle prompt kills no background task.
+// Grok 1.0.41, measured (src/shared/__fixtures__/grok-cancel-subagent-dialog-hooks.jsonl):
+// no keypress cancels a Grok turn by itself — Esc only paints a toast, and Ctrl+C with subagents
+// running opens a dialog that can be answered "continue" — so Orca never infers a Grok cancel
+// from keys. Every real cancel fires Grok's own `stop_cancelled`, which carries NO backgroundTasks
+// inventory, so it folds with the inventory Grok last reported. Ctrl+C at the idle prompt kills
+// no background task.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentHookServer, _internals } from './server'
 import { buildBody, PANE } from './server.test-fixtures'
@@ -93,7 +97,7 @@ describe('a Grok cancel never hides a running task', () => {
     }
   })
 
-  it("shows the task when Grok's own cancel hook trails the inferred cancel", async () => {
+  it('refuses a key-inferred cancel mid-turn and folds the inventory-less stop_cancelled', async () => {
     const server = new AgentHookServer()
     await server.start({ env: 'production' })
     try {
@@ -105,24 +109,28 @@ describe('a Grok cancel never hides a running task', () => {
       })
       expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
 
-      // Why: the inference can win the settle race; the row cannot see the task behind a working main agent.
-      expect(pressCtrlC(server)).toBe(true)
-      expect(row(server)).toMatchObject({
-        state: 'done',
-        mainAgent: { state: 'done', outcome: 'cancellation' }
-      })
+      // Why: Ctrl+C mid-turn can open Grok's subagents dialog and cancel nothing; only Grok's
+      // own hook is cancel evidence.
+      const before = row(server)
+      expect(pressCtrlC(server)).toBe(false)
+      expect(row(server)).toEqual(before)
 
+      // Grok's real stop_cancelled carries no backgroundTasks key; the fold keeps the
+      // inventory the last `stop` reported instead of settling the row.
       await postGrokHook(server, {
         hookEventName: 'stop_cancelled',
         promptId: 'prompt-2',
-        stopHookActive: false,
-        backgroundTasks: [RUNNING_TASK]
+        reason: 'user_interrupt',
+        cancelledBy: 'user',
+        cancelTrigger: 'ctrl_c'
       })
       expect(row(server)).toMatchObject({
         state: 'working',
         workingMode: 'monitoring',
         mainAgent: { state: 'done', outcome: 'cancellation' }
       })
+      // Why: `interrupted` restates the verdict only on a settled row; a held-open row carries it on `mainAgent.outcome`.
+      expect(row(server).interrupted).toBeUndefined()
     } finally {
       server.stop()
     }
