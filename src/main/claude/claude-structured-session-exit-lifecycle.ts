@@ -33,9 +33,8 @@ export function observeClaudeSessionExit(
   }
   lifecycle.sessions.delete(sessionId)
   failClaudeStartupGate(session, error)
-  // Re-enter the provider's close ladder before publishing lifecycle recovery.
-  // An exit callback is root evidence only; the retained tree proof must run
-  // before the host releases and reacquires this exact child.
+  // Re-enter the provider's close ladder before publishing lifecycle recovery:
+  // an exit callback is root evidence only.
   const closePromise = session.connection.close().catch(() => false)
   const exit: ClaudeSessionExit = {
     connection: session.connection,
@@ -46,17 +45,21 @@ export function observeClaudeSessionExit(
   lifecycle.exits.set(sessionId, exit)
   exit.publication = closePromise
     .then((proven) => {
-      // A failed startup keeps the failed-create bar: a first-hand root exit releases it.
-      const startupFailed = session.startup.state === 'failed'
-      if (!proven && !(startupFailed && claudeRootExitObserved(session.connection))) {
-        return undefined
+      if (proven) {
+        return settleClaudeUnexpectedExit(lifecycle, sessionId, exit)
       }
-      return settleClaudeUnexpectedExit(lifecycle, sessionId, exit)
+      // The lease follows the root, so a first-hand root exit publishes `ended` even while the
+      // tree is unverifiable; only a descendant seen alive withholds it.
+      if (claudeRootExitObserved(session.connection)) {
+        exit.endedWithTreeUnproven = true
+        return settleClaudeUnexpectedExit(lifecycle, sessionId, exit)
+      }
+      return undefined
     })
     .catch(() => undefined)
 }
 
-/** Lifecycle recovery is published only after the child tree proof is true. */
+/** Persists the last completed turn, then publishes the `ended` the host releases the lease on. */
 export function settleClaudeUnexpectedExit(
   lifecycle: ClaudeExitLifecycle,
   sessionId: string,
@@ -79,7 +82,10 @@ export function settleClaudeUnexpectedExit(
       settleClaudeExitedSession(exit.session)
       return
     }
-    exits.delete(sessionId)
+    // Unproven descendants stay indexed as evidence until the host's release retires them.
+    if (!exit.endedWithTreeUnproven) {
+      exits.delete(sessionId)
+    }
     lifecycle.settledExitErrors.set(sessionId, exit.error)
     const ended: ClaudeStructuredSessionEvent = {
       type: 'ended',
