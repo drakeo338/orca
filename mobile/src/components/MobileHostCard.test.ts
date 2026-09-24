@@ -2,6 +2,10 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MobileHostCard } from './MobileHostCard'
+import {
+  recordHostDescriptor,
+  resetHostDescriptorStoreForTests
+} from '../transport/host-descriptor-store'
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -33,6 +37,7 @@ describe('MobileHostCard', () => {
   afterEach(() => {
     act(() => renderer?.unmount())
     renderer = null
+    resetHostDescriptorStoreForTests()
     vi.restoreAllMocks()
   })
 
@@ -121,14 +126,16 @@ describe('MobileHostCard', () => {
     )
   })
 
-  it('keeps a personal label above a disagreeing machine descriptor', async () => {
+  it('keeps a phone rename above a disagreeing machine descriptor', async () => {
     const consoleError = suppressRendererDeprecation()
+    recordHostDescriptor('desk', { machineName: 'm4airs-Air', platform: 'darwin' })
     await act(async () => {
       renderer = create(
         createElement(MobileHostCard, {
           host: {
             id: 'desk',
             name: 'Windows-Low Spec',
+            personalName: 'Windows-Low Spec',
             endpoint: 'ws://192.168.1.2:6768',
             deviceToken: 'token',
             publicKeyB64: 'key',
@@ -137,7 +144,73 @@ describe('MobileHostCard', () => {
           state: 'connected',
           verdict: { kind: 'normal', label: 'Connected' },
           path: 'lan',
-          descriptor: { platform: 'darwin', machineName: 'm4airs-Air' },
+          onPress: vi.fn(),
+          onLongPress: vi.fn(),
+          onOpenActions: vi.fn()
+        })
+      )
+    })
+    consoleError.mockRestore()
+
+    const texts = renderer.root.findAllByType('Text').map((node) => node.children.join(''))
+    expect(texts).toContain('Windows-Low Spec')
+    expect(texts).toContain('macOS · m4airs-Air')
+  })
+
+  it('titles an unrenamed host with the live machine name before its stored name catches up', async () => {
+    // The desktop was renamed; the stored `name` still holds the old machine name until reload.
+    const consoleError = suppressRendererDeprecation()
+    recordHostDescriptor('desk', { machineName: 'Studio 2', platform: 'darwin' })
+    await act(async () => {
+      renderer = create(
+        createElement(MobileHostCard, {
+          host: {
+            id: 'desk',
+            name: 'Studio',
+            lastKnownMachineName: 'Studio',
+            lastKnownHostPlatform: 'darwin',
+            endpoint: 'ws://192.168.1.2:6768',
+            deviceToken: 'token',
+            publicKeyB64: 'key',
+            lastConnected: 1
+          },
+          state: 'connected',
+          verdict: { kind: 'normal', label: 'Connected' },
+          path: 'lan',
+          onPress: vi.fn(),
+          onLongPress: vi.fn(),
+          onOpenActions: vi.fn()
+        })
+      )
+    })
+    consoleError.mockRestore()
+
+    const texts = renderer.root.findAllByType('Text').map((node) => node.children.join(''))
+    expect(texts).toContain('Studio 2')
+    expect(texts).toContain('macOS')
+    expect(texts).not.toContain('Studio')
+  })
+
+  it('shows the stored descriptor as last known when the host is offline, as after a restart', async () => {
+    // No live descriptor is recorded: the row has only what the stored profile carries.
+    const consoleError = suppressRendererDeprecation()
+    await act(async () => {
+      renderer = create(
+        createElement(MobileHostCard, {
+          host: {
+            id: 'desk',
+            name: 'Desk',
+            personalName: 'Desk',
+            lastKnownMachineName: 'm4airs-Air',
+            lastKnownHostPlatform: 'darwin',
+            endpoint: 'ws://192.168.1.2:6768',
+            deviceToken: 'token',
+            publicKeyB64: 'key',
+            lastConnected: 1
+          },
+          state: 'disconnected',
+          verdict: { kind: 'normal', label: 'Disconnected' },
+          path: 'lan',
           onPress: vi.fn(),
           onLongPress: vi.fn(),
           onOpenActions: vi.fn()
@@ -147,12 +220,13 @@ describe('MobileHostCard', () => {
     consoleError.mockRestore()
 
     expect(renderer.root.findAllByType('Text').map((node) => node.children.join(''))).toContain(
-      'macOS · m4airs-Air'
+      'Last known · macOS · m4airs-Air'
     )
   })
 
-  it('marks an offline machine descriptor as last known', async () => {
+  it('collapses the machine name into the OS line when it is the shown name', async () => {
     const consoleError = suppressRendererDeprecation()
+    recordHostDescriptor('desk', { machineName: 'Desk', platform: 'darwin' })
     await act(async () => {
       renderer = create(
         createElement(MobileHostCard, {
@@ -164,10 +238,9 @@ describe('MobileHostCard', () => {
             publicKeyB64: 'key',
             lastConnected: 1
           },
-          state: 'disconnected',
-          verdict: { kind: 'normal', label: 'Disconnected' },
+          state: 'connected',
+          verdict: { kind: 'normal', label: 'Connected' },
           path: 'lan',
-          descriptor: { platform: 'darwin', machineName: 'Desk' },
           onPress: vi.fn(),
           onLongPress: vi.fn(),
           onOpenActions: vi.fn()
@@ -176,9 +249,9 @@ describe('MobileHostCard', () => {
     })
     consoleError.mockRestore()
 
-    expect(renderer.root.findAllByType('Text').map((node) => node.children.join(''))).toContain(
-      'Last known · macOS · Desk'
-    )
+    const texts = renderer.root.findAllByType('Text').map((node) => node.children.join(''))
+    expect(texts).toContain('macOS')
+    expect(texts).not.toContain('macOS · Desk')
   })
 
   it('preserves the connected worktree-catalog failure state', async () => {

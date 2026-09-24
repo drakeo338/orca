@@ -9,6 +9,7 @@ import {
   type MobileRelayHostOverlay
 } from './mobile-relay-host-overlay'
 import { MobileRelayEndpointSchema } from '../../../src/shared/mobile-relay-credential-contract'
+import { NODE_PLATFORM_NAMES } from './mobile-runtime-host-platform'
 
 export { PairingOfferSchema }
 export type { PairingOffer }
@@ -102,7 +103,13 @@ export type ForegroundNudgeReason = 'focus' | 'app-resume' | 'network-change'
 
 export type HostProfile = {
   id: string
+  /** Resolved display value; the store maintains `name === personalName ?? lastKnownMachineName ?? "Host N"`. */
   name: string
+  /** The name typed on this phone. Present only when the user renamed the host here; it overrides the desktop's. */
+  personalName?: string
+  /** What the desktop last called itself over status.get, kept for offline and post-restart rows. */
+  lastKnownMachineName?: string
+  lastKnownHostPlatform?: NodeJS.Platform
   endpoint: string
   deviceToken: string
   publicKeyB64: string
@@ -122,6 +129,9 @@ export type HostCatalogEntry = Omit<HostProfile, 'deviceToken'> & {
 export const HostProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  personalName: z.string().min(1).optional(),
+  lastKnownMachineName: z.string().min(1).optional(),
+  lastKnownHostPlatform: z.enum(NODE_PLATFORM_NAMES).optional(),
   endpoint: z.string().min(1),
   deviceToken: z.string().min(1),
   publicKeyB64: z.string().min(1),
@@ -140,6 +150,9 @@ export const HostProfileSchema = z.object({
 export const StoredHostProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  personalName: z.string().min(1).optional(),
+  lastKnownMachineName: z.string().min(1).optional(),
+  lastKnownHostPlatform: z.enum(NODE_PLATFORM_NAMES).optional(),
   endpoint: z.string().min(1),
   publicKeyB64: z.string().min(1),
   lastConnected: z.number().finite()

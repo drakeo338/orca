@@ -3,8 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { ConnectionVerdict } from '../transport/connection-health'
 import { verdictDisplayLabel } from '../transport/connection-health'
 import { mobileConnectionPathLabel } from '../transport/mobile-connection-path-label'
-import { resolveHostDisplay } from '../../../src/shared/host-display-resolution'
-import type { HostMachineDescriptor } from '../transport/host-descriptor-store'
+import { useHostDisplay } from '../transport/use-host-display'
 import type { MobileConnectionPath } from '../transport/stable-logical-rpc-client'
 import type { ConnectionState, HostCatalogEntry, HostProfile } from '../transport/types'
 import { colors, radii, spacing } from '../theme/mobile-theme'
@@ -17,7 +16,6 @@ export function MobileHostCard(props: {
   state: ConnectionState
   verdict: ConnectionVerdict
   path: MobileConnectionPath
-  descriptor?: HostMachineDescriptor | null
   // Why: the card owns the fresh/stale/unavailable wording so no caller can re-gate the counts
   // away (STA-3123 shipped that bug once already).
   worktreeInfo?: HostWorktreeInfo
@@ -41,15 +39,9 @@ export function MobileHostCard(props: {
       ? { kind: 'warning', label: statusLabel }
       : props.verdict
   const worktreeSummary = homeHostWorktreeSummary(props.worktreeInfo)
-  const display = resolveHostDisplay({
-    personalLabel: props.host.name,
-    machineName: props.descriptor?.machineName,
-    platform: props.descriptor?.platform,
-    descriptorFresh: connected,
-    fallbackLabel: props.host.name
-  })
-  const descriptorText = display.showDescriptor
-    ? `${display.descriptorFresh ? '' : 'Last known · '}${display.descriptorLabel}`
+  const display = useHostDisplay(props.host, connected)
+  const descriptorText = display.descriptorLine
+    ? `${display.lastKnown ? 'Last known · ' : ''}${display.descriptorLine}`
     : null
   const connectionPathLabel =
     !credentialMissing && !credentialUnavailable && connected
@@ -68,7 +60,7 @@ export function MobileHostCard(props: {
   const verdictDetail =
     credentialHint === null && 'detail' in props.verdict ? (props.verdict.detail ?? null) : null
   const accessibilityLabel = [
-    `Open ${display.primaryLabel}`,
+    `Open ${display.title}`,
     descriptorText,
     statusLabel,
     connectionPathLabel?.replace(' · ', ' via '),
@@ -97,7 +89,7 @@ export function MobileHostCard(props: {
             style={[styles.name, !connected && { color: colors.textSecondary }]}
             numberOfLines={1}
           >
-            {display.primaryLabel}
+            {display.title}
           </Text>
           {descriptorText ? (
             <Text style={styles.platformText} numberOfLines={1}>
@@ -142,7 +134,7 @@ export function MobileHostCard(props: {
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Actions for ${display.primaryLabel}`}
+        accessibilityLabel={`Actions for ${display.title}`}
         hitSlop={8}
         style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
         onPress={props.onOpenActions}

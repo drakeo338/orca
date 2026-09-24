@@ -14,7 +14,6 @@ import { ChevronLeft, Clipboard as ClipboardIcon, QrCode } from 'lucide-react-na
 import { decodePairingUrl, parsePairingCode } from '../src/transport/pairing'
 import {
   startPreProfilePairing,
-  type PreProfilePairingResult,
   type PreProfilePairingAttempt
 } from '../src/transport/pre-profile-pairing-coordinator'
 import type { ConnectionLogEntry, PairingOffer } from '../src/transport/types'
@@ -22,7 +21,6 @@ import { useRefreshHostClient } from '../src/transport/client-context'
 import { colors, spacing } from '../src/theme/mobile-theme'
 import { TextInputModal } from '../src/components/TextInputModal'
 import { ConnectionLog } from '../src/components/ConnectionLog'
-import { PairingNameConfirmation } from '../src/components/PairingNameConfirmation'
 import {
   loadMobileOnboardingSteps,
   mobileOnboardingDestination
@@ -52,22 +50,15 @@ export default function PairScanScreen() {
   const refreshHostClient = useRefreshHostClient()
   const insets = useSafeAreaInsets()
   const [permission, requestPermission] = useCameraPermissions()
-  const [status, setStatus] = useState<'scanning' | 'connecting' | 'naming' | 'saving' | 'error'>(
-    'scanning'
-  )
+  const [status, setStatus] = useState<'scanning' | 'connecting' | 'error'>('scanning')
   const [errorMessage, setErrorMessage] = useState('')
   const [pasteVisible, setPasteVisible] = useState(false)
   const [cameraBounds, setCameraBounds] = useState({ width: 0, height: 0 })
   const [logs, setLogs] = useState<ConnectionLogEntry[]>([])
-  const [pendingPairing, setPendingPairing] = useState<PreProfilePairingResult | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const logsRef = useRef<ConnectionLogEntry[]>([])
   const processingRef = useRef(false)
   const mountedRef = useRef(true)
   const activePairingAttemptRef = useRef<PreProfilePairingAttempt | null>(null)
-  // Why a ref beside the state: unmount must cancel the latest pairing without re-creating the
-  // root ref callback, whose detach disposes the active attempt.
-  const pendingPairingRef = useRef<PreProfilePairingResult | null>(null)
 
   const setPairScanRootRef = useCallback((node: View | null): void => {
     if (node !== null) {
@@ -79,7 +70,6 @@ export default function PairScanScreen() {
     mountedRef.current = false
     activePairingAttemptRef.current?.dispose()
     activePairingAttemptRef.current = null
-    void pendingPairingRef.current?.cancel()
   }, [])
 
   const handleBarCodeScanned = useCallback(
@@ -154,20 +144,25 @@ export default function PairScanScreen() {
     })
     activePairingAttemptRef.current = attempt
     try {
-      const pairing = await attempt.result
+      const { hostId } = await attempt.result
       const attemptIsCurrent = activePairingAttemptRef.current === attempt
       attempt.dispose()
       if (activePairingAttemptRef.current === attempt) {
         activePairingAttemptRef.current = null
       }
       if (!mountedRef.current || !attemptIsCurrent) {
-        void pairing.cancel()
         return
       }
-      pendingPairingRef.current = pairing
-      setPendingPairing(pairing)
-      setSaveError(null)
-      setStatus('naming')
+      // Why: re-pairing the same desktop now reuses its existing host id
+      // (STA-1840 dedup), so a client cached under that id from an earlier
+      // pairing would keep the stale endpoint/relay. Close it so the
+      // Refresh any cached client from the newly persisted pairing profile.
+      refreshHostClient(hostId)
+      const onboardingSteps = await loadMobileOnboardingSteps()
+      if (!mountedRef.current) {
+        return
+      }
+      router.replace(mobileOnboardingDestination(onboardingSteps, hostId))
     } catch (err) {
       const timedOut = attempt.timedOut
       const attemptIsCurrent = activePairingAttemptRef.current === attempt
@@ -187,39 +182,6 @@ export default function PairScanScreen() {
       )
       processingRef.current = false
     }
-  }
-
-  async function finalizePairing(name: string): Promise<void> {
-    const pairing = pendingPairingRef.current
-    if (!pairing) {
-      return
-    }
-    setStatus('saving')
-    setSaveError(null)
-    try {
-      await pairing.finalize(name)
-    } catch (err) {
-      // Why back to naming: the pairing is still pending, so Save can be retried or cancelled.
-      if (mountedRef.current) {
-        setStatus('naming')
-        setSaveError(`Couldn't save this host: ${err instanceof Error ? err.message : String(err)}`)
-      }
-      return
-    }
-    // Why: re-pairing reuses the host id (STA-1840), so a client cached under it holds the old route.
-    refreshHostClient(pairing.hostId)
-    const onboardingSteps = await loadMobileOnboardingSteps()
-    if (!mountedRef.current) {
-      return
-    }
-    router.replace(mobileOnboardingDestination(onboardingSteps, pairing.hostId))
-  }
-
-  function cancelNaming(): void {
-    void pendingPairingRef.current?.cancel()
-    pendingPairingRef.current = null
-    setPendingPairing(null)
-    retry()
   }
 
   function retry() {
@@ -354,20 +316,6 @@ export default function PairScanScreen() {
           </View>
         </View>
       )}
-
-      {(status === 'naming' || status === 'saving') && pendingPairing ? (
-        <View style={styles.centered}>
-          <PairingNameConfirmation
-            machineName={pendingPairing.machineName}
-            hostPlatform={pendingPairing.hostPlatform}
-            initialName={pendingPairing.suggestedName}
-            saving={status === 'saving'}
-            errorMessage={saveError}
-            onConfirm={(name) => void finalizePairing(name)}
-            onCancel={cancelNaming}
-          />
-        </View>
-      ) : null}
 
       {status === 'error' && (
         <View style={styles.centered}>

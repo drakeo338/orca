@@ -40,11 +40,7 @@ function controllerWith(forceReconnectHost: ForceReconnect) {
     floatingWorkspaceEnabled: false,
     forceReconnectHost,
     hostId: 'host-a',
-    hostDisplay: resolveHostDisplay({
-      personalLabel: 'Desk',
-      descriptorFresh: false,
-      fallbackLabel: 'Desk'
-    }),
+    hostDisplay: resolveHostDisplay({ name: 'Desk', live: false }),
     lastConnectedAt: null,
     onHideSidebar: undefined,
     reconnectAttempts: 20,

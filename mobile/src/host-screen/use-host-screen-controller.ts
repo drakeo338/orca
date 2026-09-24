@@ -3,7 +3,6 @@ import { useLocalSearchParams, usePathname } from 'expo-router'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useHostProtocolGates } from '../components/HostProtocolGate'
-import { resolveHostDisplay } from '../../../src/shared/host-display-resolution'
 import { visibleHostRouteNotice } from '../host-route-notice'
 import { resolveHostRouteActionState } from '../host-route-action-state'
 import { useActiveWorktreeScroll } from '../hooks/use-active-worktree-scroll'
@@ -24,7 +23,7 @@ import { useHostScreenState } from './use-host-screen-state'
 import { useHostViewSettings } from './use-host-view-settings'
 import { useHostWorktreeActions } from './use-host-worktree-actions'
 import { useHostWorktreeCatalog } from './use-host-worktree-catalog'
-import { useHostDescriptor } from '../transport/host-descriptor-store'
+import { useHostDisplay } from '../transport/use-host-display'
 
 export type HostScreenProps = {
   // When true, rendered as the persistent tablet sidebar by the host layout, not as its own routed screen.
@@ -67,17 +66,12 @@ export function useHostScreenController({
   const { hostCapabilities, floatingWorkspaceEnabled } = useHostProtocolGates()
   const state = useHostScreenState(hostId, action)
   const settings = useHostViewSettings({ client, connState, hostId, state })
-  // Why gated on the name: an empty name is the saved label still loading, and the resolver would
-  // otherwise title the header with the machine name until it arrives.
-  const descriptor = useHostDescriptor(state.hostName ? hostId : undefined)
-
-  const hostDisplay = resolveHostDisplay({
-    personalLabel: state.hostName,
-    machineName: descriptor?.machineName,
-    platform: descriptor?.platform,
-    descriptorFresh: connState === 'connected',
-    fallbackLabel: state.hostName || 'Host'
-  })
+  const hostDisplay = useHostDisplay(
+    hostId && state.hostName
+      ? { id: hostId, name: state.hostName, ...state.hostStoredDescriptor }
+      : null,
+    connState === 'connected'
+  )
 
   useHostScreenIdentity({ client, hostId, state })
   const fetchRepoMetadata = useHostRepoMetadata({ client, connState, hostId, state })

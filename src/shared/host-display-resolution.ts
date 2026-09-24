@@ -1,43 +1,41 @@
 import { hostPlatformDisplayName } from './host-platform-label'
 
 export type HostDisplayResolutionInput = {
-  personalLabel?: string | null
+  /** The label the caller already owns: a stored resolved name, or a desktop-local server label. */
+  name: string
   machineName?: string | null
   platform?: NodeJS.Platform | null
-  descriptorFresh: boolean
-  fallbackLabel: string
+  /** Whether the descriptor comes from a live connection rather than a stored copy. */
+  live: boolean
 }
 
 export type HostDisplayResolution = {
-  primaryLabel: string
-  descriptorName: string | null
-  descriptorPlatform: NodeJS.Platform | null
-  /** "OS · machine name", or whichever half the host reported; null when neither. */
-  descriptorLabel: string | null
-  showDescriptor: boolean
-  descriptorFresh: boolean
+  title: string
+  /**
+   * "OS · machine name" when the machine name differs from the shown title, the OS alone when it
+   * matches (the OS is always shown when known), or null when the host reported neither.
+   */
+  descriptorLine: string | null
+  /** True when a descriptor is shown from storage rather than a live host ("Last known"). */
+  lastKnown: boolean
 }
 
-/** Resolves the label and machine descriptor without reading or mutating either store. */
+/**
+ * The one display rule for host rows and headers. The title is always the caller's own label —
+ * a machine name can appear only on the descriptor line, never as the title, so a late-arriving
+ * descriptor can never retitle a row.
+ */
 export function resolveHostDisplay(input: HostDisplayResolutionInput): HostDisplayResolution {
-  const personalLabel = normalize(input.personalLabel)
-  const descriptorName = normalize(input.machineName)
-  const descriptorPlatform = input.platform ?? null
-  const fallbackLabel = normalize(input.fallbackLabel) ?? 'Host'
-  const primaryLabel = personalLabel ?? descriptorName ?? fallbackLabel
-  const descriptorLabel =
-    [hostPlatformDisplayName(descriptorPlatform), descriptorName].filter(Boolean).join(' · ') ||
-    null
-  const personalLabelAgrees = personalLabel !== null && personalLabel === descriptorName
-  const canCollapse = personalLabelAgrees && input.descriptorFresh
-
+  const title = normalize(input.name) ?? 'Host'
+  const machineName = normalize(input.machineName)
+  const descriptorLine =
+    [hostPlatformDisplayName(input.platform ?? null), machineName === title ? null : machineName]
+      .filter(Boolean)
+      .join(' · ') || null
   return {
-    primaryLabel,
-    descriptorName,
-    descriptorPlatform,
-    descriptorLabel,
-    showDescriptor: descriptorLabel !== null && !canCollapse,
-    descriptorFresh: input.descriptorFresh
+    title,
+    descriptorLine,
+    lastKnown: descriptorLine !== null && !input.live
   }
 }
 

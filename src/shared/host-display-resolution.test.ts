@@ -1,73 +1,74 @@
 import { describe, expect, it } from 'vitest'
 import { resolveHostDisplay } from './host-display-resolution'
 
-const base = {
-  descriptorFresh: true,
-  fallbackLabel: 'Host 2'
-}
-
 describe('resolveHostDisplay', () => {
-  it('keeps a personal label first and shows a disagreeing machine descriptor', () => {
+  it('titles with the caller label and shows a disagreeing machine name beneath it', () => {
     expect(
       resolveHostDisplay({
-        ...base,
-        personalLabel: 'Windows-Low Spec',
+        name: 'Windows-Low Spec',
         machineName: 'm4airs-Air',
-        platform: 'darwin'
+        platform: 'darwin',
+        live: true
       })
-    ).toMatchObject({
-      primaryLabel: 'Windows-Low Spec',
-      descriptorName: 'm4airs-Air',
-      descriptorPlatform: 'darwin',
-      showDescriptor: true
+    ).toEqual({
+      title: 'Windows-Low Spec',
+      descriptorLine: 'macOS · m4airs-Air',
+      lastKnown: false
     })
   })
 
-  it('collapses a fresh descriptor that agrees with the personal label', () => {
-    expect(
-      resolveHostDisplay({
-        ...base,
-        personalLabel: 'Studio Mac',
-        machineName: 'Studio Mac',
-        platform: 'darwin'
-      }).showDescriptor
-    ).toBe(false)
+  it('never titles with the machine name, whatever the label state', () => {
+    // The title-fallback bug class: a late descriptor must not be able to retitle a row.
+    for (const name of ['Host 2', 'Desk']) {
+      expect(
+        resolveHostDisplay({ name, machineName: 'm4airs-Air', platform: 'darwin', live: true })
+          .title
+      ).toBe(name)
+    }
   })
 
-  it('marks an old descriptor as last-known data for the caller', () => {
+  it('keeps the OS visible when the shown name is the machine name', () => {
     expect(
       resolveHostDisplay({
-        ...base,
-        descriptorFresh: false,
-        personalLabel: 'Desk',
-        machineName: 'Desk',
-        platform: 'darwin'
+        name: 'm4airs-Air',
+        machineName: 'm4airs-Air',
+        platform: 'darwin',
+        live: true
       })
-    ).toMatchObject({ primaryLabel: 'Desk', showDescriptor: true, descriptorFresh: false })
-  })
-
-  it('falls back from machine name to Host N', () => {
-    expect(resolveHostDisplay({ ...base, platform: 'linux' }).primaryLabel).toBe('Host 2')
-    expect(
-      resolveHostDisplay({ ...base, machineName: 'build-box', platform: 'linux' }).primaryLabel
-    ).toBe('build-box')
+    ).toEqual({ title: 'm4airs-Air', descriptorLine: 'macOS', lastKnown: false })
   })
 
   it('labels whichever descriptor half an older host reported', () => {
-    expect(resolveHostDisplay({ ...base, personalLabel: 'Desk' })).toMatchObject({
-      descriptorLabel: null,
-      showDescriptor: false
+    expect(resolveHostDisplay({ name: 'Desk', platform: 'linux', live: true })).toEqual({
+      title: 'Desk',
+      descriptorLine: 'Linux',
+      lastKnown: false
     })
-    expect(
-      resolveHostDisplay({ ...base, personalLabel: 'Desk', platform: 'win32' }).descriptorLabel
-    ).toBe('Windows')
-    expect(
-      resolveHostDisplay({
-        ...base,
-        personalLabel: 'Desk',
-        machineName: 'Studio',
-        platform: 'darwin'
-      }).descriptorLabel
-    ).toBe('macOS · Studio')
+    expect(resolveHostDisplay({ name: 'Desk', machineName: 'build-box', live: true })).toEqual({
+      title: 'Desk',
+      descriptorLine: 'build-box',
+      lastKnown: false
+    })
+    expect(resolveHostDisplay({ name: 'Desk', live: true })).toEqual({
+      title: 'Desk',
+      descriptorLine: null,
+      lastKnown: false
+    })
+  })
+
+  it('marks a stored descriptor as last known exactly when the host is not live', () => {
+    const stored = { name: 'Desk', machineName: 'm4airs-Air', platform: 'darwin' as const }
+    expect(resolveHostDisplay({ ...stored, live: false }).lastKnown).toBe(true)
+    expect(resolveHostDisplay({ ...stored, live: true }).lastKnown).toBe(false)
+    // No descriptor line means nothing to call last known.
+    expect(resolveHostDisplay({ name: 'Desk', live: false }).lastKnown).toBe(false)
+  })
+
+  it('normalizes blank inputs', () => {
+    expect(resolveHostDisplay({ name: '  ', machineName: '  ', live: false })).toEqual({
+      title: 'Host',
+      descriptorLine: null,
+      lastKnown: false
+    })
   })
 })

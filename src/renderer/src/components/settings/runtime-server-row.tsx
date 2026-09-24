@@ -98,30 +98,28 @@ export function RuntimeServerRow({
   // Why: the snapshot keeps the last answered status across a lost probe; `status` is only the latest answer.
   const descriptorStatus = lastVerifiedRuntimeStatus(runtimeStatusEntry)
   const hostDisplay = resolveHostDisplay({
-    personalLabel: environment.name,
+    name: environment.name,
     machineName: descriptorStatus?.machineName,
     platform: descriptorStatus?.hostPlatform,
     // Same verdict as the dot, so a reachable host is never labelled "Last known".
-    descriptorFresh: entryReachable,
-    fallbackLabel: environment.name
+    live: entryReachable
   })
-  const hostDescriptorText =
-    hostDisplay.showDescriptor && hostDisplay.descriptorLabel
-      ? hostDisplay.descriptorFresh
-        ? hostDisplay.descriptorLabel
-        : translate(
-            'auto.components.settings.RuntimeServerRow.lastKnownDescriptor',
-            'Last known · {{descriptor}}',
-            { descriptor: hostDisplay.descriptorLabel }
-          )
-      : null
+  const hostDescriptorText = hostDisplay.descriptorLine
+    ? hostDisplay.lastKnown
+      ? translate(
+          'auto.components.settings.RuntimeServerRow.lastKnownDescriptor',
+          'Last known · {{descriptor}}',
+          { descriptor: hostDisplay.descriptorLine }
+        )
+      : hostDisplay.descriptorLine
+    : null
 
   return (
     <div data-settings-section={environment.id} className="flex items-center gap-3 px-4 py-3">
       <Server className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="truncate text-sm font-medium">{hostDisplay.primaryLabel}</div>
+          <div className="truncate text-sm font-medium">{hostDisplay.title}</div>
           <span
             className={cn(
               'size-2 shrink-0 rounded-full',

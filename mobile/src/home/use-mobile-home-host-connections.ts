@@ -7,7 +7,6 @@ import { selectHomeAutoConnectHostIds } from '../transport/home-host-auto-connec
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState, HostCatalogEntry, HostProfile } from '../transport/types'
 import { useAllHostClients } from '../transport/use-all-host-clients'
-import { fetchMobileHomeHostDescriptor } from './mobile-home-host-descriptor-fetch'
 import {
   fetchHomeHostWorktreeInfo,
   type HostWorktreeInfoSetter
@@ -38,7 +37,6 @@ function wireMobileHomeHostSubscriptions(
 ): () => void {
   let unsubscribeNotifications: (() => void) | null = null
   let unsubscribeAccounts: (() => void) | null = null
-  let disposed = false
   const refetchGate = createHostConnectRefetchGate()
   const wireState = (state: ConnectionState): void => {
     const reconnected = refetchGate.observe(state)
@@ -60,7 +58,6 @@ function wireMobileHomeHostSubscriptions(
         }
       })
       if (reconnected) {
-        fetchMobileHomeHostDescriptor(entry.client, entry.hostId, () => disposed)
         fetchMobileHomeStats(entry.client, entry.hostId, setters.setStats, () => false)
         void fetchHomeHostWorktreeInfo(
           entry.client,
@@ -85,7 +82,6 @@ function wireMobileHomeHostSubscriptions(
   wireState(entry.state)
   const unsubscribeState = entry.client.onStateChange(wireState)
   return () => {
-    disposed = true
     unsubscribeState()
     unsubscribeNotifications?.()
     unsubscribeAccounts?.()

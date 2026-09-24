@@ -5,8 +5,8 @@ export type HostMachineDescriptor = {
   platform: NodeJS.Platform | null
 }
 
-// Why memory only: the host reports this on every status read, so a stored copy would only be a
-// second answer that can disagree with it. Freshness is the reader's connection state.
+// The live half of descriptor state: what this process last decoded from each host. The durable
+// half is the stored host profile's lastKnown* fields; host-descriptor-recorder.ts writes both.
 const descriptorByHostId = new Map<string, HostMachineDescriptor>()
 const listenersByHostId = new Map<string, Set<() => void>>()
 
@@ -20,6 +20,16 @@ export function recordHostDescriptor(hostId: string, descriptor: HostMachineDesc
     return
   }
   descriptorByHostId.set(hostId, descriptor)
+  for (const listener of listenersByHostId.get(hostId) ?? []) {
+    listener()
+  }
+}
+
+/** Drops a removed host's entry so a later re-pair cannot inherit the dead pairing's descriptor. */
+export function forgetHostDescriptor(hostId: string): void {
+  if (!descriptorByHostId.delete(hostId)) {
+    return
+  }
   for (const listener of listenersByHostId.get(hostId) ?? []) {
     listener()
   }

@@ -10,15 +10,15 @@ vi.mock('./host-app-version-store', () => ({
   recordHostAppVersion: (...args: unknown[]) => recordHostAppVersionMock(...args)
 }))
 
-const recordHostDescriptorMock = vi.hoisted(() => vi.fn())
+const recordDescriptorFromStatusMock = vi.hoisted(() => vi.fn())
 
-vi.mock('./host-descriptor-store', () => ({
-  recordHostDescriptor: (...args: unknown[]) => recordHostDescriptorMock(...args)
+vi.mock('./host-descriptor-recorder', () => ({
+  recordHostDescriptorFromStatus: (...args: unknown[]) => recordDescriptorFromStatusMock(...args)
 }))
 
 describe('useHostStatusGates', () => {
   beforeEach(() => {
-    recordHostDescriptorMock.mockClear()
+    recordDescriptorFromStatusMock.mockClear()
   })
   it('clears every prior-host gate and ignores its late response while the client is replaced', async () => {
     let resolveOldStatus: ((response: unknown) => void) | null = null
@@ -120,10 +120,10 @@ describe('useHostStatusGates', () => {
 
       expect(sendRequest).toHaveBeenCalledOnce()
       expect(recordHostAppVersionMock).toHaveBeenCalledWith('host-1', '1.4.191')
-      expect(recordHostDescriptorMock).toHaveBeenCalledWith('host-1', {
-        machineName: 'studio',
-        platform: 'darwin'
-      })
+      expect(recordDescriptorFromStatusMock).toHaveBeenCalledWith(
+        'host-1',
+        expect.objectContaining({ machineName: 'studio', hostPlatform: 'darwin' })
+      )
     } finally {
       renderer?.unmount()
     }

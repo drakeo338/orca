@@ -65,12 +65,12 @@ export function HostScreenHeader({ controller }: { controller: HostScreenControl
                 <View style={styles.hostIdentityLine}>
                   <StatusDot state={connState} verdict={headerVerdict} />
                   <Text style={styles.hostNameText} numberOfLines={1}>
-                    {hostDisplay.primaryLabel}
+                    {hostDisplay.title}
                   </Text>
                 </View>
-                {hostDisplay.showDescriptor ? (
+                {hostDisplay.descriptorLine ? (
                   <Text style={styles.hostPlatformText} numberOfLines={1}>
-                    {`${hostDisplay.descriptorFresh ? '' : 'Last known · '}${hostDisplay.descriptorLabel}`}
+                    {`${hostDisplay.lastKnown ? 'Last known · ' : ''}${hostDisplay.descriptorLine}`}
                   </Text>
                 ) : null}
               </View>

@@ -5,7 +5,6 @@ import { MobileHostCard } from '../components/MobileHostCard'
 import type { HomeStatsSummary } from '../stats/home-stats-total'
 import { spacing } from '../theme/mobile-theme'
 import { classifyConnection } from '../transport/connection-health'
-import { useHostDescriptor } from '../transport/host-descriptor-store'
 import { resolveHomeHostConnectionState } from '../transport/home-host-auto-connect'
 import type { ConnectionState, HostCatalogEntry } from '../transport/types'
 import type { HostWorktreeInfo } from '../worktree/home-worktree-info'
@@ -114,12 +113,10 @@ const MobileHomeHostRow = memo(function MobileHomeHostRow(props: MobileHomeHostR
   const open = useCallback(() => onOpen(item), [item, onOpen])
   const longPress = useCallback(() => onLongPress(item), [item, onLongPress])
   const openActions = useCallback(() => onOpenActions(item), [item, onOpenActions])
-  const descriptor = useHostDescriptor(item.id)
 
   return (
     <MobileHostCard
       host={item}
-      descriptor={descriptor}
       credentialStatus={item.credentialStatus}
       state={state}
       verdict={verdict}

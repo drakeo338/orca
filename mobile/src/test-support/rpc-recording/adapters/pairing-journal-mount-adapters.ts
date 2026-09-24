@@ -114,15 +114,15 @@ export function pairingJournalMountAdapters(
               platform: 'ios'
             }
           } as Parameters<typeof start>[0])
-          const completed = attempt.result.then(async (result) => {
-            await result.finalize()
-            outcome = result.hostId
-            return { hostId: result.hostId }
-          })
-          completed.catch((error: unknown) => {
-            outcome = `failed: ${error instanceof Error ? error.message : String(error)}`
-          })
-          return completed
+          attempt.result.then(
+            (result) => {
+              outcome = result.hostId
+            },
+            (error: unknown) => {
+              outcome = `failed: ${error instanceof Error ? error.message : String(error)}`
+            }
+          )
+          return attempt.result
         },
         state: () => ({ outcome, savedHost, timedOut: attempt?.timedOut ?? null }),
         dispose: () => attempt?.dispose()

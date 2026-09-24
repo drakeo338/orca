@@ -123,16 +123,12 @@ function dependencies(client: RpcClient, events: string[]) {
     writeCredentialBundle: vi.fn(async (_bundle: MobileRelayCredentialBundle) => {
       events.push('write-credential')
     }),
-    recordHostDescriptor: vi.fn(),
+    recordDescriptorFromStatus: vi.fn(() => {
+      events.push('record-descriptor')
+    }),
     now: () => now,
     platform: 'ios'
   }
-}
-
-async function finalizePairing(attempt: ReturnType<typeof startPreProfilePairing>) {
-  const result = await attempt.result
-  await result.finalize()
-  return result
 }
 
 describe('pre-profile pairing coordinator', () => {
@@ -174,7 +170,7 @@ describe('pre-profile pairing coordinator', () => {
       dependencies: deps
     })
 
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: `host-${now}` })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
     expect(deps.saveHost).toHaveBeenCalledWith({
       id: `host-${now}`,
       name: 'Blue Whale',
@@ -183,7 +179,7 @@ describe('pre-profile pairing coordinator', () => {
       publicKeyB64: directOffer.publicKeyB64,
       lastConnected: now
     })
-    expect(events).toEqual(['connect', 'save-host'])
+    expect(events).toEqual(['connect', 'save-host', 'record-descriptor'])
   })
 
   it('reuses the existing host id and name when re-pairing the same desktop key (no duplicate)', async () => {
@@ -204,7 +200,7 @@ describe('pre-profile pairing coordinator', () => {
       dependencies: deps
     })
 
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: 'host-existing' })
+    await expect(attempt.result).resolves.toEqual({ hostId: 'host-existing' })
     expect(deps.saveHost).toHaveBeenCalledWith({
       id: 'host-existing',
       name: 'Studio Mac',
@@ -215,7 +211,7 @@ describe('pre-profile pairing coordinator', () => {
     })
   })
 
-  it('returns the authenticated machine descriptor for naming before it publishes the host', async () => {
+  it('hands the winning status to the descriptor recorder only after the host is saved', async () => {
     const events: string[] = []
     const client = fakeClient([success({ machineName: 'm4airs-Air', hostPlatform: 'darwin' })])
     const deps = dependencies(client, events)
@@ -225,26 +221,15 @@ describe('pre-profile pairing coordinator', () => {
       dependencies: deps
     })
 
-    const pending = await attempt.result
-    expect(pending).toMatchObject({
-      hostId: `host-${now}`,
-      machineName: 'm4airs-Air',
-      hostPlatform: 'darwin',
-      suggestedName: 'm4airs-Air'
-    })
-    expect(deps.saveHost).not.toHaveBeenCalled()
-
-    await pending.finalize('Windows-Low Spec')
-    expect(deps.saveHost).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Windows-Low Spec' })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
+    expect(events).toEqual(['connect', 'save-host', 'record-descriptor'])
+    expect(deps.recordDescriptorFromStatus).toHaveBeenCalledWith(
+      `host-${now}`,
+      expect.objectContaining({ machineName: 'm4airs-Air', hostPlatform: 'darwin' })
     )
-    expect(deps.recordHostDescriptor).toHaveBeenCalledWith(`host-${now}`, {
-      machineName: 'm4airs-Air',
-      platform: 'darwin'
-    })
   })
 
-  it('pairs a desktop whose status reply is unreadable, with no descriptor to show', async () => {
+  it('pairs a desktop whose status reply is unreadable, recording no descriptor', async () => {
     const deps = dependencies(fakeClient([success(null)]), [])
     const attempt = startPreProfilePairing({
       offer: directOffer,
@@ -252,11 +237,26 @@ describe('pre-profile pairing coordinator', () => {
       dependencies: deps
     })
 
-    await expect(attempt.result).resolves.toMatchObject({
-      machineName: null,
-      hostPlatform: null,
-      suggestedName: 'Blue Whale'
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
+    expect(deps.saveHost).toHaveBeenCalledOnce()
+    expect(deps.recordDescriptorFromStatus).not.toHaveBeenCalled()
+  })
+
+  it('still resolves a saved pairing when descriptor recording throws', async () => {
+    const events: string[] = []
+    const client = fakeClient([success({ machineName: 'm4airs-Air', hostPlatform: 'darwin' })])
+    const deps = dependencies(client, events)
+    deps.recordDescriptorFromStatus.mockImplementation(() => {
+      throw new Error('storage unavailable')
     })
+    const attempt = startPreProfilePairing({
+      offer: directOffer,
+      timeoutMs: 5_000,
+      dependencies: deps
+    })
+
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
+    expect(deps.saveHost).toHaveBeenCalledOnce()
   })
 
   it('journals before connecting and publishes only after authoritative direct install', async () => {
@@ -311,7 +311,7 @@ describe('pre-profile pairing coordinator', () => {
       timeoutMs: 5_000,
       dependencies: deps
     })
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: `host-${now}` })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
 
     expect(journal).not.toBeNull()
     expect(events).toEqual([
@@ -320,7 +320,8 @@ describe('pre-profile pairing coordinator', () => {
       'update-journal',
       'write-credential',
       'save-host',
-      'clear-journal'
+      'clear-journal',
+      'record-descriptor'
     ])
     expect(client.sendRequest).toHaveBeenNthCalledWith(2, 'pairing.provisionRelay', {
       reqId: journal!.metadata.installReqId,
@@ -353,10 +354,7 @@ describe('pre-profile pairing coordinator', () => {
       timeoutMs: 5_000,
       dependencies: deps
     })
-    // Nothing was installed, so the journal is gone before the naming step can be abandoned.
-    const pending = await attempt.result
-    expect(events).toEqual(['save-journal', 'connect', 'update-journal', 'clear-journal'])
-    await pending.finalize()
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
 
     expect(deps.saveHost).toHaveBeenCalledWith(
       expect.not.objectContaining({ endpoints: expect.anything() })
@@ -365,8 +363,9 @@ describe('pre-profile pairing coordinator', () => {
       'save-journal',
       'connect',
       'update-journal',
+      'save-host',
       'clear-journal',
-      'save-host'
+      'record-descriptor'
     ])
   })
 
@@ -387,7 +386,7 @@ describe('pre-profile pairing coordinator', () => {
       connectOptions: { onLog: (entry) => entries.push(entry) },
       dependencies: deps
     })
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: `host-${now}` })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
 
     expect(deps.saveHost).toHaveBeenCalledWith(
       expect.not.objectContaining({ endpoints: expect.anything() })
@@ -396,8 +395,9 @@ describe('pre-profile pairing coordinator', () => {
       'save-journal',
       'connect',
       'update-journal',
+      'save-host',
       'clear-journal',
-      'save-host'
+      'record-descriptor'
     ])
     expect(entries).toContainEqual(
       expect.objectContaining({
@@ -423,7 +423,7 @@ describe('pre-profile pairing coordinator', () => {
       timeoutMs: 5_000,
       dependencies: deps
     })
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: `host-${now}` })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
 
     expect(direct.close).toHaveBeenCalled()
     expect(relay.sendRequest).toHaveBeenNthCalledWith(2, 'pairing.provisionRelay', {
@@ -464,7 +464,7 @@ describe('pre-profile pairing coordinator', () => {
       connectOptions: { onLog: (entry) => entries.push(entry) },
       dependencies: deps
     })
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: `host-${now}` })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
 
     expect(entries.map((entry) => entry.message)).toEqual([
       'Relay: pairing candidate started',
@@ -518,7 +518,7 @@ describe('pre-profile pairing coordinator', () => {
       connectOptions: { onLog: (entry) => entries.push(entry) },
       dependencies: deps
     })
-    await expect(finalizePairing(attempt)).resolves.toMatchObject({ hostId: `host-${now}` })
+    await expect(attempt.result).resolves.toEqual({ hostId: `host-${now}` })
 
     expect(entries.map((entry) => entry.message)).toEqual([
       'Direct: Reconnecting (attempt 2)',

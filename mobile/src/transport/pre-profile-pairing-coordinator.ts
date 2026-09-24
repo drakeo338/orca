@@ -30,14 +30,12 @@ import { resolvePairingInviteThroughDirector } from './mobile-relay-invite-direc
 import { createRecoveringPairingRelayCandidate } from './pairing-relay-candidate'
 import { createPairingRelayLogger } from './pairing-relay-log'
 import { redactSocketEndpoint } from './socket-event-debug'
-import { createPendingPairing, type PairingPendingResult } from './pairing-pending-result'
 import { assertCommittedInstall, relayHost } from './pairing-relay-host'
-import { recordHostDescriptor } from './host-descriptor-store'
-
-export type PreProfilePairingResult = PairingPendingResult
+import { recordHostDescriptorFromStatus } from './host-descriptor-recorder'
+import type { HostStatusReply } from './host-status-reply-schema'
 
 export type PreProfilePairingAttempt = {
-  readonly result: Promise<PreProfilePairingResult>
+  readonly result: Promise<{ hostId: string }>
   readonly timedOut: boolean
   dispose(): void
 }
@@ -52,7 +50,7 @@ type Dependencies = {
   updateJournal: typeof updateMobileRelayPairingJournal
   clearJournal: typeof clearMobileRelayPairingJournal
   writeCredentialBundle: typeof writeMobileRelayCredentialBundle
-  recordHostDescriptor: typeof recordHostDescriptor
+  recordDescriptorFromStatus: typeof recordHostDescriptorFromStatus
   now: () => number
   platform: string
 }
@@ -67,7 +65,7 @@ const defaultDependencies: Dependencies = {
   updateJournal: updateMobileRelayPairingJournal,
   clearJournal: clearMobileRelayPairingJournal,
   writeCredentialBundle: writeMobileRelayCredentialBundle,
-  recordHostDescriptor,
+  recordDescriptorFromStatus: recordHostDescriptorFromStatus,
   now: Date.now,
   platform: Platform.OS
 }
@@ -137,17 +135,14 @@ async function runPairing(
   dependencies: Dependencies,
   clients: Set<PairingCandidateClient>,
   isDisposed: () => boolean
-): Promise<PreProfilePairingResult> {
+): Promise<{ hostId: string }> {
   const now = dependencies.now()
   // Why: every pairing artifact must share the preserved host id so re-pairing
   // updates one card instead of publishing a second identity (STA-1840).
-  const newHostId = `host-${now}`
   const { id: hostId, name: hostName } = await dependencies.resolveHostIdentity(
     offer.publicKeyB64,
-    newHostId
+    `host-${now}`
   )
-  // Why: identity resolution hands back the offered id only for a desktop this phone never paired.
-  const isExisting = hostId !== newHostId
   assertActive(isDisposed)
   let journal: MobileRelayPairingJournal | null = null
   if (offer.relay && dependencies.platform !== 'web') {
@@ -211,14 +206,9 @@ async function runPairing(
   assertActive(isDisposed)
 
   if (!journal) {
-    return createPendingPairing({
-      host: baseHost(offer, hostId, hostName, now),
-      status: winner.status,
-      isExisting,
-      dependencies,
-      journal: null,
-      credentialBundle: null
-    })
+    await dependencies.saveHost(baseHost(offer, hostId, hostName, now))
+    recordWinnerDescriptor(dependencies, hostId, winner.status)
+    return { hostId }
   }
 
   journal = {
@@ -241,17 +231,10 @@ async function runPairing(
     // Why: this commits a LAN-only host instead of failing, so the refusal code is the only
     // record of why the phone never got a relay endpoint.
     log('info', 'Relay: desktop will not serve relay pairing', provision.error.code)
-    // Why now, not at save: nothing was installed, so a journal kept through naming could only
-    // block every later scan with "recovery pending" if the app dies on that screen.
-    await dependencies.clearJournal(journal.metadata.journalId).catch(() => {})
-    return createPendingPairing({
-      host: baseHost(offer, hostId, hostName, now),
-      status: winner.status,
-      isExisting,
-      dependencies,
-      journal: null,
-      credentialBundle: null
-    })
+    await dependencies.saveHost(baseHost(offer, hostId, hostName, now))
+    await dependencies.clearJournal(journal.metadata.journalId)
+    recordWinnerDescriptor(dependencies, hostId, winner.status)
+    return { hostId }
   }
   const installed = relayCredentialProvision.interpret(provision)
   const endpointsReply = await relayPairingEndpointsRead.request(winner.client, {
@@ -263,14 +246,32 @@ async function runPairing(
     throw new Error('desktop returned no relay endpoint after credential install')
   }
   assertActive(isDisposed)
-  return createPendingPairing({
-    host: relayHost(journal, endpoints.relay),
-    status: winner.status,
-    isExisting,
-    dependencies,
-    journal,
-    credentialBundle: promotePairingJournalCredential({ journal, installed })
-  })
+  await dependencies.writeCredentialBundle(promotePairingJournalCredential({ journal, installed }))
+  await dependencies.saveHost(relayHost(journal, endpoints.relay))
+  await dependencies.clearJournal(journal.metadata.journalId)
+  recordWinnerDescriptor(dependencies, hostId, winner.status)
+  return { hostId }
+}
+
+/**
+ * Why after the save: the saved row starts as its existing name (or "Host N") and the descriptor
+ * writer adopt-renames it to the desktop's machine name in the same serialized store chain, so a
+ * load issued after pairing returns the desktop-reported name. A recording failure is swallowed —
+ * descriptor upkeep must never fail a pairing that already saved.
+ */
+function recordWinnerDescriptor(
+  dependencies: Dependencies,
+  hostId: string,
+  status: HostStatusReply | null
+): void {
+  if (!status) {
+    return
+  }
+  try {
+    dependencies.recordDescriptorFromStatus(hostId, status)
+  } catch {
+    // Best-effort bookkeeping; the host is already saved.
+  }
 }
 
 function baseHost(

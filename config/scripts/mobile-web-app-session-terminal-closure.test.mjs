@@ -446,9 +446,9 @@ const MERMAID_PACKAGE = 'node_modules/mermaid/'
  *   modules        4220 -> 4219   (-1)
  *   local modules  1034 -> 1033   (-1)
  *
- * The host identity confirmation adds three local modules and no package: the shared display
- * resolver and platform label, plus the in-memory `src/transport/host-descriptor-store.ts`. The
- * status gate above every route writes the descriptor and the docked host header reads it.
+ * Host naming adds three local modules and no package: the shared display resolver and platform
+ * label, plus the in-memory `src/transport/host-descriptor-store.ts`. The status gate above every
+ * route writes the descriptor and the docked host header reads it.
  *
  *   modules        4219 -> 4222   (+3)
  *   local modules  1033 -> 1036   (+3)
@@ -458,8 +458,16 @@ const MERMAID_PACKAGE = 'node_modules/mermaid/'
  *
  *   modules        4222 -> 4224   (+2)
  *   local modules  1036 -> 1038   (+2)
+ *
+ * Host naming then took the machine name from the desktop on every connection. The status gate
+ * records through `src/transport/host-descriptor-recorder.ts`, the capability probe became a
+ * projection of the retrying `src/transport/runtime-status-probe.ts`, and the host header reads
+ * `src/transport/use-host-display.ts`. Three local modules, measured.
+ *
+ *   modules        4224 -> 4227   (+3)
+ *   local modules  1038 -> 1041   (+3)
  */
-const SESSION_ROUTE_MODULES = 4224
+const SESSION_ROUTE_MODULES = 4227
 
 /** What the page enters this route through once the route is a switch with a `.web.tsx` sibling. */
 const ROUTE_ENTRY = [
