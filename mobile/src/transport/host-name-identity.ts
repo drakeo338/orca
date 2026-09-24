@@ -7,6 +7,11 @@ import type { StoredHostProfile } from './types'
  * serialized mutation pass, so the resolved name and its sources are always written together.
  */
 
+type HostNameIdentity = Pick<
+  StoredHostProfile,
+  'name' | 'personalName' | 'lastKnownMachineName' | 'lastKnownHostPlatform'
+>
+
 export type ReportedHostDescriptor = {
   machineName: string | null
   platform: NodeJS.Platform | null
@@ -19,7 +24,7 @@ export type ReportedHostDescriptor = {
  * one of the three fields (clearing an override either restores the machine name — a field — or
  * keeps a generated "Host N", which this pattern skips), so only true legacy records are classified.
  */
-export function classifyLegacyHostName(profile: StoredHostProfile): StoredHostProfile {
+export function classifyLegacyHostName<T extends HostNameIdentity>(profile: T): T {
   if (
     profile.personalName !== undefined ||
     profile.lastKnownMachineName !== undefined ||
@@ -32,22 +37,27 @@ export function classifyLegacyHostName(profile: StoredHostProfile): StoredHostPr
 }
 
 /**
- * Why: a re-pair rebuilds the profile from the pairing offer, which carries no name identity;
- * replacing the record wholesale would silently erase a phone rename on every re-pair.
+ * Why: a save rebuilds the record from a pairing offer (no name identity) or from a connection's
+ * profile snapshot (identity as of connect). Only the stored record reflects later renames and
+ * descriptor reads, so it keeps the name identity; the save supplies everything else.
  */
 export function mergeHostNameIdentity(
   incoming: StoredHostProfile,
   existing: StoredHostProfile
 ): StoredHostProfile {
-  const personalName = incoming.personalName ?? existing.personalName
-  const lastKnownMachineName = incoming.lastKnownMachineName ?? existing.lastKnownMachineName
-  const lastKnownHostPlatform = incoming.lastKnownHostPlatform ?? existing.lastKnownHostPlatform
+  const {
+    personalName: _personalName,
+    lastKnownMachineName: _machineName,
+    lastKnownHostPlatform: _platform,
+    ...rest
+  } = incoming
+  const { personalName, lastKnownMachineName, lastKnownHostPlatform } = existing
   return {
-    ...incoming,
+    ...rest,
+    name: existing.name,
     ...(personalName !== undefined ? { personalName } : {}),
     ...(lastKnownMachineName !== undefined ? { lastKnownMachineName } : {}),
-    ...(lastKnownHostPlatform !== undefined ? { lastKnownHostPlatform } : {}),
-    name: personalName ?? lastKnownMachineName ?? incoming.name
+    ...(lastKnownHostPlatform !== undefined ? { lastKnownHostPlatform } : {})
   }
 }
 

@@ -189,6 +189,22 @@ describe('host name identity', () => {
       })
       expect(stored().find(({ id }) => id === GENERATED_HOST.id)?.name).toBe('m4airs-Air')
     })
+
+    it('does not roll back identity changed since a connection took its profile snapshot', async () => {
+      await updateHostDescriptor(TYPED_HOST.id, { machineName: 'Studio', platform: 'darwin' })
+      // A connection holds this for its lifetime and re-saves it on relay credential rotation.
+      const snapshot = (await loadHosts()).find(({ id }) => id === TYPED_HOST.id)!
+      await updateHostNameAndEndpoint(TYPED_HOST.id, { personalName: null })
+      await updateHostDescriptor(TYPED_HOST.id, { machineName: 'Studio 2', platform: 'darwin' })
+      await saveHost({ ...snapshot, lastConnected: 99 })
+      const record = stored().find(({ id }) => id === TYPED_HOST.id)
+      expect(record?.personalName).toBeUndefined()
+      expect(record).toMatchObject({
+        name: 'Studio 2',
+        lastKnownMachineName: 'Studio 2',
+        lastConnected: 99
+      })
+    })
   })
 
   describe('phone override edit', () => {

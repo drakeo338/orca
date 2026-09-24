@@ -460,18 +460,20 @@ const MERMAID_PACKAGE = 'node_modules/mermaid/'
  *   modules        4221 -> 4219   (-2)
  *   local modules  1035 -> 1033   (-2)
  *
- * Host naming adds eight local modules and no package: the shared display resolver and platform
+ * Host naming adds ten local modules and no package: the shared display resolver and platform
  * label; `src/transport/mobile-runtime-host-platform.ts`, which the status reply and stored profile
  * now read; the in-memory `src/transport/host-descriptor-store.ts` and
  * `src/transport/host-descriptor-recorder.ts`, which the status gate above every route writes
  * through, reaching the page's no-op `src/transport/host-store.web.ts`;
- * `src/transport/runtime-status-probe.ts`, which the capability probe now projects; and
- * `src/transport/use-host-display.ts`, which the docked host header reads. Measured on the merge.
+ * `src/transport/runtime-status-probe.ts`, which the capability probe now projects;
+ * `src/transport/use-host-display.ts`, which the docked host header reads; and
+ * `src/transport/host-name-identity.ts` with `src/transport/host-names.ts`, which that header uses
+ * to read the page's host label as a label. Measured on the merge.
  *
- *   modules        4219 -> 4227   (+8)
- *   local modules  1033 -> 1041   (+8)
+ *   modules        4219 -> 4229   (+10)
+ *   local modules  1033 -> 1043   (+10)
  */
-const SESSION_ROUTE_MODULES = 4227
+const SESSION_ROUTE_MODULES = 4229
 
 /** What the page enters this route through once the route is a switch with a `.web.tsx` sibling. */
 const ROUTE_ENTRY = [

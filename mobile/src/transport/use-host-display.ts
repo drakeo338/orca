@@ -3,6 +3,7 @@ import {
   type HostDisplayResolution
 } from '../../../src/shared/host-display-resolution'
 import { useHostDescriptor } from './host-descriptor-store'
+import { classifyLegacyHostName } from './host-name-identity'
 
 export type HostDisplaySource = {
   id: string
@@ -24,8 +25,10 @@ export function useHostDisplay(
   connected: boolean
 ): HostDisplayResolution {
   const live = useHostDescriptor(host?.id)
+  // Why: a source without identity fields (the web page's projection) holds a label, not a default.
+  const identity = host ? classifyLegacyHostName(host) : null
   return resolveHostDisplay({
-    name: host?.personalName ?? live?.machineName ?? host?.name ?? '',
+    name: identity?.personalName ?? live?.machineName ?? identity?.name ?? '',
     machineName: live ? live.machineName : (host?.lastKnownMachineName ?? null),
     platform: live ? live.platform : (host?.lastKnownHostPlatform ?? null),
     live: connected && live !== null
