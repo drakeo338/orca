@@ -7,6 +7,11 @@ describe('notebookVenvParent', () => {
     expect(notebookVenvParent('/elsewhere/nb.ipynb', '/repo')).toBe('/elsewhere')
     expect(notebookVenvParent('/repo-2/nb.ipynb', '/repo')).toBe('/repo-2')
     expect(notebookVenvParent('/repo/nb.ipynb', null)).toBe('/repo')
-    expect(notebookVenvParent('C:\\repo\\a\\nb.ipynb', 'C:\\repo')).toBe('C:\\repo')
+    expect(notebookVenvParent('C:\\repo\\a\\nb.ipynb', 'c:\\Repo')).toBe('c:\\Repo')
+  })
+
+  it('keeps the root separator for a notebook at a filesystem root', () => {
+    expect(notebookVenvParent('/nb.ipynb', '/repo')).toBe('/')
+    expect(notebookVenvParent('C:\\nb.ipynb', null)).toBe('C:\\')
   })
 })

@@ -5,13 +5,13 @@ export function notebookVenvParent(notebookPath: string, rootPath: string | null
   if (rootPath && isPathInsideOrEqual(rootPath, notebookPath)) {
     return rootPath
   }
-  return notebookPath.slice(
-    0,
-    Math.max(notebookPath.lastIndexOf('/'), notebookPath.lastIndexOf('\\'))
-  )
+  const separator = Math.max(notebookPath.lastIndexOf('/'), notebookPath.lastIndexOf('\\'))
+  const parent = notebookPath.slice(0, separator)
+  // A notebook at a filesystem root keeps the root's separator: `/`, `C:\\`.
+  return parent === '' || /^[A-Za-z]:$/.test(parent) ? notebookPath.slice(0, separator + 1) : parent
 }
 
-/** The interpreter inside a venv created at `venvPath`. */
-export function venvInterpreterPath(venvPath: string, windows: boolean): string {
-  return windows ? `${venvPath}\\Scripts\\python.exe` : `${venvPath}/bin/python`
+/** Path segments from a venv's folder to its interpreter. */
+export function venvInterpreterSegments(windows: boolean): string[] {
+  return windows ? ['Scripts', 'python.exe'] : ['bin', 'python']
 }

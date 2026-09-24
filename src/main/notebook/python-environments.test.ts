@@ -1,4 +1,6 @@
-import { join } from 'node:path'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { runProcessMock } = vi.hoisted(() => ({ runProcessMock: vi.fn() }))
@@ -46,41 +48,91 @@ describe('findWorkspaceInterpreters', () => {
 })
 
 describe('installIpykernel', () => {
-  it('bootstraps pip with ensurepip when the env has none, then installs', async () => {
-    const result = (code: number, stderr = '') => ({ code, stderr, stdout: '' })
+  beforeEach(() => runProcessMock.mockReset())
+  const result = (code: number | null, stderr = '', extra = {}) => ({
+    code,
+    stderr,
+    stdout: '',
+    ...extra
+  })
+
+  it('bootstraps pip with ensurepip when the env has none, then installs and imports', async () => {
     runProcessMock
       .mockResolvedValueOnce(result(1, '/venv/bin/python: No module named pip'))
+      .mockResolvedValueOnce(result(0))
       .mockResolvedValueOnce(result(0))
       .mockResolvedValueOnce(result(0))
     await expect(installIpykernel('/venv/bin/python')).resolves.toEqual({ ok: true, detail: '' })
     expect(runProcessMock.mock.calls.map(([spec]) => spec.args)).toEqual([
       ['-m', 'pip', 'install', '-U', 'ipykernel'],
       ['-m', 'ensurepip'],
-      ['-m', 'pip', 'install', '-U', 'ipykernel']
+      ['-m', 'pip', 'install', '-U', 'ipykernel'],
+      ['-c', 'import ipykernel, jupyter_client.manager']
     ])
+  })
+
+  it('fails when pip succeeds but ipykernel still cannot be imported', async () => {
+    runProcessMock
+      .mockResolvedValueOnce(result(0))
+      .mockResolvedValueOnce(result(1, 'ImportError: libzmq.so.5'))
+    await expect(installIpykernel('/venv/bin/python')).resolves.toEqual({
+      ok: false,
+      detail: 'ImportError: libzmq.so.5'
+    })
+  })
+
+  it('explains a failure that printed nothing', async () => {
+    runProcessMock.mockResolvedValueOnce(result(null, '', { timedOut: true }))
+    await expect(installIpykernel('/venv/bin/python')).resolves.toEqual({
+      ok: false,
+      detail: 'Timed out.'
+    })
   })
 })
 
 describe('createNotebookVenv', () => {
   beforeEach(() => runProcessMock.mockReset())
+  const interpreterIn = (venv: string): string =>
+    process.platform === 'win32' ? join(venv, 'Scripts', 'python.exe') : join(venv, 'bin', 'python')
+  const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' })
 
   it('creates .venv in the parent, installs ipykernel into it, and describes it', async () => {
     const venv = join('/repo', '.venv')
-    const venvPython =
-      process.platform === 'win32' ? `${venv}\\Scripts\\python.exe` : `${venv}/bin/python`
+    const venvPython = interpreterIn(venv)
     runProcessMock
-      .mockResolvedValueOnce({ code: 0, stdout: '', stderr: '' })
-      .mockResolvedValueOnce({ code: 0, stdout: '', stderr: '' })
-      .mockResolvedValueOnce({ code: 0, stdout: `${venvPython}\n3.14.0\n`, stderr: '' })
-    const result = await createNotebookVenv('/usr/bin/python3', '/repo')
-    expect(result).toMatchObject({ ok: true, environment: { path: venvPython, version: '3.14.0' } })
-    expect(
-      runProcessMock.mock.calls.map(([spec]) => [spec.program, ...spec.args.slice(0, 3)])
-    ).toEqual([
-      ['/usr/bin/python3', '-m', 'venv', venv],
-      [venvPython, '-m', 'pip', 'install'],
-      [venvPython, '-c', expect.any(String)]
-    ])
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok(`${venvPython}\n3.14.0\n`))
+    await expect(createNotebookVenv('/usr/bin/python3', '/repo')).resolves.toMatchObject({
+      ok: true,
+      environment: { path: venvPython, version: '3.14.0' }
+    })
+    expect(runProcessMock.mock.calls[0][0]).toMatchObject({
+      program: '/usr/bin/python3',
+      args: ['-m', 'venv', venv]
+    })
+  })
+
+  it('reuses an existing .venv rather than re-running venv over it', async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'orca-venv-'))
+    try {
+      const venvPython = interpreterIn(join(parent, '.venv'))
+      mkdirSync(dirname(venvPython), { recursive: true })
+      writeFileSync(venvPython, '')
+      runProcessMock
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValueOnce(ok(`${venvPython}\n3.12.1\n`))
+      await expect(createNotebookVenv('/usr/bin/python3', parent)).resolves.toMatchObject({
+        ok: true
+      })
+      expect(runProcessMock.mock.calls.map(([spec]) => spec.program)).not.toContain(
+        '/usr/bin/python3'
+      )
+    } finally {
+      rmSync(parent, { recursive: true, force: true })
+    }
   })
 
   it('reports why venv creation failed', async () => {

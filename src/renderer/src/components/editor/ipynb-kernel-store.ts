@@ -16,14 +16,17 @@ export type CellRun = LiveOutputs & {
   committed: boolean
 }
 
-type KernelStatus =
-  | 'off'
-  | 'starting'
-  | 'missing-ipykernel'
-  | 'installing'
-  | 'creating-venv'
-  | 'ready'
-  | 'dead'
+type KernelStatus = 'off' | 'starting' | 'ready' | 'dead'
+
+/** Getting ipykernel into a Python; while set, the setup dialog is open and cells wait. */
+export type KernelSetup = {
+  /** The interpreter missing ipykernel, or the base of the new `.venv`. */
+  base: PythonEnvironment
+  /** `venv` when pip refuses to install into `base` (PEP 668), or the user asked for one. */
+  offer: 'install' | 'venv'
+  phase: 'idle' | 'installing' | 'creating-venv'
+  error: string | null
+}
 
 export type NotebookKernelSession = {
   trusted: boolean
@@ -32,10 +35,7 @@ export type NotebookKernelSession = {
   queue: QueuedCell[]
   runs: Record<string, CellRun>
   interruptStalled: boolean
-  /** The env lacking ipykernel refuses pip installs (PEP 668), so setup offers a venv instead. */
-  externallyManaged: boolean
-  /** Why the last ipykernel install or venv creation failed, shown in the setup dialog. */
-  setupError: string | null
+  setup: KernelSetup | null
 }
 
 const IDLE_SESSION: NotebookKernelSession = {
@@ -44,8 +44,7 @@ const IDLE_SESSION: NotebookKernelSession = {
   queue: [],
   runs: {},
   interruptStalled: false,
-  externallyManaged: false,
-  setupError: null
+  setup: null
 }
 const ENVIRONMENTS_STORAGE_KEY = 'orca.notebookPythonEnvironments'
 
@@ -101,8 +100,7 @@ export function useNotebookKernelState(filePath: string) {
         trusted: session.trusted,
         busy: session.queue.length > 0 || runningCellKey(session) !== null,
         interruptStalled: session.interruptStalled,
-        externallyManaged: session.externallyManaged,
-        setupError: session.setupError
+        setup: session.setup
       }
     })
   )

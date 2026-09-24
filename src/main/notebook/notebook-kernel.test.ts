@@ -80,6 +80,6 @@ describe.skipIf(!bare)('notebook kernel without ipykernel', () => {
   it('reports the missing package instead of starting', async () => {
     const { ready } = startNotebookKernel({ python: bare!, cwd: __dirname, onFrame: () => {} })
     // A bare venv accepts pip installs, whatever its base interpreter does.
-    expect(await ready).toMatchObject({ status: 'missing-ipykernel' })
+    expect(await ready).toEqual({ status: 'missing-ipykernel', externallyManaged: false })
   })
 })

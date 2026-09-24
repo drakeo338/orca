@@ -39,7 +39,6 @@ Object.defineProperty(globalThis, 'window', {
 })
 
 const session = await import('./ipynb-kernel-session')
-const { ipykernelInstallCommand, venvSetupCommand } = await import('./ipynb-kernel-setup-commands')
 const { getCellRun, getSession } = await import('./ipynb-kernel-store')
 
 function frame(value: KernelFrame): void {
@@ -113,10 +112,14 @@ describe('notebook kernel session', () => {
     })
     notebookApi.installIpykernel.mockResolvedValue({ ok: true, detail: '' })
     await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
-    expect(notebookApi.execute).not.toHaveBeenCalled()
+    expect(getSession(FILE).setup).toMatchObject({ base: VENV, offer: 'install', phase: 'idle' })
+    // A second run while the dialog is open waits too.
+    await session.runCells(FILE, [{ key: 'b', code: 'y' }], null)
+    expect(notebookApi.startKernel).toHaveBeenCalledOnce()
 
     await session.installIpykernel(FILE)
     expect(notebookApi.installIpykernel).toHaveBeenCalledWith({ python: VENV.path })
+    expect(getSession(FILE).setup).toBeNull()
     expect(notebookApi.execute).toHaveBeenCalledWith({ filePath: FILE, code: 'x' })
   })
 
@@ -129,23 +132,12 @@ describe('notebook kernel session', () => {
     await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
     await session.installIpykernel(FILE)
     expect(getSession(FILE)).toMatchObject({
-      status: 'missing-ipykernel',
-      setupError: 'network unreachable',
+      setup: { phase: 'idle', error: 'network unreachable' },
       queue: [{ key: 'a', code: 'x' }]
     })
-    expect(getCellRun(FILE, 'a')).toBeUndefined()
-  })
 
-  it('says so when pip succeeds but the kernel still cannot load ipykernel', async () => {
-    notebookApi.startKernel.mockResolvedValue({
-      status: 'missing-ipykernel',
-      externallyManaged: false
-    })
-    notebookApi.installIpykernel.mockResolvedValue({ ok: true, detail: '' })
-    await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
-    await session.installIpykernel(FILE)
-    expect(getSession(FILE).status).toBe('missing-ipykernel')
-    expect(getSession(FILE).setupError).toContain('still cannot load it')
+    session.cancelSetup(FILE)
+    expect(getSession(FILE)).toMatchObject({ status: 'off', setup: null, queue: [] })
   })
 
   it('creates a .venv for a pip-locked Python and runs the waiting cells in it', async () => {
@@ -153,14 +145,15 @@ describe('notebook kernel session', () => {
     const system = { path: '/opt/homebrew/bin/python3', name: 'python3', version: '3.14.0' }
     openFiles.current = [{ filePath: '/repo/nb.ipynb' }]
     notebookApi.listPythonEnvironments.mockResolvedValue({ workspace: [], path: [system] })
-    notebookApi.startKernel
-      .mockResolvedValueOnce({ status: 'missing-ipykernel', externallyManaged: true })
-      .mockResolvedValueOnce({ status: 'ready' })
+    notebookApi.startKernel.mockResolvedValueOnce({
+      status: 'missing-ipykernel',
+      externallyManaged: true
+    })
     notebookApi.createVenv.mockResolvedValue({ ok: true, environment: created })
     await session.runCells('/repo/nb.ipynb', [{ key: 'a', code: 'x' }], '/repo')
-    expect(getSession('/repo/nb.ipynb').externallyManaged).toBe(true)
+    expect(getSession('/repo/nb.ipynb').setup).toMatchObject({ base: system, offer: 'venv' })
 
-    await session.createVirtualEnvironment('/repo/nb.ipynb', '/repo', system)
+    await session.createVirtualEnvironment('/repo/nb.ipynb', '/repo')
     expect(notebookApi.createVenv).toHaveBeenCalledWith({
       filePath: '/repo/nb.ipynb',
       rootPath: '/repo',
@@ -173,13 +166,43 @@ describe('notebook kernel session', () => {
     expect(notebookApi.execute).toHaveBeenCalledWith({ filePath: '/repo/nb.ipynb', code: 'x' })
   })
 
-  it('builds the copyable venv command for each shell', () => {
-    expect(venvSetupCommand('/usr/bin/python3', '/my repo', false)).toBe(
-      "'/usr/bin/python3' -m venv '/my repo/.venv' && '/my repo/.venv/bin/python' -m pip install -U ipykernel"
-    )
-    expect(venvSetupCommand('C:\\py\\python.exe', 'C:\\repo', true)).toBe(
-      "& 'C:\\py\\python.exe' -m venv 'C:\\repo\\.venv'; & 'C:\\repo\\.venv\\Scripts\\python.exe' -m pip install -U ipykernel"
-    )
+  it('switches a running notebook to a venv made from the picker, keeping it on failure', async () => {
+    const created = { path: '/repo/.venv/bin/python', name: '.venv', version: '3.14.0' }
+    const system = { path: '/usr/bin/python3', name: 'python3', version: '3.14.0' }
+    await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
+    frame({ type: 'done', status: 'ok', execution_count: 1 })
+
+    session.offerVirtualEnvironment(FILE, system)
+    notebookApi.createVenv.mockResolvedValueOnce({ ok: false, detail: 'no ensurepip' })
+    await session.createVirtualEnvironment(FILE, null)
+    expect(getSession(FILE)).toMatchObject({ status: 'ready', setup: { error: 'no ensurepip' } })
+    expect(notebookApi.startKernel).toHaveBeenCalledOnce()
+
+    notebookApi.createVenv.mockResolvedValueOnce({ ok: true, environment: created })
+    await session.createVirtualEnvironment(FILE, null)
+    expect(notebookApi.startKernel).toHaveBeenLastCalledWith({
+      filePath: FILE,
+      python: created.path
+    })
+    expect(getSession(FILE)).toMatchObject({ status: 'ready', setup: null })
+  })
+
+  it('drops an install result once its tab has closed and reopened', async () => {
+    notebookApi.startKernel.mockResolvedValueOnce({
+      status: 'missing-ipykernel',
+      externallyManaged: false
+    })
+    let finish: (value: { ok: boolean; detail: string }) => void = () => {}
+    notebookApi.installIpykernel.mockReturnValue(new Promise((resolve) => (finish = resolve)))
+    await session.runCells(FILE, [{ key: 'a', code: 'x' }], null)
+    const install = session.installIpykernel(FILE)
+    for (const listener of appStoreListeners) {
+      listener({ openFiles: [] }, { openFiles: openFiles.current })
+    }
+    finish({ ok: false, detail: 'late' })
+    await install
+    expect(getSession(FILE).setup).toBeNull()
+    expect(notebookApi.startKernel).toHaveBeenCalledOnce()
   })
 
   it('falls back to Python on PATH when there is no workspace env', async () => {
@@ -215,19 +238,6 @@ describe('notebook kernel session', () => {
 
     await session.runCells(filePath, [{ key: 'b', code: 'y' }], null)
     expect(notebookApi.execute).toHaveBeenCalledWith({ filePath, code: 'y' })
-  })
-
-  it('quotes the copyable install command only when the path needs it', () => {
-    const posix = (path: string): string => ipykernelInstallCommand(path, false)
-    const windows = (path: string): string => ipykernelInstallCommand(path, true)
-    const pip = ' -m pip install -U ipykernel'
-    expect(posix('/v/bin/python')).toBe(`'/v/bin/python'${pip}`)
-    expect(posix('/my env/bin/python')).toBe(`'/my env/bin/python'${pip}`)
-    expect(posix('/Dev&Test/bin/python')).toBe(`'/Dev&Test/bin/python'${pip}`)
-    expect(posix("/Bob's/bin/python")).toBe(`'/Bob'\\''s/bin/python'${pip}`)
-    expect(windows('C:\\My Env\\python.exe')).toBe(`& 'C:\\My Env\\python.exe'${pip}`)
-    expect(windows('C:\\Dev&Test\\python.exe')).toBe(`& 'C:\\Dev&Test\\python.exe'${pip}`)
-    expect(windows("C:\\Bob's\\python.exe")).toBe(`& 'C:\\Bob''s\\python.exe'${pip}`)
   })
 
   it('shuts the kernel down when the notebook tab closes', async () => {

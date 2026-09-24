@@ -15,6 +15,7 @@ import {
   setEnvironment,
   store,
   updateSession,
+  type KernelSetup,
   type QueuedCell
 } from './ipynb-kernel-store'
 
@@ -29,6 +30,7 @@ function failQueue(filePath: string, message: string, detail = ''): void {
   updateSession(filePath, ({ runs }) => ({
     status: 'off',
     queue: [],
+    setup: null,
     runs: head
       ? {
           ...runs,
@@ -98,13 +100,16 @@ async function start(filePath: string, rootPath: string | null = null): Promise<
     return
   }
   if (result.status === 'ready') {
-    updateSession(filePath, () => ({ status: 'ready' }))
+    updateSession(filePath, () => ({ status: 'ready', setup: null }))
     pump(filePath)
   } else if (result.status === 'missing-ipykernel') {
+    // The kernel was started in this notebook's chosen environment, so it is set.
+    const base = store.getState().environments[filePath]
     updateSession(filePath, () => ({
-      status: 'missing-ipykernel',
-      externallyManaged: result.externallyManaged,
-      setupError: null
+      status: 'off',
+      setup: base
+        ? { base, offer: result.externallyManaged ? 'venv' : 'install', phase: 'idle', error: null }
+        : null
     }))
   } else {
     failQueue(
@@ -135,12 +140,12 @@ export async function runCells(
     )
     return { queue: [...session.queue, ...fresh] }
   })
-  const { status } = getSession(filePath)
+  const { status, setup } = getSession(filePath)
   if (status === 'ready') {
     pump(filePath)
     return
   }
-  if (status !== 'off' && status !== 'dead') {
+  if (status === 'starting' || setup) {
     return
   }
   await start(filePath, rootPath)
@@ -154,8 +159,7 @@ export function restartKernel(filePath: string): void {
 /** Switching interpreters restarts a running kernel; otherwise queued cells wait for the new one. */
 export function selectEnvironment(filePath: string, environment: PythonEnvironment): void {
   setEnvironment(filePath, environment)
-  const { status } = getSession(filePath)
-  if (status === 'off' || status === 'missing-ipykernel') {
+  if (getSession(filePath).status === 'off') {
     void start(filePath)
   } else {
     restartKernel(filePath)
@@ -172,75 +176,83 @@ export function interruptKernel(filePath: string): void {
   }, INTERRUPT_STALL_MS)
 }
 
-export async function installIpykernel(filePath: string): Promise<void> {
-  const environment = store.getState().environments[filePath]
-  if (!environment) {
-    return
+/** Moves the open setup to `phase`; returns the new setup, or null when there is none. */
+function enterSetupPhase(filePath: string, phase: KernelSetup['phase']): KernelSetup | null {
+  const current = getSession(filePath).setup
+  if (!current) {
+    return null
   }
-  updateSession(filePath, () => ({ status: 'installing', setupError: null }))
-  const result = await window.api.notebook.installIpykernel({ python: environment.path })
-  if (!isOpen(filePath)) {
-    return
-  }
-  if (!result.ok) {
-    updateSession(filePath, () => ({ status: 'missing-ipykernel', setupError: result.detail }))
-    return
-  }
-  await start(filePath)
-  if (isOpen(filePath) && getSession(filePath).status === 'missing-ipykernel') {
-    updateSession(filePath, () => ({
-      setupError: translate(
-        'auto.components.editor.IpynbViewer.installedButMissing',
-        'pip reported ipykernel as installed, but this Python still cannot load it.'
-      )
-    }))
-  }
+  const setup: KernelSetup = { ...current, phase, error: null }
+  updateSession(filePath, () => ({ setup }))
+  return setup
 }
 
-/** Creates the notebook's `.venv` from `base` with ipykernel, then runs the notebook in it. */
-export async function createVirtualEnvironment(
-  filePath: string,
-  rootPath: string | null,
-  base: PythonEnvironment
-): Promise<void> {
-  // From the setup dialog, the cells waiting on ipykernel run in the new env; failures stay in the dialog.
-  const fromDialog = getSession(filePath).status === 'missing-ipykernel'
-  updateSession(filePath, (session) => ({
-    ...(fromDialog ? {} : stopRuns(session)),
-    status: 'creating-venv',
-    setupError: null
+/** Whether `setup` is still the one on screen; a closed tab or reopened session means no. */
+function isShowing(filePath: string, setup: KernelSetup): boolean {
+  return getSession(filePath).setup === setup
+}
+
+function failSetup(filePath: string, detail: string): void {
+  updateSession(filePath, ({ setup }) => ({
+    setup: setup && { ...setup, phase: 'idle', error: detail }
   }))
-  let result: CreateVenvResult
-  try {
-    result = await window.api.notebook.createVenv({ filePath, rootPath, python: base.path })
-  } catch (error) {
-    result = { ok: false, detail: error instanceof Error ? error.message : String(error) }
+}
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+export async function installIpykernel(filePath: string): Promise<void> {
+  const setup = enterSetupPhase(filePath, 'installing')
+  if (!setup) {
+    return
   }
-  if (!isOpen(filePath)) {
+  const result = await window.api.notebook
+    .installIpykernel({ python: setup.base.path })
+    .catch((error: unknown) => ({ ok: false, detail: errorDetail(error) }))
+  if (!isShowing(filePath, setup)) {
     return
   }
   if (result.ok) {
-    setEnvironment(filePath, result.environment)
-    await start(filePath, rootPath)
-  } else if (fromDialog) {
-    updateSession(filePath, () => ({ status: 'missing-ipykernel', setupError: result.detail }))
+    await start(filePath)
   } else {
-    failQueue(
-      filePath,
-      translate(
-        'auto.components.editor.IpynbViewer.venvFailed',
-        'Creating the virtual environment failed.'
-      ),
-      result.detail
-    )
+    failSetup(filePath, result.detail)
   }
 }
 
-/** Drops the cells waiting on ipykernel when the user backs out of installing it. */
-export function cancelPendingStart(filePath: string): void {
-  if (getSession(filePath).status === 'missing-ipykernel') {
-    updateSession(filePath, () => ({ status: 'off', queue: [], setupError: null }))
+/** Creates the notebook's `.venv` from the setup's base with ipykernel, then switches to it. */
+export async function createVirtualEnvironment(
+  filePath: string,
+  rootPath: string | null
+): Promise<void> {
+  const setup = enterSetupPhase(filePath, 'creating-venv')
+  if (!setup) {
+    return
   }
+  const result: CreateVenvResult = await window.api.notebook
+    .createVenv({ filePath, rootPath, python: setup.base.path })
+    .catch((error: unknown) => ({ ok: false, detail: errorDetail(error) }))
+  if (!isShowing(filePath, setup)) {
+    return
+  }
+  if (result.ok) {
+    selectEnvironment(filePath, result.environment)
+  } else {
+    failSetup(filePath, result.detail)
+  }
+}
+
+/** Opens the setup dialog offering a new `.venv` built from `base`. */
+export function offerVirtualEnvironment(filePath: string, base: PythonEnvironment): void {
+  updateSession(filePath, () => ({ setup: { base, offer: 'venv', phase: 'idle', error: null } }))
+}
+
+/** Closes the setup dialog; cells waiting on a kernel that will not start are dropped. */
+export function cancelSetup(filePath: string): void {
+  updateSession(filePath, ({ status, queue }) => ({
+    setup: null,
+    queue: status === 'off' ? [] : queue
+  }))
 }
 
 export function markRunCommitted(filePath: string, key: string): void {

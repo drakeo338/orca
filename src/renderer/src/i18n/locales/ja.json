@@ -14920,7 +14920,6 @@
           "missingIpykernelTitle": "ipykernelをインストールしますか?",
           "missingIpykernel": "「{{env}}」を使用してセルを実行するには、ipykernel パッケージが必要です。",
           "copyCommand": "コマンドをコピー",
-          "chooseAnother": "別のものを選択してください",
           "install": "インストール",
           "kernelStartFailed": "カーネルの起動に失敗しました。",
           "noPython": "このコンピュータでは Python が見つかりませんでした。 [python.org](https://www.python.org/downloads/) からインストールし、セルを再度実行します。",

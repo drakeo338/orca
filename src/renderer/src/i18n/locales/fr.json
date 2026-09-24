@@ -15023,7 +15023,6 @@
           "missingIpykernelTitle": "Installer ipykernel ?",
           "missingIpykernel": "L'exécution de cellules avec '{{env}}' nécessite le package ipykernel.",
           "copyCommand": "Commande Copier",
-          "chooseAnother": "Choisissez-en un autre",
           "install": "Installer",
           "kernelStartFailed": "Le noyau n'a pas pu démarrer.",
           "noPython": "Python n'a pas été trouvé sur cet ordinateur. Installez-le depuis [python.org](https://www.python.org/downloads/), puis exécutez à nouveau la cellule.",

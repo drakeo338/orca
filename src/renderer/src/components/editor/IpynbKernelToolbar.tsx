@@ -30,7 +30,7 @@ import type {
 import { IpynbToolbarButton } from './IpynbCellToolbar'
 import { IpynbKernelSetupDialog } from './IpynbKernelSetupDialog'
 import {
-  createVirtualEnvironment,
+  offerVirtualEnvironment,
   interruptKernel,
   restartKernel,
   selectEnvironment
@@ -43,15 +43,15 @@ function environmentLabel({ name, version }: PythonEnvironment): string {
   return `${name} (Python ${version})`
 }
 
-function kernelLabel({ environment, status }: KernelState): string {
-  if (status === 'starting') {
-    return translate('auto.components.editor.IpynbViewer.kernelStarting', 'Starting…')
-  }
-  if (status === 'installing') {
+function kernelLabel({ environment, status, setup }: KernelState): string {
+  if (setup?.phase === 'installing') {
     return translate('auto.components.editor.IpynbViewer.kernelInstalling', 'Installing ipykernel…')
   }
-  if (status === 'creating-venv') {
+  if (setup?.phase === 'creating-venv') {
     return translate('auto.components.editor.IpynbViewer.kernelCreatingVenv', 'Creating .venv…')
+  }
+  if (status === 'starting') {
+    return translate('auto.components.editor.IpynbViewer.kernelStarting', 'Starting…')
   }
   if (status === 'dead') {
     return translate('auto.components.editor.IpynbViewer.kernelDead', 'Kernel died')
@@ -106,11 +106,9 @@ export function IpynbKernelToolbar({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [environments, setEnvironments] = useState<PythonEnvironments | null>(null)
   const settling =
-    kernel.status === 'starting' ||
-    kernel.status === 'installing' ||
-    kernel.status === 'creating-venv'
+    kernel.status === 'starting' || (kernel.setup !== null && kernel.setup.phase !== 'idle')
   // A PATH interpreter, not the selected one: that may be the very .venv being (re)created.
-  const venvBase = environments?.path[0] ?? kernel.environment
+  const venvBase = environments?.path[0]
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -226,7 +224,7 @@ export function IpynbKernelToolbar({
             disabled={!venvBase}
             onSelect={() => {
               if (venvBase) {
-                void createVirtualEnvironment(filePath, rootPath, venvBase)
+                offerVirtualEnvironment(filePath, venvBase)
               }
             }}
           >
@@ -241,14 +239,9 @@ export function IpynbKernelToolbar({
       <IpynbKernelSetupDialog
         filePath={filePath}
         rootPath={rootPath}
-        kernel={kernel}
+        setup={kernel.setup}
         // The picker stands in for the dialog; closing it without a pick brings the dialog back.
-        open={
-          (kernel.status === 'missing-ipykernel' ||
-            kernel.status === 'installing' ||
-            kernel.status === 'creating-venv') &&
-          !pickerOpen
-        }
+        open={!pickerOpen}
         onChooseAnother={() => setPickerOpen(true)}
       />
     </div>
