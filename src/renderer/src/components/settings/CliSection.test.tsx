@@ -114,7 +114,8 @@ describe('CliSection project runtime defaults', () => {
           installWsl: vi.fn()
         },
         shell: { openPath: vi.fn() }
-      }
+      },
+      dispatchEvent: vi.fn()
     })
 
     renderToStaticMarkup(

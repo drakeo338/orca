@@ -97,8 +97,6 @@ export function AgentSkillSetupPanel({
       } catch {
         shouldOpenTerminal = false
       } finally {
-        // Why: finding the CLI already registered broadcasts nothing, so re-derive a stale notice.
-        prerequisiteCli.refresh()
         if (mountedRef.current) {
           setTerminalOpening(false)
           if (shouldOpenTerminal) {

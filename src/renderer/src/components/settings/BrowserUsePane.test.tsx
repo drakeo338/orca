@@ -37,10 +37,8 @@ vi.mock('@/hooks/use-orca-cli-install-status', () => ({
     return {
       status: null,
       checked: true,
-      loading: false,
       registered: false,
-      unverifiable: false,
-      refresh: () => {}
+      unverifiable: false
     }
   }
 }))

@@ -342,7 +342,6 @@ export async function ensureWslCliAvailableForAgentSkillTerminal(
     if (status.state !== 'installed' || status.pathConfigured === false) {
       await showOrcaCliRegistrationPromptToast()
       const next = await window.api.cli.installWsl(args)
-      notifyOrcaCliInstallStateChanged()
       if (!isOrcaCliAvailableOnPath(next)) {
         toast.warning(
           translate(
@@ -372,5 +371,8 @@ export async function ensureWslCliAvailableForAgentSkillTerminal(
           )
     )
     return null
+  } finally {
+    // Why: this fresh read can find a state no reader has seen, even when nothing was installed.
+    notifyOrcaCliInstallStateChanged()
   }
 }

@@ -42,7 +42,6 @@ export async function ensureOrcaCliAvailableForAgentSkillTerminal({
       // user needs app-level context before that OS dialog appears.
       await showOrcaCliRegistrationPromptToast(registrationPromptDelayMs)
       const next = await window.api.cli.install()
-      notifyOrcaCliInstallStateChanged()
       onStatusChange?.(next)
       showCliPrerequisiteWarning(next)
       return next
@@ -59,6 +58,9 @@ export async function ensureOrcaCliAvailableForAgentSkillTerminal({
           )
     )
     return null
+  } finally {
+    // Why: this fresh read can find a state no reader has seen, even when nothing was installed.
+    notifyOrcaCliInstallStateChanged()
   }
 }
 

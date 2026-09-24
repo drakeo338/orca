@@ -32,18 +32,13 @@ export async function installAgentRuntimeCli(
   return next
 }
 
-/** Registers `orca` where this runtime's agents run it if it is missing, then has every reader re-read. */
+/** Registers `orca` where this runtime's agents run it if it is missing; readers re-read once it settles. */
 export async function ensureAgentRuntimeCliRegistered(
   agentRuntime?: ProjectAgentSkillRuntime
 ): Promise<void> {
-  try {
-    await (agentRuntime?.runtime === 'wsl'
-      ? ensureWslCliAvailableForAgentSkillTerminal(agentRuntime)
-      : ensureOrcaCliAvailableForAgentSkillTerminal())
-  } finally {
-    // Why: when the CLI turns out to be registered already nothing is installed or broadcast, so a stale row would stay.
-    notifyOrcaCliInstallStateChanged()
-  }
+  await (agentRuntime?.runtime === 'wsl'
+    ? ensureWslCliAvailableForAgentSkillTerminal(agentRuntime)
+    : ensureOrcaCliAvailableForAgentSkillTerminal())
 }
 
 /** Identifies what `readOrcaCliInstallStatus` reads, so callers can drop results for a retired target. */

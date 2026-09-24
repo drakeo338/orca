@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CliInstallStatus } from '../../../shared/cli-install-types'
 import { isOrcaCliAvailableOnPath } from '@/lib/agent-skill-cli-prerequisite'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
@@ -16,7 +16,6 @@ export type OrcaCliInstallStatusState = {
   registered: boolean
   /** This client cannot read the CLI on the host where agents run (paired web client or remote runtime). */
   unverifiable: boolean
-  refresh: () => void
 }
 
 type CliStatusSnapshot = {
@@ -176,18 +175,12 @@ export function useOrcaCliInstallStatus(
   const getSnapshot = (): CliStatusSnapshot =>
     probeEnabled ? (targets.get(probeKey)?.snapshot ?? UNCHECKED_SNAPSHOT) : UNCHECKED_SNAPSHOT
   const current = useSyncExternalStore(subscribeStore, getSnapshot, getSnapshot)
-  const refresh = useCallback((): void => {
-    if (probeEnabled) {
-      readTarget(probeKey, true)
-    }
-  }, [probeEnabled, probeKey])
 
   return {
     status: current.status,
     checked: unverifiable || current.checked,
     registered: isOrcaCliAvailableOnPath(current.status),
-    unverifiable,
-    refresh
+    unverifiable
   }
 }
 

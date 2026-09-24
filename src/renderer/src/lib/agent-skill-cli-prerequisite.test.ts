@@ -97,7 +97,8 @@ describe('ensureOrcaCliAvailableForAgentSkillTerminal', () => {
     })
     const install = vi.fn()
     vi.stubGlobal('window', {
-      api: { cli: { getInstallStatus: vi.fn().mockResolvedValue(initial), install } }
+      api: { cli: { getInstallStatus: vi.fn().mockResolvedValue(initial), install } },
+      dispatchEvent: vi.fn()
     })
 
     await expect(
@@ -109,6 +110,22 @@ describe('ensureOrcaCliAvailableForAgentSkillTerminal', () => {
       expect.stringMatching(/could not check/i),
       expect.objectContaining({ description: initial.detail })
     )
+  })
+
+  it('has readers re-read when the CLI is already registered and nothing is installed', async () => {
+    const install = vi.fn()
+    const dispatchEvent = vi.fn()
+    vi.stubGlobal('window', {
+      api: { cli: { getInstallStatus: vi.fn().mockResolvedValue(cliStatus()), install } },
+      dispatchEvent
+    })
+
+    await ensureOrcaCliAvailableForAgentSkillTerminal({ registrationPromptDelayMs: 0 })
+
+    expect(install).not.toHaveBeenCalled()
+    // Why: readers may still hold an older answer that this fresh read contradicts.
+    expect(dispatchEvent).toHaveBeenCalledTimes(1)
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({ type: ORCA_CLI_INSTALL_STATE_EVENT })
   })
 
   it('lets the registration toast paint before opening the native installer', async () => {
