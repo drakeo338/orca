@@ -70,6 +70,8 @@ async function resumeCodexThread(
  * never given input, so there is no conversation to lose. Codex matches the same exact text
  * internally; any other resume failure, including a broader "not found", is not this proof.
  * Orca's own wrapper prefix is deliberately not part of the match.
+ * Codex also uses this text for an archived thread read active-only; resume reads archived threads
+ * and answers "is archived" instead, so here the text means no rollout exists at all.
  */
 function isCodexNoRolloutError(error: unknown, threadId: string): boolean {
   return (
