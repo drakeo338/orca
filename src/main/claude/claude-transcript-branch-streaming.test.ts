@@ -79,18 +79,17 @@ import {
 
 const row = (uuid: string, parentUuid: string | null, extra = {}) =>
   `${JSON.stringify({ type: 'user', uuid, parentUuid, sessionId: 'provider', ...extra })}\n`
-const marker = (leafUuid: string, sessionId = 'provider') =>
-  `${JSON.stringify({ type: 'last-prompt', leafUuid, sessionId })}\n`
 const ROOT = row('root', null)
 const CHILD = row('child', 'root')
-const SOURCE = ROOT + marker('root')
+const SOURCE = ROOT
+/** A chain row that is not a message, so it can never be the tip. */
+const HOOK = row('hook', null, { type: 'system', subtype: 'stop_hook_summary' })
 let directory = ''
-const read = (previousLeafUuid: string | null = null, intentionalRewindUuid?: string) =>
+const read = (previousLeafUuid: string | null = null) =>
   proveClaudeTranscriptBranch({
     transcriptPath: state.path,
     providerSessionId: 'provider',
-    previousLeafUuid,
-    ...(intentionalRewindUuid === undefined ? {} : { intentionalRewindUuid })
+    previousLeafUuid
   })
 
 beforeEach(async () => {
@@ -125,10 +124,7 @@ it('decodes UTF-8 across chunks and proves old ancestry beyond large message bod
   const prefix = JSON.stringify({ type: 'comment', content: '' }).indexOf('"content":"') + 11
   const comment = `${JSON.stringify({ type: 'comment', content: `${'x'.repeat(65535 - prefix)}🙂é漢字` })}\n`
   const contents =
-    comment +
-    row('root', null, { message: 'x'.repeat(2 * 1024 * 1024) }) +
-    CHILD +
-    marker('child').trimEnd()
+    comment + row('root', null, { message: 'x'.repeat(2 * 1024 * 1024) }) + CHILD.trimEnd()
   await writeFile(state.path, contents)
   expect(await read('root')).toEqual(
     proveClaudeTranscriptBranchFromJsonl({
@@ -155,21 +151,15 @@ it.each([
 )
 
 it('proves only the original finite prefix while the same file grows', async () => {
-  state.afterStat = () => appendFile(state.path, CHILD + marker('child') + ' '.repeat(1024 * 1024))
+  state.afterStat = () => appendFile(state.path, CHILD + ' '.repeat(1024 * 1024))
   expect(await read()).toEqual({ leafUuid: 'root', relation: 'initial' })
   expect(state.bytesRead).toBe(Buffer.byteLength(SOURCE))
 })
 
-it('keeps a proved rewind tied to the original prefix', async () => {
-  await writeFile(state.path, ROOT + CHILD + marker('root'))
-  state.afterStat = () => appendFile(state.path, marker('child'))
-  expect(await read('child', 'root')).toEqual({ leafUuid: 'root', relation: 'intentional-rewind' })
-})
-
 it.each([
   ['empty', '', SOURCE, null],
-  ['missing marker', ROOT, marker('root'), null],
-  ['missing previous cursor', SOURCE, CHILD + marker('child'), 'child']
+  ['no message yet', HOOK, ROOT, null],
+  ['missing previous cursor', SOURCE, CHILD, 'child']
 ] as const)(
   'finishes a growing %s proof on the same open handle',
   async (_name, contents, growth, previous) => {
@@ -180,9 +170,9 @@ it.each([
   }
 )
 
-it.each(['', ROOT])('keeps a static missing marker fatal', async (contents) => {
+it.each(['', HOOK])('keeps a static missing message fatal', async (contents) => {
   await writeFile(state.path, contents)
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
+  await expect(read()).rejects.toThrow('no main-chain message')
 })
 
 it('preserves the typed static missing-cursor error for existing root reproof', async () => {
@@ -190,10 +180,10 @@ it('preserves the typed static missing-cursor error for existing root reproof', 
 })
 
 it.each([
-  ['conflict', ROOT + row('root', 'foreign') + marker('root'), 'conflicting ancestry'],
-  ['wrong session', ROOT + marker('root', 'foreign'), 'invalid last-prompt'],
-  ['append order', CHILD + ROOT + marker('child'), 'parent row follows'],
-  ['missing ancestor', CHILD + marker('child'), 'missing ancestor']
+  ['conflict', ROOT + row('root', 'foreign'), 'conflicting ancestry'],
+  ['wrong session', row('root', null, { sessionId: 'foreign' }), 'missing from the session graph'],
+  ['append order', CHILD + ROOT, 'parent row follows'],
+  ['missing ancestor', CHILD, 'missing ancestor']
 ] as const)(
   'does not turn %s into a retry when the file grows',
   async (_name, contents, message) => {
@@ -204,27 +194,27 @@ it.each([
 )
 
 it('does not infer growth from a failed second stat', async () => {
-  await writeFile(state.path, ROOT)
-  state.afterStat = () => appendFile(state.path, marker('root'))
+  await writeFile(state.path, HOOK)
+  state.afterStat = () => appendFile(state.path, ROOT)
   state.statErrorOn = 2
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
+  await expect(read()).rejects.toThrow('no main-chain message')
 })
 
 it('keeps reading the original handle after pathname replacement', async () => {
   state.afterStat = async () => {
     await rename(state.path, `${state.path}.original`)
-    await writeFile(state.path, ROOT + CHILD + marker('child'))
+    await writeFile(state.path, ROOT + CHILD)
   }
   expect((await read()).leafUuid).toBe('root')
 })
 
 it('does not use a replacement file to establish growth', async () => {
-  await writeFile(state.path, ROOT)
+  await writeFile(state.path, HOOK)
   state.afterStat = async () => {
     await rename(state.path, `${state.path}.original`)
-    await writeFile(state.path, ROOT + CHILD + marker('child'))
+    await writeFile(state.path, ROOT + CHILD)
   }
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
+  await expect(read()).rejects.toThrow('no main-chain message')
 })
 
 it('can finish an opened file after unlink', async () => {
@@ -234,7 +224,7 @@ it('can finish an opened file after unlink', async () => {
 
 it('does not infer growth from truncation', async () => {
   state.afterStat = () => truncate(state.path, 0)
-  await expect(read()).rejects.toThrow('missing last-prompt marker')
+  await expect(read()).rejects.toThrow('no main-chain message')
 })
 
 it.each(['stat', 'read'] as const)('awaits closure after a %s failure', async (failure) => {
@@ -244,24 +234,23 @@ it.each(['stat', 'read'] as const)('awaits closure after a %s failure', async (f
 })
 
 it('completes a record appended after the first observed extent without caller retry', async () => {
-  const contents = ROOT + marker('root').slice(0, -5)
-  await writeFile(state.path, contents)
-  state.afterStat = () => appendFile(state.path, marker('root').slice(-5))
-  expect((await read()).leafUuid).toBe('root')
+  await writeFile(state.path, ROOT + CHILD.slice(0, -5))
+  state.afterStat = () => appendFile(state.path, CHILD.slice(-5))
+  expect((await read()).leafUuid).toBe('child')
   expect(state.opens).toBe(1)
 })
 
 it('validates the entire refreshed prefix instead of accepting a malformed repair', async () => {
-  await writeFile(state.path, ROOT)
-  state.afterStat = () => appendFile(state.path, row('root', 'foreign') + marker('root'))
+  await writeFile(state.path, ROOT + CHILD.slice(0, -5))
+  state.afterStat = () => appendFile(state.path, CHILD.slice(-5) + row('root', 'foreign'))
   await expect(read()).rejects.toThrow('conflicting ancestry')
   expect(state.opens).toBe(1)
 })
 
 it('keeps an unfinished growing repair retryable after one internal refresh', async () => {
-  await writeFile(state.path, ROOT)
-  state.afterStat = () => appendFile(state.path, ROOT)
+  await writeFile(state.path, HOOK)
+  state.afterStat = () => appendFile(state.path, HOOK)
   await expect(read()).rejects.toBeInstanceOf(ClaudeTranscriptTailIncompleteError)
   expect(state.opens).toBe(1)
-  expect(state.bytesRead).toBe(Buffer.byteLength(ROOT) * 3)
+  expect(state.bytesRead).toBe(Buffer.byteLength(HOOK) * 3)
 })

@@ -28,61 +28,79 @@ function restoreEnv(key: string, previous: string | undefined): void {
 }
 
 describe('resolveSessionFilePath', () => {
-  it('reads Claude last-prompt leaf metadata as the durable branch marker', async () => {
-    const root = await makeRoot('orca-native-chat-resolve-claude-leaf-')
+  it('takes the newest main-chain message, not a last-prompt marker two turns behind', async () => {
+    const root = await makeRoot('orca-native-chat-resolve-claude-stale-marker-')
     const transcript = join(root, 'session.jsonl')
+    const row = (type: string, uuid: string, parentUuid: string | null, extra = {}) => ({
+      type,
+      uuid,
+      parentUuid,
+      sessionId: 'session-1',
+      ...extra
+    })
+    const stopHook = { subtype: 'stop_hook_summary' }
     await writeFile(
       transcript,
       [
-        { type: 'user', uuid: 'leaf-old', parentUuid: null, sessionId: 'session-1' },
-        {
-          type: 'assistant',
-          uuid: 'leaf-current',
-          parentUuid: 'leaf-old',
-          sessionId: 'session-1'
-        },
-        { type: 'last-prompt', leafUuid: 'leaf-current', sessionId: 'session-1' }
+        row('user', 'turn-1-prompt', null),
+        row('assistant', 'turn-1-reply', 'turn-1-prompt'),
+        row('system', 'turn-1-stop-hook', 'turn-1-reply', stopHook),
+        // Claude's last marker, never rewritten for the two turns that follow.
+        { type: 'last-prompt', leafUuid: 'turn-1-stop-hook', sessionId: 'session-1' },
+        row('user', 'turn-2-prompt', 'turn-1-stop-hook'),
+        row('assistant', 'turn-2-reply', 'turn-2-prompt'),
+        row('system', 'turn-2-stop-hook', 'turn-2-reply', stopHook),
+        row('user', 'turn-3-prompt', 'turn-2-stop-hook'),
+        row('assistant', 'turn-3-reply', 'turn-3-prompt'),
+        row('system', 'turn-3-stop-hook', 'turn-3-reply', stopHook)
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
       'utf8'
     )
 
-    await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1', 'leaf-old')).resolves.toBe(
-      'leaf-current'
+    await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1')).resolves.toBe(
+      'turn-3-reply'
     )
+    // The handoff's previous leaf is the reply the live stream last saw.
+    await expect(
+      readClaudeTranscriptLeafUuid(transcript, 'session-1', 'turn-3-reply')
+    ).resolves.toBe('turn-3-reply')
+    await expect(
+      readClaudeTranscriptLeafUuid(transcript, 'session-1', 'turn-1-reply')
+    ).resolves.toBe('turn-3-reply')
   })
 
-  it('fails closed when a Claude transcript has no branch marker', async () => {
+  it('fails closed when a Claude transcript has no main-chain message', async () => {
     const root = await makeRoot('orca-native-chat-resolve-claude-no-leaf-')
     const transcript = join(root, 'session.jsonl')
     await writeFile(
       transcript,
-      '{"type":"assistant","uuid":"not-a-leaf","parentUuid":null,"sessionId":"session-1"}\n',
+      '{"type":"system","uuid":"not-a-leaf","parentUuid":null,"sessionId":"session-1"}\n',
       'utf8'
     )
 
     await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1')).rejects.toThrow(
-      'missing last-prompt marker'
+      'no main-chain message'
     )
   })
 
   it('distinguishes an incomplete final Claude JSONL record from durable malformed content', async () => {
     const root = await makeRoot('orca-native-chat-resolve-claude-torn-tail-')
     const transcript = join(root, 'session.jsonl')
-    await writeFile(transcript, '{"type":"last-prompt"', 'utf8')
+    await writeFile(transcript, '{"type":"user"', 'utf8')
 
     await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1')).rejects.toBeInstanceOf(
       ClaudeTranscriptTailIncompleteError
     )
 
-    await writeFile(transcript, '{"type":"last-prompt"\n', 'utf8')
+    await writeFile(transcript, '{"type":"user"\n', 'utf8')
     await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1')).rejects.not.toBeInstanceOf(
       ClaudeTranscriptTailIncompleteError
     )
   })
 
-  it('refuses a Claude marker on a sibling branch', async () => {
+  it('refuses a latest Claude message on a sibling branch', async () => {
     const root = await makeRoot('orca-native-chat-resolve-claude-sibling-')
     const transcript = join(root, 'session.jsonl')
     await writeFile(
@@ -90,8 +108,7 @@ describe('resolveSessionFilePath', () => {
       [
         { type: 'user', uuid: 'root', parentUuid: null, sessionId: 'session-1' },
         { type: 'assistant', uuid: 'expected', parentUuid: 'root', sessionId: 'session-1' },
-        { type: 'system', uuid: 'sibling', parentUuid: 'root', sessionId: 'session-1' },
-        { type: 'last-prompt', leafUuid: 'sibling', sessionId: 'session-1' }
+        { type: 'assistant', uuid: 'sibling', parentUuid: 'root', sessionId: 'session-1' }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -111,8 +128,7 @@ describe('resolveSessionFilePath', () => {
       missing,
       [
         { type: 'user', uuid: 'expected', parentUuid: null, sessionId: 'session-1' },
-        { type: 'assistant', uuid: 'leaf', parentUuid: 'absent', sessionId: 'session-1' },
-        { type: 'last-prompt', leafUuid: 'leaf', sessionId: 'session-1' }
+        { type: 'assistant', uuid: 'leaf', parentUuid: 'absent', sessionId: 'session-1' }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -123,8 +139,7 @@ describe('resolveSessionFilePath', () => {
       [
         { type: 'user', uuid: 'expected', parentUuid: null, sessionId: 'session-1' },
         { type: 'assistant', uuid: 'left', parentUuid: 'right', sessionId: 'session-1' },
-        { type: 'system', uuid: 'right', parentUuid: 'left', sessionId: 'session-1' },
-        { type: 'last-prompt', leafUuid: 'right', sessionId: 'session-1' }
+        { type: 'system', uuid: 'right', parentUuid: 'left', sessionId: 'session-1' }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -139,7 +154,7 @@ describe('resolveSessionFilePath', () => {
     )
   })
 
-  it('rejects non-transcript and sidechain UUIDs as the durable leaf', async () => {
+  it('never takes a non-message or sidechain UUID as the durable leaf', async () => {
     const root = await makeRoot('orca-native-chat-resolve-claude-leaf-filter-')
     const transcript = join(root, 'session.jsonl')
     await writeFile(
@@ -161,17 +176,14 @@ describe('resolveSessionFilePath', () => {
           parentUuid: null,
           sessionId: 'session-1'
         },
-        { type: 'stream_event', uuid: 'stream-frame', parentUuid: null, sessionId: 'session-1' },
-        { type: 'last-prompt', leafUuid: 'sidechain-assistant', sessionId: 'session-1' }
+        { type: 'stream_event', uuid: 'stream-frame', parentUuid: null, sessionId: 'session-1' }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
       'utf8'
     )
 
-    await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1')).rejects.toThrow(
-      'marker leaf is missing from the session graph'
-    )
+    await expect(readClaudeTranscriptLeafUuid(transcript, 'session-1')).resolves.toBe('main-user')
   })
 
   it('rejects a main leaf whose ancestry crosses a subagent sidechain', async () => {
@@ -193,8 +205,7 @@ describe('resolveSessionFilePath', () => {
           uuid: 'main-after-sidechain',
           parentUuid: 'sidechain-assistant',
           sessionId: 'session-1'
-        },
-        { type: 'last-prompt', leafUuid: 'main-after-sidechain', sessionId: 'session-1' }
+        }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -225,8 +236,7 @@ describe('resolveSessionFilePath', () => {
           uuid: 'main-after-sidechain',
           parentUuid: 'subagent-assistant',
           sessionId: 'session-1'
-        },
-        { type: 'last-prompt', leafUuid: 'main-after-sidechain', sessionId: 'session-1' }
+        }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -257,8 +267,7 @@ describe('resolveSessionFilePath', () => {
           uuid: 'main-after-sidechain',
           parentUuid: 'subagent-assistant',
           sessionId: 'session-1'
-        },
-        { type: 'last-prompt', leafUuid: 'main-after-sidechain', sessionId: 'session-1' }
+        }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -270,7 +279,7 @@ describe('resolveSessionFilePath', () => {
     ).rejects.toThrow('not on the main transcript')
   })
 
-  it('rejects a latest marker descended from a parent-tool-use cursor sidechain', async () => {
+  it('rejects a latest message descended from a parent-tool-use cursor sidechain', async () => {
     const root = await makeRoot('orca-native-chat-resolve-claude-parent-tool-cursor-descendant-')
     const transcript = join(root, 'transcript.jsonl')
     await writeFile(
@@ -295,8 +304,7 @@ describe('resolveSessionFilePath', () => {
           uuid: 'latest-after-sidechain',
           parentUuid: 'main-after-sidechain',
           sessionId: 'session-1'
-        },
-        { type: 'last-prompt', leafUuid: 'latest-after-sidechain', sessionId: 'session-1' }
+        }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),
@@ -320,8 +328,7 @@ describe('resolveSessionFilePath', () => {
           parentUuid: 'previous',
           sessionId: 'session-1'
         },
-        { type: 'assistant', uuid: 'previous', parentUuid: null, sessionId: 'session-1' },
-        { type: 'last-prompt', leafUuid: 'descendant', sessionId: 'session-1' }
+        { type: 'assistant', uuid: 'previous', parentUuid: null, sessionId: 'session-1' }
       ]
         .map((record) => JSON.stringify(record))
         .join('\n'),

@@ -4,9 +4,9 @@
 
 const MAX_CLAUDE_TRANSCRIPT_ANCESTRY = 10_000
 
-class ClaudeTranscriptMarkerMissingError extends Error {
+class ClaudeTranscriptTipMissingError extends Error {
   constructor() {
-    super('Claude transcript branch proof failed: missing last-prompt marker')
+    super('Claude transcript branch proof failed: no main-chain message')
   }
 }
 
@@ -21,11 +21,31 @@ type TranscriptNode = {
 
 export type ClaudeTranscriptBranchProof = {
   leafUuid: string
-  relation: 'initial' | 'same' | 'descendant' | 'intentional-rewind'
+  relation: 'initial' | 'same' | 'descendant'
 }
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function validEntryUuid(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 512) {
+    return null
+  }
+  const hasControlCharacter = [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0
+    return code <= 0x1f || code === 0x7f
+  })
+  return value === value.trim() && !hasControlCharacter ? value : null
+}
+
+/** A main-chain user or assistant message: the only row a durable leaf may name. */
+export function readClaudeTranscriptEntryUuid(value: Record<string, unknown>): string | null {
+  return value.isSidechain === true ||
+    value.parent_tool_use_id != null ||
+    (value.type !== 'user' && value.type !== 'assistant')
+    ? null
+    : validEntryUuid(value.uuid)
 }
 
 function transcriptError(reason: string): Error {
@@ -87,33 +107,19 @@ function proveAppendOrder(nodes: Map<string, TranscriptNode>): void {
   }
 }
 
-/** Rows Claude's own loader can end a conversation on; titles and markers carry no chain. */
-const TRANSCRIPT_TAIL_TYPES: ReadonlySet<unknown> = new Set([
-  'user',
-  'assistant',
-  'system',
-  'attachment'
-])
-
 type BranchProofInput = {
   providerSessionId: string
   previousLeafUuid: string | null
-  intentionalRewindUuid?: string
-  /**
-   * Which row is the branch tip. `file-tail` proves from the file's last
-   * main-chain row: Claude writes its `last-prompt` marker only sporadically, so
-   * a marker tip hides rows Claude already holds after a crash. Without an
-   * eligible tail row the marker rules apply unchanged. Default: `marker`.
-   */
-  tip?: 'marker' | 'file-tail'
 }
 
+/**
+ * The tip is the file's last main-chain message. Claude's `last-prompt` marker is
+ * never read: it is written sporadically, lags turns behind, and usually names a
+ * hook or attachment row that later messages do not descend from.
+ */
 function createBranchProof(input: BranchProofInput) {
   const nodes = new Map<string, TranscriptNode>()
   let leafUuid: string | null = null
-  let leafMarkerLineIndex = -1
-  let tailUuid: string | null = null
-  let tailLineIndex = -1
   return { add, finish, ancestryChain }
 
   function add(line: string, index: number, terminated: boolean): void {
@@ -134,15 +140,6 @@ function createBranchProof(input: BranchProofInput) {
     }
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The parsed value is a non-array object checked above.
     const row = record as Record<string, unknown>
-    if (row.type === 'last-prompt') {
-      const markerSessionId = nonEmptyString(row.sessionId)
-      const markerLeaf = nonEmptyString(row.leafUuid)
-      if (markerSessionId !== input.providerSessionId || !markerLeaf) {
-        throw transcriptError('invalid last-prompt marker')
-      }
-      leafUuid = markerLeaf
-      leafMarkerLineIndex = index
-    }
     const uuid = nonEmptyString(row.uuid)
     if (!uuid) {
       return
@@ -173,49 +170,18 @@ function createBranchProof(input: BranchProofInput) {
       lineIndex: existing?.lineIndex ?? index,
       disallowedLeaf
     })
-    if (
-      input.tip === 'file-tail' &&
-      TRANSCRIPT_TAIL_TYPES.has(row.type) &&
-      row.isSidechain !== true &&
-      row.parent_tool_use_id == null
-    ) {
-      tailUuid = uuid
-      tailLineIndex = index
-    }
+    leafUuid = readClaudeTranscriptEntryUuid(row) ?? leafUuid
   }
 
   function finish(): ClaudeTranscriptBranchProof {
-    if (input.tip === 'file-tail' && tailUuid) {
-      // The last main-chain row supersedes any marker; the marker lags crashes.
-      leafUuid = tailUuid
-      leafMarkerLineIndex = tailLineIndex
-    }
     if (!leafUuid) {
-      throw new ClaudeTranscriptMarkerMissingError()
+      throw new ClaudeTranscriptTipMissingError()
     }
     const leaf = nodes.get(leafUuid)
     if (!leaf || leaf.sessionId !== input.providerSessionId || leaf.disallowedLeaf) {
-      throw transcriptError('marker leaf is missing from the session graph')
-    }
-    if (leaf.lineIndex > leafMarkerLineIndex) {
-      throw transcriptError('marker precedes its leaf record')
+      throw transcriptError('latest message is missing from the session graph')
     }
     const previousLeafUuid = input.previousLeafUuid
-    if (input.intentionalRewindUuid !== undefined) {
-      if (leafUuid !== input.intentionalRewindUuid || !input.previousLeafUuid) {
-        throw transcriptError('rewind target does not match the observed leaf')
-      }
-      proveMainLineAncestry(nodes, input.previousLeafUuid, input.providerSessionId)
-      proveAppendOrder(nodes)
-      let ancestor = nodes.get(input.previousLeafUuid)?.parentUuid ?? null
-      for (let depth = 0; ancestor !== null && depth < MAX_CLAUDE_TRANSCRIPT_ANCESTRY; depth += 1) {
-        if (ancestor === leafUuid) {
-          return { leafUuid, relation: 'intentional-rewind' }
-        }
-        ancestor = nodes.get(ancestor)?.parentUuid ?? null
-      }
-      throw transcriptError('rewind target is not an ancestor of the previous cursor')
-    }
     if (!previousLeafUuid) {
       proveMainLineAncestry(nodes, leafUuid, input.providerSessionId)
       // A branch proof is based on an append-only snapshot. A child that appears
@@ -231,7 +197,7 @@ function createBranchProof(input: BranchProofInput) {
     if (previous.sessionId !== input.providerSessionId || previous.disallowedLeaf) {
       throw transcriptError('previous cursor is not on the main transcript')
     }
-    // The latest marker can be equal to, or descend from, a sampled cursor. In
+    // The latest message can be equal to, or descend from, a sampled cursor. In
     // either case prove the sampled cursor's own ancestry before accepting it;
     // otherwise a cursor that descended through a parent-tool-use sidechain
     // could be persisted and resumed as if it were on the main transcript.
@@ -263,7 +229,7 @@ function createBranchProof(input: BranchProofInput) {
     if (cursor !== null) {
       throw transcriptError('ancestry exceeds the bounded proof limit')
     }
-    throw transcriptError('latest marker is on a sibling branch')
+    throw transcriptError('latest message is on a sibling branch')
   }
 
   /** Uuids from the leaf back to (but excluding) the anchor, leaf first. Only
@@ -289,5 +255,5 @@ function createBranchProof(input: BranchProofInput) {
   }
 }
 
-export { ClaudeTranscriptMarkerMissingError, createBranchProof }
+export { ClaudeTranscriptTipMissingError, createBranchProof }
 export type { BranchProofInput }

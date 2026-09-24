@@ -155,7 +155,7 @@ export async function resolveSessionFilePath(
   return resolved
 }
 
-/** Read and validate Claude's authoritative transcript branch marker. */
+/** Prove the transcript's latest main-chain message descends from the previous leaf. */
 export async function readClaudeTranscriptLeafUuid(
   transcriptPath: string,
   providerSessionId: string,
