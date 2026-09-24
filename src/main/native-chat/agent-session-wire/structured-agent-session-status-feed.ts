@@ -64,8 +64,10 @@ function summariesEqual(a: AgentSessionStatusSummary, b: AgentSessionStatusSumma
     a.status === b.status &&
     a.hostExecutionOwned === b.hostExecutionOwned &&
     a.rewindBlockedReason === b.rewindBlockedReason &&
-    // Settled activity changes ranking; streaming active turns must stay quiet.
-    (a.status !== 'idle' || a.updatedAt === b.updatedAt) &&
+    // A moved state clock changes ranking; row activity alone, including a subagent's, does not.
+    // An idle state the journal cannot date still republishes, since readers date it by `updatedAt`.
+    a.statusStartedAt === b.statusStartedAt &&
+    (a.status !== 'idle' || a.statusStartedAt !== undefined || a.updatedAt === b.updatedAt) &&
     a.latestPrompt === b.latestPrompt &&
     a.model === b.model &&
     a.toolName === b.toolName &&

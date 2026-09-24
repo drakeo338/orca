@@ -21,6 +21,7 @@ export function journalRenderItem(
     body,
     sequence: row.seq,
     observedAt: row.ts,
+    ...(row.recovered ? { recoveredAt: row.ts } : {}),
     ...(row.recovered ? { recovered: row.recovered } : {}),
     ...agentJournalLinkageFields(row)
   }
