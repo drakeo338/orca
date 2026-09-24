@@ -124,7 +124,8 @@ export async function resolveOrchestrationSessionCaller(
   const caller: OrchestrationSessionCaller = Object.freeze({
     ...identity,
     sessionId,
-    workspaceId: record.location.workspaceId
+    workspaceId: record.location.workspaceId,
+    runtimeKind: record.lease.runtimeKind
   })
   return {
     request: {
