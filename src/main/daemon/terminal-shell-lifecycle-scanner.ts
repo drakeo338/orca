@@ -1,4 +1,5 @@
 import type { TerminalOwner } from '../../shared/terminal-owner'
+import { TerminalArmedInputModes } from './terminal-armed-input-modes'
 
 // Why: PTY/SSH chunks can split a long combined DECSET or an OSC 133 payload
 // before its terminator. Keep parser state far beyond normal sequence lengths
@@ -15,7 +16,7 @@ const LIFECYCLE_OSC = /\x1b\]133;([^\x07\x1b]*)(?:\x07|\x1b\\)/
 // oxlint-disable-next-line no-control-regex -- terminal escape sequences require control chars
 const PRIVATE_MODE = /\x1b\[\?([0-9;]*)([hl])|\x9b\?([0-9;]*)([hl])/
 // oxlint-disable-next-line no-control-regex -- terminal escape sequences require control chars
-const KITTY_KEYBOARD = /\x1b\[([>=])([0-9;]*)u|\x9b([>=])([0-9;]*)u/
+const KITTY_KEYBOARD = /\x1b\[([<>=])([0-9;]*)u|\x9b([<>=])([0-9;]*)u/
 // oxlint-disable-next-line no-control-regex -- terminal escape sequences require control chars
 const FULL_RESET = /\x1bc/
 
@@ -51,9 +52,10 @@ export class TerminalShellLifecycleScanner {
   private generationState = 0
   private altActive = false
   private commandEnteredAlternateScreen = false
-  // Why one-shot: a refuted proof leaves altActive true (no reset was ever
-  // scanned), and without disarming every later prompt's D would re-open a
-  // full pause-and-inspect episode. Only a fresh alternate-screen entry re-arms.
+  private readonly inputModes = new TerminalArmedInputModes()
+  // Why one-shot: a refuted proof leaves the stale modes armed (no reset was ever
+  // scanned), and without disarming every later prompt's D would re-open a full
+  // pause-and-inspect episode. Only a fresh alternate-screen or input-mode enable re-arms.
   private uncleanTriggerArmed = false
 
   get owner(): TerminalOwner | undefined {
@@ -107,6 +109,7 @@ export class TerminalShellLifecycleScanner {
       const oscPayload = match[1]
       if (match[0] === '\x1bc') {
         this.revoke()
+        this.inputModes.reset()
         this.altActive = false
         this.commandEnteredAlternateScreen = false
         this.uncleanTriggerArmed = false
@@ -116,15 +119,17 @@ export class TerminalShellLifecycleScanner {
         const marker = oscPayload[0]
         if (marker === 'C') {
           this.revoke()
+          this.inputModes.markCommandStart()
           this.commandEnteredAlternateScreen = false
           continue
         }
         if (marker !== 'D') {
           continue
         }
-        // An alternate screen still up at command-finished means the app died
-        // without its own teardown; the caller must repair before more bytes land.
-        const uncleanDeath = this.altActive && this.uncleanTriggerArmed
+        // An alternate screen or a program's input mode still up at command-finished
+        // means the app died without its own teardown; the caller must repair first.
+        const uncleanDeath =
+          this.uncleanTriggerArmed && (this.altActive || this.inputModes.hasProgramArmedModes)
         const cleanExit = !uncleanDeath && this.commandEnteredAlternateScreen && !this.altActive
         this.revoke()
         this.commandEnteredAlternateScreen = false
@@ -150,9 +155,13 @@ export class TerminalShellLifecycleScanner {
       if (kittyPrefix !== undefined) {
         // `CSI < n u` (pop) and `CSI = 0 u` (clear) appear in our own injected
         // reset, so only a push of real flags counts as a new owner.
-        const first = Number((match[7] ?? match[9] ?? '').split(';')[0])
-        if (Number.isInteger(first) && first > 0) {
+        const kittyParams = match[7] ?? match[9] ?? ''
+        const first = Number(kittyParams.split(';')[0])
+        if (kittyPrefix !== '<' && Number.isInteger(first) && first > 0) {
           this.revoke()
+        }
+        if (this.inputModes.applyKittyKeyboard(kittyPrefix, kittyParams)) {
+          this.uncleanTriggerArmed = true
         }
         continue
       }
@@ -168,7 +177,11 @@ export class TerminalShellLifecycleScanner {
         if (enabled && TUI_MODE_ENABLES.has(param)) {
           this.revoke()
         }
+        if (this.inputModes.applyPrivateMode(param, enabled)) {
+          this.uncleanTriggerArmed = true
+        }
         if (ALTERNATE_SCREEN_MODES.has(param)) {
+          this.inputModes.switchScreen(enabled)
           this.altActive = enabled
           if (enabled) {
             this.commandEnteredAlternateScreen = true
@@ -203,7 +216,7 @@ export class TerminalShellLifecycleScanner {
       : tail.startsWith('\x9b')
         ? tail.slice(1)
         : undefined
-    return params !== undefined && /^[?>=][0-9;]*$/.test(params) ? tail : ''
+    return params !== undefined && /^[?<>=][0-9;]*$/.test(params) ? tail : ''
   }
 }
 
