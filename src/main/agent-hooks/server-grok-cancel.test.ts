@@ -135,4 +135,49 @@ describe('a Grok cancel never hides a running task', () => {
       server.stop()
     }
   })
+
+  // Measured live: a subagent spawned in the very turn that gets cancelled appears in NO stop
+  // inventory yet; only its SubagentStart hook can put it in the fold.
+  it('folds a subagent the cancelled turn itself spawned, and settles when it ends', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production' })
+    try {
+      await postGrokHook(server, {
+        hookEventName: 'user_prompt_submit',
+        promptId: 'prompt-1',
+        prompt: 'spawn a subagent then run a command'
+      })
+      await postGrokHook(server, {
+        hookEventName: 'subagent_start',
+        subagentId: 'sub-1',
+        subagentType: 'general-purpose'
+      })
+      await postGrokHook(server, {
+        hookEventName: 'stop_cancelled',
+        promptId: 'prompt-1',
+        reason: 'user_interrupt',
+        cancelledBy: 'user',
+        cancelTrigger: 'ctrl_c'
+      })
+      expect(row(server)).toMatchObject({
+        state: 'working',
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+
+      // The subagent's own end (child session id equals the subagentId) settles the row.
+      await postGrokHook(server, {
+        hookEventName: 'session_end',
+        reason: 'shutdown',
+        subagentType: 'general-purpose',
+        sessionId: 'sub-1'
+      })
+      expect(row(server)).toMatchObject({
+        state: 'done',
+        interrupted: true,
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+    } finally {
+      server.stop()
+    }
+  })
 })
