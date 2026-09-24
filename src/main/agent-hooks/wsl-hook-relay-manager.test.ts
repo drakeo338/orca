@@ -186,9 +186,15 @@ describe('WslHookRelayManager', () => {
       registerInstallPlugins?: boolean
       detectedAgents?: string[]
       claudeVersion?: string
+      grokHome?: string
     } = {}
   ): MultiplexerTransport {
-    const { registerInstallPlugins = true, detectedAgents = ['codex'], claudeVersion } = options
+    const {
+      registerInstallPlugins = true,
+      detectedAgents = ['codex'],
+      claudeVersion,
+      grokHome
+    } = options
     const harness = createGuestHarness()
     harnesses.push(harness)
     registerWslHookFsHandlers(harness.guestDispatcher, home)
@@ -197,7 +203,8 @@ describe('WslHookRelayManager', () => {
     }))
     harness.guestDispatcher.onRequest('preflight.detectAgents', async () => ({
       agents: detectedAgents,
-      ...(claudeVersion ? { versions: { claude: claudeVersion } } : {})
+      ...(claudeVersion ? { versions: { claude: claudeVersion } } : {}),
+      ...(grokHome ? { grokHome } : {})
     }))
     // A guest bundle predating the plugin overlay omits this handler (-32601).
     if (registerInstallPlugins) {
@@ -290,6 +297,26 @@ describe('WslHookRelayManager', () => {
     guest.notify(AGENT_HOOK_NOTIFICATION_METHOD, { payload: { state: 'working' } })
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(deps.ingest).toHaveBeenCalledTimes(1)
+    manager.disposeAll()
+  })
+
+  it('passes the guest login-shell Grok home to the remote installer', async () => {
+    const installHooks = vi.fn(async () => [])
+    const { manager, deps } = createManager({
+      installHooks,
+      waitForSentinel: vi.fn(async () =>
+        guestTransport({ detectedAgents: ['grok'], grokHome: '/srv/grok' })
+      )
+    })
+
+    await manager.ensureForDistro('Ubuntu')
+    await vi.waitFor(() =>
+      expect(installHooks).toHaveBeenCalledWith(expect.anything(), home, {
+        agents: ['grok'],
+        grokHomeDir: '/srv/grok'
+      })
+    )
+    expect(deps.installCodex).not.toHaveBeenCalled()
     manager.disposeAll()
   })
 

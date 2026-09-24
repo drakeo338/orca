@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildManagedHookDetectionCommands,
-  detectedManagedHookAgents
+  detectedManagedHookAgents,
+  readManagedHookDetectionResult
 } from './managed-hook-detection-commands'
 
 describe('managed hook detection commands', () => {
@@ -29,5 +30,14 @@ describe('managed hook detection commands', () => {
       reportVersion: true
     })
     expect(commands.find((command) => command.id === 'codex')?.reportVersion).toBeUndefined()
+  })
+
+  it('accepts only a bounded absolute POSIX Grok home from the relay', () => {
+    expect(
+      readManagedHookDetectionResult({ agents: ['grok'], grokHome: '/srv/grok///' }).grokHome
+    ).toBe('/srv/grok')
+    expect(
+      readManagedHookDetectionResult({ agents: ['grok'], grokHome: '../grok' }).grokHome
+    ).toBeNull()
   })
 })
