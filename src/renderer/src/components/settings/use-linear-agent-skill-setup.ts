@@ -18,8 +18,7 @@ import {
   ensureWslCliAvailableForAgentSkillTerminal,
   type LocalAgentRuntime
 } from './CliSkillRuntimeSetup'
-import { readOrcaCliInstallStatus } from '@/lib/orca-cli-install-status'
-import type { CliInstallStatus } from '../../../../shared/cli-install-types'
+import type { OrcaCliSkillRuntime } from '@/lib/orca-cli-install-status'
 
 // Shared install/update wiring for Task Sources + Linear settings.
 export function useLinearAgentSkillSetup(): {
@@ -39,7 +38,7 @@ export function useLinearAgentSkillSetup(): {
   terminalRuntime: LocalAgentRuntime | undefined
   preInstallNotice: string
   refreshSkill: () => Promise<boolean>
-  getPrerequisiteStatus: () => Promise<CliInstallStatus | null>
+  prerequisiteRuntime: OrcaCliSkillRuntime
   onBeforeOpenTerminal: () => Promise<void>
 } {
   const activeSkillRuntime = useActiveProjectSkillRuntime()
@@ -77,15 +76,6 @@ export function useLinearAgentSkillSetup(): {
     ? updateTarget.skillName
     : undefined
 
-  const getPrerequisiteStatus = useCallback(
-    () =>
-      readOrcaCliInstallStatus({
-        agentRuntime: activeSkillRuntime.agentRuntime,
-        installDisabledReason: activeSkillRuntime.installDisabledReason
-      }),
-    [activeSkillRuntime.agentRuntime, activeSkillRuntime.installDisabledReason]
-  )
-
   const onBeforeOpenTerminal = useCallback(async () => {
     await (activeSkillRuntime.agentRuntime?.runtime === 'wsl'
       ? ensureWslCliAvailableForAgentSkillTerminal(activeSkillRuntime.agentRuntime)
@@ -108,7 +98,7 @@ export function useLinearAgentSkillSetup(): {
     terminalRuntime: activeSkillRuntime.agentRuntime,
     preInstallNotice: AGENT_SKILL_CLI_PREREQUISITE_NOTICE,
     refreshSkill,
-    getPrerequisiteStatus,
+    prerequisiteRuntime: activeSkillRuntime,
     onBeforeOpenTerminal
   }
 }

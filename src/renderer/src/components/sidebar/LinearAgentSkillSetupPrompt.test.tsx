@@ -347,13 +347,12 @@ describe('LinearAgentSkillSetupPrompt', () => {
         installedCommand: 'npx skills update orca-linear --global',
         terminalShellOverride: 'powershell.exe',
         terminalRuntime: expect.objectContaining({ runtime: 'wsl', wslDistro: 'Fedora' }),
-        getPrerequisiteStatus: expect.any(Function)
+        prerequisiteRuntime: {
+          agentRuntime: expect.objectContaining({ runtime: 'wsl', wslDistro: 'Fedora' }),
+          installDisabledReason: null
+        }
       })
     )
-    const getPrerequisiteStatus = mocks.panelProps.at(-1)?.getPrerequisiteStatus
-    expect(getPrerequisiteStatus).toEqual(expect.any(Function))
-    await (getPrerequisiteStatus as () => Promise<unknown>)()
-    expect(mocks.getWslCliStatus).toHaveBeenLastCalledWith({ distro: 'Fedora' })
 
     const installButton = Array.from(document.body.querySelectorAll('button')).find(
       (button) => button.textContent === 'Mock install'

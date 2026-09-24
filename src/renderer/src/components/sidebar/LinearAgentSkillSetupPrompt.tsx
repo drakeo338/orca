@@ -183,9 +183,8 @@ export function LinearAgentSkillSetupPrompt({
   useEffect(() => {
     void refreshCliStatus()
   }, [refreshCliStatus])
-  // Why: the setup panel re-reads CLI status whenever this identity changes.
-  const getPrerequisiteStatus = useCallback(
-    () => readAgentRuntimeCliInstallStatus(agentRuntime),
+  const prerequisiteRuntime = useMemo(
+    () => ({ agentRuntime, installDisabledReason: null }),
     [agentRuntime]
   )
 
@@ -299,7 +298,7 @@ export function LinearAgentSkillSetupPrompt({
         installed={skill.installed}
         loading={showCheckingModal || cliLoading || skill.loading}
         error={skill.error}
-        getPrerequisiteStatus={getPrerequisiteStatus}
+        prerequisiteRuntime={prerequisiteRuntime}
         onBeforeOpenTerminal={async () => {
           const requestIdentity = setupCheckIdentity
           const writeIfCurrent = (write: () => void): void => {

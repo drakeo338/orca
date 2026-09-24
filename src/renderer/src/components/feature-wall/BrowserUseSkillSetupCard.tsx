@@ -18,7 +18,6 @@ import {
 } from '@/components/settings/CliSkillRuntimeSetup'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
-import { readOrcaCliInstallStatus } from '@/lib/orca-cli-install-status'
 
 export function BrowserUseSkillSetupCard(props: {
   compact?: boolean
@@ -66,7 +65,7 @@ export function BrowserUseSkillSetupCard(props: {
       installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
       terminalHeightPx={terminalHeightPx}
       preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-      getPrerequisiteStatus={() => readOrcaCliInstallStatus(activeSkillRuntime)}
+      prerequisiteRuntime={activeSkillRuntime}
       onBeforeOpenTerminal={handleBeforeOpenTerminal}
       showRecheckWhenInstalled={false}
       onRecheck={skill.refresh}

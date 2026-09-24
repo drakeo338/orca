@@ -15,7 +15,7 @@ type Props = {
   terminalShellOverride?: string
   terminalRuntime?: LocalAgentRuntime
   preInstallNotice?: ReactNode
-  getPrerequisiteStatus?: AgentSkillSetupPanelProps['getPrerequisiteStatus']
+  prerequisiteRuntime?: AgentSkillSetupPanelProps['prerequisiteRuntime']
   onBeforeOpenTerminal?: () => void | Promise<void>
   onRecheck: () => void | Promise<unknown>
 }
@@ -30,7 +30,7 @@ export function BrowserUseSkillStep({
   terminalShellOverride,
   terminalRuntime,
   preInstallNotice,
-  getPrerequisiteStatus,
+  prerequisiteRuntime,
   onBeforeOpenTerminal,
   onRecheck
 }: Props): React.JSX.Element {
@@ -58,7 +58,7 @@ export function BrowserUseSkillStep({
       installDisabled={disabled}
       leading={<StepBadge index={2} state={skillDetected ? 'done' : 'pending'} />}
       preInstallNotice={preInstallNotice}
-      getPrerequisiteStatus={getPrerequisiteStatus}
+      prerequisiteRuntime={prerequisiteRuntime}
       onBeforeOpenTerminal={onBeforeOpenTerminal}
       onRecheck={onRecheck}
     />

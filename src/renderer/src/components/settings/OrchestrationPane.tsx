@@ -16,7 +16,6 @@ import {
   useInstalledAgentSkill
 } from '@/hooks/useInstalledAgentSkills'
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
-import { readOrcaCliInstallStatus } from '@/lib/orca-cli-install-status'
 import { SearchableSetting } from './SearchableSetting'
 import { matchesSettingsSearch } from './settings-search'
 import { useAppStore } from '../../store'
@@ -133,7 +132,7 @@ export function OrchestrationPane({
         installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
         icon={<Workflow className="size-5" />}
         preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-        getPrerequisiteStatus={() => readOrcaCliInstallStatus(activeSkillRuntime)}
+        prerequisiteRuntime={activeSkillRuntime}
         onBeforeOpenTerminal={async () => {
           useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
           await (activeSkillRuntime.agentRuntime?.runtime === 'wsl'

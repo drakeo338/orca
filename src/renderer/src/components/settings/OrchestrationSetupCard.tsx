@@ -17,7 +17,6 @@ import {
 } from './CliSkillRuntimeSetup'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
-import { readOrcaCliInstallStatus } from '@/lib/orca-cli-install-status'
 
 export function OrchestrationSetupCard(props: {
   compact?: boolean
@@ -63,7 +62,7 @@ export function OrchestrationSetupCard(props: {
       installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
       terminalHeightPx={terminalHeightPx}
       preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-      getPrerequisiteStatus={() => readOrcaCliInstallStatus(activeSkillRuntime)}
+      prerequisiteRuntime={activeSkillRuntime}
       onBeforeOpenTerminal={async () => {
         useAppStore.getState().recordFeatureInteraction('agent-orchestration-setup')
         await (activeSkillRuntime.agentRuntime?.runtime === 'wsl'

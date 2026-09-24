@@ -12,10 +12,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import {
-  AGENT_SKILL_CLI_PREREQUISITE_NOTICE,
-  isOrcaCliAvailableOnPath
-} from '@/lib/agent-skill-cli-prerequisite'
+import { AGENT_SKILL_CLI_PREREQUISITE_NOTICE } from '@/lib/agent-skill-cli-prerequisite'
 import { translate } from '@/i18n/i18n'
 
 type AgentSkillSetupPanelProps = ComponentProps<typeof AgentSkillSetupPanel>
@@ -32,7 +29,7 @@ type LinearAgentSkillSetupDialogProps = {
   installed: boolean
   loading: boolean
   error: string | null
-  getPrerequisiteStatus?: AgentSkillSetupPanelProps['getPrerequisiteStatus']
+  prerequisiteRuntime?: AgentSkillSetupPanelProps['prerequisiteRuntime']
   onBeforeOpenTerminal: AgentSkillSetupPanelProps['onBeforeOpenTerminal']
   onRecheck: AgentSkillSetupPanelProps['onRecheck']
   onOpenChange: (open: boolean) => void
@@ -52,7 +49,7 @@ export function LinearAgentSkillSetupDialog({
   installed,
   loading,
   error,
-  getPrerequisiteStatus,
+  prerequisiteRuntime,
   onBeforeOpenTerminal,
   onRecheck,
   onOpenChange,
@@ -151,8 +148,7 @@ export function LinearAgentSkillSetupDialog({
               // matching the other setup surfaces (filled primary + muted dismiss).
               installVariant="default"
               preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-              getPrerequisiteStatus={getPrerequisiteStatus}
-              isPrerequisiteAvailable={isOrcaCliAvailableOnPath}
+              prerequisiteRuntime={prerequisiteRuntime}
               onBeforeOpenTerminal={onBeforeOpenTerminal}
               onRecheck={onRecheck}
             />

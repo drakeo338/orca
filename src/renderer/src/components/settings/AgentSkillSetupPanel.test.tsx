@@ -248,14 +248,7 @@ describe('AgentSkillSetupPanel', () => {
       installed: true,
       installedCommand: UPDATE_COMMAND,
       installLabel: 'Install CLI & Skill',
-      preInstallNotice: 'Install the Orca CLI before running agent skill setup.',
-      getPrerequisiteStatus: vi.fn(
-        async () =>
-          ({
-            state: 'not_installed'
-          }) as Awaited<ReturnType<typeof window.api.cli.getInstallStatus>>
-      ),
-      isPrerequisiteAvailable: () => false
+      preInstallNotice: 'Install the Orca CLI before running agent skill setup.'
     })
 
     expect(findButton('Update').disabled).toBe(false)

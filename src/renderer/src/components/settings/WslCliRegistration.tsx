@@ -17,7 +17,10 @@ import { Label } from '../ui/label'
 import { Switch } from '../ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { translate } from '@/i18n/i18n'
-import { notifyOrcaCliInstallStateChanged } from '@/lib/orca-cli-install-state-event'
+import {
+  notifyOrcaCliInstallStateChanged,
+  ORCA_CLI_INSTALL_STATE_EVENT
+} from '@/lib/orca-cli-install-state-event'
 
 type WslCliRegistrationProps = {
   currentPlatform: string
@@ -60,9 +63,16 @@ export function WslCliRegistration({
   }, [mountedRef])
 
   useEffect(() => {
-    if (showWslCli) {
+    if (!showWslCli) {
+      return
+    }
+    void refreshStatus()
+    // Why: registering from another surface must flip this toggle without a manual refresh.
+    const handleCliStateChange = (): void => {
       void refreshStatus()
     }
+    window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
+    return () => window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
   }, [refreshStatus, showWslCli])
 
   if (!showWslCli) {

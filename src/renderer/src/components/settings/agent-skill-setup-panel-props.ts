@@ -1,11 +1,9 @@
 import type { ComponentProps, ReactNode } from 'react'
 import type { Button } from '../ui/button'
-import type { CliInstallStatus } from '../../../../shared/cli-install-types'
+import type { OrcaCliSkillRuntime } from '@/lib/orca-cli-install-status'
 import type { LocalAgentRuntime } from './CliSkillRuntimeSetup'
 
 type AgentSkillSetupPanelVariant = 'card' | 'inline'
-// Why: null means the runtime has no install target to read (it needs repair first).
-type SkillPrerequisiteStatus = CliInstallStatus | null
 
 export type AgentSkillSetupPanelProps = {
   title: string
@@ -29,8 +27,8 @@ export type AgentSkillSetupPanelProps = {
   // Enclosing modals can own the title and status.
   hideHeader?: boolean
   preInstallNotice?: ReactNode
-  getPrerequisiteStatus?: () => Promise<SkillPrerequisiteStatus>
-  isPrerequisiteAvailable?: (status: SkillPrerequisiteStatus) => boolean
+  // Where agents run `orca`, for the pre-install notice; defaults to the host.
+  prerequisiteRuntime?: OrcaCliSkillRuntime
   onBeforeOpenTerminal?: () => void | Promise<void>
   showInstallWhenInstalled?: boolean
   showRecheckWhenInstalled?: boolean

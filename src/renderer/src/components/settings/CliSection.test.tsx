@@ -1,27 +1,34 @@
 // @vitest-environment happy-dom
 
 import { renderToStaticMarkup } from 'react-dom/server'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import {
   ORCA_CLI_SKILL_INSTALL_COMMAND,
   ORCA_CLI_SKILL_UPDATE_COMMAND
 } from '@/lib/agent-feature-install-commands'
+import { getOrcaCliInstallTargetKey, type OrcaCliSkillRuntime } from '@/lib/orca-cli-install-status'
+import { notifyOrcaCliInstallStateChanged } from '@/lib/orca-cli-install-state-event'
 import { CliSection } from './CliSection'
 
-const capturedPanel = vi.hoisted(() => ({
-  canUseLocalSkillFreshness: true,
-  props: null as null | {
-    command: string
-    installedCommand: string
-    terminalRuntime?: { runtime: 'host' | 'wsl'; wslDistro?: string | null; label: string }
-    freshnessSkillName?: string
-    getPrerequisiteStatus: () => Promise<unknown>
-    onBeforeOpenTerminal: () => Promise<void>
-  },
-  useInstalledAgentSkill: vi.fn()
-}))
+type CapturedPanelProps = {
+  command: string
+  installedCommand: string
+  terminalRuntime?: { runtime: 'host' | 'wsl'; wslDistro?: string | null; label: string }
+  freshnessSkillName?: string
+  prerequisiteRuntime?: OrcaCliSkillRuntime
+  onBeforeOpenTerminal: () => Promise<void>
+}
+
+const capturedPanel = vi.hoisted(() => {
+  const captured: {
+    canUseLocalSkillFreshness: boolean
+    props: CapturedPanelProps | null
+    useInstalledAgentSkill: ReturnType<typeof vi.fn>
+  } = { canUseLocalSkillFreshness: true, props: null, useInstalledAgentSkill: vi.fn() }
+  return captured
+})
 const toastError = vi.hoisted(() => vi.fn())
 
 vi.mock('sonner', () => ({ toast: { error: toastError, success: vi.fn() } }))
@@ -52,13 +59,7 @@ afterEach(() => {
 })
 
 vi.mock('./AgentSkillSetupPanel', () => ({
-  AgentSkillSetupPanel: function AgentSkillSetupPanel(props: {
-    command: string
-    installedCommand: string
-    freshnessSkillName?: string
-    getPrerequisiteStatus: () => Promise<unknown>
-    onBeforeOpenTerminal: () => Promise<void>
-  }) {
+  AgentSkillSetupPanel: function AgentSkillSetupPanel(props: CapturedPanelProps) {
     capturedPanel.props = props
     return <div data-testid="agent-skill-setup-panel" />
   }
@@ -130,7 +131,6 @@ describe('CliSection project runtime defaults', () => {
       />
     )
 
-    await capturedPanel.props?.getPrerequisiteStatus()
     await capturedPanel.props?.onBeforeOpenTerminal()
 
     expect(capturedPanel.useInstalledAgentSkill).toHaveBeenCalledWith(
@@ -147,8 +147,50 @@ describe('CliSection project runtime defaults', () => {
       wslDistro: 'Ubuntu',
       label: 'WSL Ubuntu'
     })
+    const prerequisiteRuntime = capturedPanel.props?.prerequisiteRuntime
+    expect(prerequisiteRuntime?.agentRuntime).toEqual(capturedPanel.props?.terminalRuntime)
+    expect(prerequisiteRuntime && getOrcaCliInstallTargetKey(prerequisiteRuntime)).toBe(
+      'wsl:Ubuntu'
+    )
     expect(getWslInstallStatus).toHaveBeenCalledWith({ distro: 'Ubuntu' })
-    expect(getWslInstallStatus).toHaveBeenCalledTimes(2)
+    expect(getWslInstallStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-reads its registration toggle when another surface registers the CLI', async () => {
+    const hostStatus = {
+      platform: 'darwin',
+      commandName: 'orca',
+      commandPath: '/usr/local/bin/orca',
+      pathDirectory: '/usr/local/bin',
+      pathConfigured: true,
+      launcherPath: null,
+      installMethod: 'symlink',
+      supported: true,
+      currentTarget: null,
+      unsupportedReason: null,
+      detail: null
+    }
+    const getInstallStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ ...hostStatus, state: 'not_installed', commandPath: null })
+      .mockResolvedValue({ ...hostStatus, state: 'installed' })
+    Object.assign(window, {
+      api: {
+        cli: { getInstallStatus, getWslInstallStatus: vi.fn(), install: vi.fn(), remove: vi.fn() },
+        shell: { openPath: vi.fn() }
+      }
+    })
+
+    render(<CliSection currentPlatform="darwin" settings={getDefaultSettings('/tmp')} />)
+    const registrationSwitch = screen.getByRole('switch')
+    await waitFor(() => expect(registrationSwitch.getAttribute('aria-checked')).toBe('false'))
+    await waitFor(() => expect(registrationSwitch.hasAttribute('disabled')).toBe(false))
+    expect(getInstallStatus).toHaveBeenCalledTimes(1)
+
+    act(() => notifyOrcaCliInstallStateChanged())
+
+    await waitFor(() => expect(registrationSwitch.getAttribute('aria-checked')).toBe('true'))
+    expect(getInstallStatus).toHaveBeenCalledTimes(2)
   })
 
   it('renders an inline unknown PATH state without offering a mutation', async () => {

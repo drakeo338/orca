@@ -10,9 +10,9 @@ import {
 } from '@/lib/agent-feature-install-commands'
 import {
   AGENT_SKILL_CLI_PREREQUISITE_NOTICE,
-  ensureOrcaCliAvailableForAgentSkillTerminal,
-  isOrcaCliAvailableOnPath
+  ensureOrcaCliAvailableForAgentSkillTerminal
 } from '@/lib/agent-skill-cli-prerequisite'
+import { ORCA_CLI_INSTALL_STATE_EVENT } from '@/lib/orca-cli-install-state-event'
 import {
   GLOBAL_AGENT_SKILL_SOURCE_KINDS,
   useInstalledAgentSkill
@@ -29,8 +29,7 @@ import {
   ensureWslCliAvailableForAgentSkillTerminal,
   getAgentSkillTerminalShellOverride,
   getSelectedAgentRuntime,
-  getSkillDiscoveryTargetForRuntime,
-  getWslCliDistroRequest
+  getSkillDiscoveryTargetForRuntime
 } from './CliSkillRuntimeSetup'
 import { WslCliRegistration } from './WslCliRegistration'
 import { useCliRegistrationActions } from './use-cli-registration-actions'
@@ -115,11 +114,8 @@ export function CliSection({
     settings,
     agentRuntime
   )
-  const getCliSkillPrerequisiteStatus = useCallback(
-    () =>
-      agentRuntime.runtime === 'wsl'
-        ? window.api.cli.getWslInstallStatus(getWslCliDistroRequest(agentRuntime))
-        : window.api.cli.getInstallStatus(),
+  const cliSkillPrerequisiteRuntime = useMemo(
+    () => ({ agentRuntime, installDisabledReason: null }),
     [agentRuntime]
   )
 
@@ -142,9 +138,8 @@ export function CliSection({
       onSettled: closeDialog
     })
 
-  const refreshStatus = useCallback(async (): Promise<void> => {
+  const loadStatus = useCallback(async (): Promise<void> => {
     setLoading(true)
-    clearInstallFailure()
     try {
       handleStatusChange(await window.api.cli.getInstallStatus())
     } catch (error) {
@@ -163,11 +158,25 @@ export function CliSection({
         setLoading(false)
       }
     }
-  }, [clearInstallFailure, handleStatusChange, mountedRef])
+  }, [handleStatusChange, mountedRef])
+
+  const refreshStatus = useCallback(async (): Promise<void> => {
+    clearInstallFailure()
+    await loadStatus()
+  }, [clearInstallFailure, loadStatus])
 
   useEffect(() => {
     void refreshStatus()
   }, [refreshStatus])
+
+  useEffect(() => {
+    // Why: registering from another surface must flip this toggle without a manual refresh.
+    const handleCliStateChange = (): void => {
+      void loadStatus()
+    }
+    window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
+    return () => window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
+  }, [loadStatus])
 
   const pathStatusUnknown = currentPlatform === 'win32' && status?.pathConfigured === null
   const isEnabled = status?.state === 'installed' && !pathStatusUnknown
@@ -351,8 +360,7 @@ export function CliSection({
               loading={cliSkillLoading}
               error={cliSkillError}
               preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-              getPrerequisiteStatus={getCliSkillPrerequisiteStatus}
-              isPrerequisiteAvailable={isOrcaCliAvailableOnPath}
+              prerequisiteRuntime={cliSkillPrerequisiteRuntime}
               onBeforeOpenTerminal={async () => {
                 await (agentRuntime.runtime === 'wsl'
                   ? ensureWslCliAvailableForAgentSkillTerminal(agentRuntime)

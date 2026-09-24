@@ -6,9 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BROWSER_USE_ENABLED_STORAGE_KEY } from '@/lib/browser-use-setup-state'
 import { BrowserUseSetup } from './BrowserUsePane'
 
-const captured = vi.hoisted((): { prerequisiteReaders: unknown[] } => ({
-  prerequisiteReaders: []
-}))
+const captured = vi.hoisted(
+  (): { cliStatusRuntimes: unknown[]; prerequisiteRuntimes: unknown[] } => ({
+    cliStatusRuntimes: [],
+    prerequisiteRuntimes: []
+  })
+)
 
 const storeState = vi.hoisted(() => ({
   settingsSearchQuery: '',
@@ -29,15 +32,17 @@ vi.mock('@/hooks/useActiveProjectSkillRuntime', () => ({
   useActiveProjectSkillRuntime: () => activeSkillRuntime
 }))
 vi.mock('@/hooks/use-orca-cli-install-status', () => ({
-  // Why: a fresh object per call mirrors a shared-status publish re-rendering the pane.
-  useOrcaCliInstallStatus: () => ({
-    status: null,
-    checked: true,
-    loading: false,
-    registered: false,
-    unverifiable: false,
-    refresh: () => {}
-  })
+  useOrcaCliInstallStatus: (runtime: unknown) => {
+    captured.cliStatusRuntimes.push(runtime)
+    return {
+      status: null,
+      checked: true,
+      loading: false,
+      registered: false,
+      unverifiable: false,
+      refresh: () => {}
+    }
+  }
 }))
 vi.mock('@/hooks/useInstalledAgentSkills', () => ({
   GLOBAL_AGENT_SKILL_SOURCE_KINDS: [],
@@ -54,8 +59,8 @@ vi.mock('./CliSkillRuntimeSetup', () => ({
   getWslCliDistroRequest: () => undefined
 }))
 vi.mock('./BrowserUseSkillStep', () => ({
-  BrowserUseSkillStep: (props: { getPrerequisiteStatus?: unknown }) => {
-    captured.prerequisiteReaders.push(props.getPrerequisiteStatus)
+  BrowserUseSkillStep: (props: { prerequisiteRuntime?: unknown }) => {
+    captured.prerequisiteRuntimes.push(props.prerequisiteRuntime)
     return null
   }
 }))
@@ -69,7 +74,8 @@ let root: Root | null = null
 let container: HTMLDivElement | null = null
 
 beforeEach(() => {
-  captured.prerequisiteReaders.length = 0
+  captured.cliStatusRuntimes.length = 0
+  captured.prerequisiteRuntimes.length = 0
   localStorage.setItem(BROWSER_USE_ENABLED_STORAGE_KEY, '1')
 })
 
@@ -84,18 +90,15 @@ afterEach(async () => {
 })
 
 describe('BrowserUseSetup', () => {
-  it('keeps the skill step CLI reader stable across re-renders so it does not re-read CLI status', async () => {
+  it('points the skill step notice at the same CLI target as the CLI step', async () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
     await act(async () => {
       root?.render(<BrowserUseSetup />)
     })
-    await act(async () => {
-      root?.render(<BrowserUseSetup />)
-    })
 
-    expect(captured.prerequisiteReaders.length).toBeGreaterThanOrEqual(2)
-    expect(new Set(captured.prerequisiteReaders).size).toBe(1)
+    expect(captured.prerequisiteRuntimes.at(-1)).toBe(activeSkillRuntime)
+    expect(captured.cliStatusRuntimes.at(-1)).toBe(activeSkillRuntime)
   })
 })

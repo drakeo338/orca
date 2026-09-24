@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Copy, Loader2, RefreshCw, Terminal } from 'lucide-react'
 import { toast } from 'sonner'
 import { IntegrationStatusPill } from '../integration-status-pill'
@@ -14,9 +14,12 @@ import {
   recheckSurfacesAfterAgentSkillTerminal,
   syncSurfacesAfterAgentSkillRecheck
 } from './agent-skill-recheck-surface-sync'
-import { isOrcaCliAvailableOnPath } from '@/lib/agent-skill-cli-prerequisite'
+import { useOrcaCliInstallStatus } from '@/hooks/use-orca-cli-install-status'
+import type { OrcaCliSkillRuntime } from '@/lib/orca-cli-install-status'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
+
+const HOST_PREREQUISITE_RUNTIME: OrcaCliSkillRuntime = { installDisabledReason: null }
 
 export function AgentSkillSetupPanel({
   title,
@@ -39,8 +42,7 @@ export function AgentSkillSetupPanel({
   className,
   hideHeader = false,
   preInstallNotice,
-  getPrerequisiteStatus,
-  isPrerequisiteAvailable = isOrcaCliAvailableOnPath,
+  prerequisiteRuntime = HOST_PREREQUISITE_RUNTIME,
   onBeforeOpenTerminal,
   showInstallWhenInstalled = true,
   showRecheckWhenInstalled = true,
@@ -66,14 +68,13 @@ export function AgentSkillSetupPanel({
   const [setupAttemptRunning, setSetupAttemptRunning] = useState(false)
   const [setupCommandFailedCode, setSetupCommandFailedCode] = useState<number | null>(null)
   const setupAttemptRunningRef = useRef(false)
-  const [preInstallNoticeVisible, setPreInstallNoticeVisible] = useState(
-    Boolean(preInstallNotice && !installed)
-  )
   const mountedRef = useMountedRef()
-  const readPrerequisiteStatus = useCallback(
-    () => (getPrerequisiteStatus ?? window.api.cli.getInstallStatus)(),
-    [getPrerequisiteStatus]
-  )
+  // Why: the shared store keeps this notice in step with every other CLI status surface.
+  const prerequisiteCli = useOrcaCliInstallStatus(prerequisiteRuntime, {
+    enabled: Boolean(preInstallNotice) && !installed
+  })
+  const preInstallNoticeVisible =
+    prerequisiteCli.checked && !prerequisiteCli.registered && !prerequisiteCli.unverifiable
   const activeCommand = installed ? (installedCommand ?? command) : command
   // Why: the inline terminal auto-inserts when its command changes, so keep the
   // already-open terminal pinned to the command and runtime selected at click.
@@ -92,7 +93,6 @@ export function AgentSkillSetupPanel({
       let shouldOpenTerminal = false
       try {
         await onBeforeOpenTerminal?.()
-        await refreshPreInstallNotice()
         shouldOpenTerminal = true
       } catch {
         shouldOpenTerminal = false
@@ -137,50 +137,6 @@ export function AgentSkillSetupPanel({
     }
     void (shouldRecheck && recheckSurfacesAfterAgentSkillTerminal(onRecheck, freshnessSkillName))
   }, [freshnessSkillName, mountedRef, onRecheck])
-
-  useEffect(() => {
-    if (!preInstallNotice) {
-      setPreInstallNoticeVisible(false)
-      return
-    }
-
-    let canceled = false
-    const refreshCliNotice = async (): Promise<void> => {
-      try {
-        const status = await readPrerequisiteStatus()
-        if (!canceled) {
-          setPreInstallNoticeVisible(!isPrerequisiteAvailable(status))
-        }
-      } catch {
-        if (!canceled) {
-          setPreInstallNoticeVisible(true)
-        }
-      }
-    }
-
-    void refreshCliNotice()
-    window.addEventListener('focus', refreshCliNotice)
-    return () => {
-      canceled = true
-      window.removeEventListener('focus', refreshCliNotice)
-    }
-  }, [isPrerequisiteAvailable, preInstallNotice, readPrerequisiteStatus])
-
-  const refreshPreInstallNotice = async (): Promise<void> => {
-    if (!preInstallNotice) {
-      return
-    }
-    try {
-      const status = await readPrerequisiteStatus()
-      if (mountedRef.current) {
-        setPreInstallNoticeVisible(!isPrerequisiteAvailable(status))
-      }
-    } catch {
-      if (mountedRef.current) {
-        setPreInstallNoticeVisible(true)
-      }
-    }
-  }
 
   const copyActiveCommand = async (): Promise<void> => {
     try {

@@ -11,6 +11,7 @@ import {
   useInstalledAgentSkill
 } from '@/hooks/useInstalledAgentSkills'
 import { useMountedRef } from '@/hooks/useMountedRef'
+import { ORCA_CLI_INSTALL_STATE_EVENT } from '@/lib/orca-cli-install-state-event'
 import { getMobileEmulatorCliPathNeedsAttention } from './mobile-emulator-agent-setup-cli-state'
 import { translate } from '@/i18n/i18n'
 
@@ -117,8 +118,16 @@ export function useMobileEmulatorAgentSetupState(enabled = true): {
       void refreshCliStatus()
       void refreshCliSkill()
     }
+    // Why: a registration from another surface broadcasts instead of focusing this window.
+    const handleCliStateChange = (): void => {
+      void refreshCliStatus()
+    }
     window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
+    window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
+    }
   }, [enabled, refreshCliSkill, refreshCliStatus])
 
   const cliEnabled = isOrcaCliAvailableOnPath(cliInstallStatus)

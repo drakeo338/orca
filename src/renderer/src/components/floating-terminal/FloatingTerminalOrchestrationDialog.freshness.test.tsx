@@ -42,6 +42,10 @@ vi.mock('@/components/settings/CliSkillRuntimeSetup', () => ({
   getWslCliDistroRequest: () => undefined
 }))
 
+vi.mock('@/hooks/use-active-skill-discovery-runtime-target', () => ({
+  useActiveSkillDiscoveryRuntimeTarget: () => ({ kind: 'local' })
+}))
+
 vi.mock('@/components/onboarding/OnboardingInlineCommandTerminal', () => ({
   OnboardingInlineCommandTerminal: () => null
 }))

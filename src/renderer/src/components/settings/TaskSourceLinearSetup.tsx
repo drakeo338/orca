@@ -143,7 +143,7 @@ export function TaskSourceLinearSetup({
               error={skillSetup.error}
               installDisabled={skillSetup.installDisabled}
               preInstallNotice={skillSetup.preInstallNotice}
-              getPrerequisiteStatus={skillSetup.getPrerequisiteStatus}
+              prerequisiteRuntime={skillSetup.prerequisiteRuntime}
               onBeforeOpenTerminal={skillSetup.onBeforeOpenTerminal}
               onRecheck={skillSetup.refreshSkill}
               freshnessSkillName={skillSetup.freshnessSkillName}

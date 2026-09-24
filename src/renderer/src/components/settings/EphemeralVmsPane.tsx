@@ -22,7 +22,6 @@ import {
   useInstalledAgentSkill
 } from '@/hooks/useInstalledAgentSkills'
 import { useActiveProjectSkillRuntime } from '@/hooks/useActiveProjectSkillRuntime'
-import { readOrcaCliInstallStatus } from '@/lib/orca-cli-install-status'
 import {
   buildSkillCommandForRuntime,
   ensureWslCliAvailableForAgentSkillTerminal
@@ -188,7 +187,7 @@ export function EphemeralVmsPane(): React.JSX.Element {
         installDisabled={Boolean(activeSkillRuntime.installDisabledReason)}
         icon={<Server className="size-5" />}
         preInstallNotice={AGENT_SKILL_CLI_PREREQUISITE_NOTICE}
-        getPrerequisiteStatus={() => readOrcaCliInstallStatus(activeSkillRuntime)}
+        prerequisiteRuntime={activeSkillRuntime}
         onBeforeOpenTerminal={async () => {
           await (activeSkillRuntime.agentRuntime?.runtime === 'wsl'
             ? ensureWslCliAvailableForAgentSkillTerminal(activeSkillRuntime.agentRuntime)
