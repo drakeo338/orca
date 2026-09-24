@@ -156,7 +156,6 @@ export function useMobileBrowserStream(args: MobileBrowserStreamArgs) {
       frameMetadataRef.current = cachedFrame?.metadata ?? null
       setFrameMetadata(cachedFrame?.metadata ?? null)
     }
-    busyRef.current = false
     setDialog(null)
     setError(null)
     if (
