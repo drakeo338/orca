@@ -100,7 +100,7 @@ describe('the tab id a create reserves', () => {
         tabId: 'tab-1'
       })
     )
-    // A retry that reserved a different tab is a different request, like a terminal's pane.
+    // The declared digest covers the tab; the host still replays a retry on its attach fingerprint.
     expect(params.envelope.payloadFingerprint).not.toBe(createParams().envelope.payloadFingerprint)
   })
 
