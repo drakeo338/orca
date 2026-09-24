@@ -21,6 +21,10 @@ export type CapturedCancel = {
   /** Idle-prompt Ctrl+C captures: whether the TUI painted "All background agents stopped". */
   all_bg_agents_stopped_painted?: boolean
   exit_hint_painted?: boolean
+  draft_present?: boolean
+  /** Process snapshots immediately before and after this cancel keypress. */
+  ps_before?: string[]
+  ps_after?: string[]
   /** Hook indices between the cancel key and the next prompt the driver typed. */
   hooks_before_next_typed_prompt: number[]
 }

@@ -62,6 +62,15 @@ async function post(server: AgentHookServer, hook: CapturedHook): Promise<void> 
   })
 }
 
+type CapturedBackgroundTask = { type: string }
+
+function parseCapturedBackgroundTask(input: unknown): CapturedBackgroundTask | undefined {
+  if (typeof input !== 'object' || input === null || !('type' in input)) {
+    return undefined
+  }
+  return typeof input.type === 'string' ? { type: input.type } : undefined
+}
+
 /** The renderer's part: capture the row as the baseline and, once the settle window passes with
  *  no hook (the captures show none ever comes), ask the server to infer from the Ctrl+C. */
 function pressCtrlC(server: AgentHookServer): boolean {
@@ -175,8 +184,7 @@ describe('an idle-prompt Ctrl+C with a background shell and a background agent (
         payload: {
           ...stop.payload,
           background_tasks: tasks.filter(
-            (task) =>
-              typeof task === 'object' && task !== null && Reflect.get(task, 'type') === 'subagent'
+            (task) => parseCapturedBackgroundTask(task)?.type === 'subagent'
           )
         }
       })
@@ -193,6 +201,56 @@ describe('an idle-prompt Ctrl+C with a background shell and a background agent (
       expect(row(server).subagents).toBeUndefined()
       expect(row(server).interrupted).toBeUndefined()
       expect(row(server).mainAgent).not.toHaveProperty('outcome')
+    } finally {
+      server.stop()
+    }
+  })
+})
+
+describe('an unsent draft before idle-prompt Ctrl+C (captured)', () => {
+  const records = loadCapture('claude-idle-ctrl-c-draft-hooks')
+
+  it('still retires the killed agent on the first keypress and leaves the shell alive', async () => {
+    const server = await startServer()
+    try {
+      for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+        await post(server, hookAt(records, index))
+      }
+      expect(row(server)).toMatchObject({
+        state: 'working',
+        mainAgent: { state: 'done' },
+        subagents: [expect.objectContaining({ state: 'working' })]
+      })
+
+      const first = cancelLabelled(records, 'CTRL-C-draft-first')
+      expect(first.draft_present).toBe(true)
+      expect(first.all_bg_agents_stopped_painted).toBe(false)
+      expect(first.hooks_before_next_typed_prompt).toEqual([])
+      expect(first.ps_before).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('sleep 600'),
+          expect.stringContaining('time.sleep(240)')
+        ])
+      )
+      expect(first.ps_after).toEqual([expect.stringContaining('sleep 600')])
+      expect(transcriptScan(records, 'after-draft-ctrl-c').agents_killed_records).toHaveLength(1)
+
+      expect(pressCtrlC(server)).toBe(true)
+      expect(row(server)).toMatchObject({
+        state: 'working',
+        workingMode: 'monitoring',
+        mainAgent: { state: 'done' }
+      })
+      expect(row(server).subagents).toBeUndefined()
+      expect(row(server).interrupted).toBeUndefined()
+
+      const second = cancelLabelled(records, 'CTRL-C-draft-second')
+      expect(second.hooks_before_next_typed_prompt).toEqual([])
+      expect(second.ps_before).toEqual([expect.stringContaining('sleep 600')])
+      expect(second.ps_after).toEqual([expect.stringContaining('sleep 600')])
+      const beforeSecond = row(server)
+      expect(pressCtrlC(server)).toBe(false)
+      expect(row(server)).toEqual(beforeSecond)
     } finally {
       server.stop()
     }
