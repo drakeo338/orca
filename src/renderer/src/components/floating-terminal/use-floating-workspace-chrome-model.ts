@@ -4,10 +4,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
 import { useTabGroupWorkspaceModel } from '@/components/tab-group/useTabGroupWorkspaceModel'
 import { resolveGroupTabFromVisibleId } from '@/components/tab-group/tab-group-visible-id'
-import {
-  useBrowserGuestPaintRetention,
-  useWorktreeBrowserPageIds
-} from '@/components/browser-pane/host-guest/browser-guest-paint-retention'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { resolveFloatingWorkspaceSurfaceModel } from './floating-workspace-surface-model'
 
@@ -27,8 +23,6 @@ export function useFloatingWorkspaceChromeModel() {
     worktreeId: FLOATING_TERMINAL_WORKTREE_ID
   })
   const { activeTab, group, groupTabs } = model
-  const browserPageIds = useWorktreeBrowserPageIds(FLOATING_TERMINAL_WORKTREE_ID)
-  const needsBrowserGuestPaint = useBrowserGuestPaintRetention(browserPageIds)
   // Why filtered: the strip and the emptiness decision only count tabs whose terminal entity
   // still exists — a stale unified entry must fall back to the empty state, not a blank pane.
   const terminalEntities = useAppStore(
@@ -106,7 +100,6 @@ export function useFloatingWorkspaceChromeModel() {
     surface,
     model,
     terminalItems,
-    needsBrowserGuestPaint,
     activeGroup: group,
     groupTabs,
     activeTab,

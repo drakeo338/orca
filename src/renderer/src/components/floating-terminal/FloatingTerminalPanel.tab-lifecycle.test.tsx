@@ -19,6 +19,11 @@ import {
   runEffects
 } from './floating-terminal-panel-render-probe'
 
+const dispatchWorkspaceTabCommandMock = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/workspace-tab-commands', () => ({
+  dispatchWorkspaceTabCommand: dispatchWorkspaceTabCommandMock
+}))
+
 vi.mock('zustand/react/shallow', () => ({
   // Why: zustand resolves the real react (unmocked in node_modules); the memo wrapper is inert here.
   useShallow: (selector: unknown) => selector
@@ -333,6 +338,24 @@ describe('FloatingTerminalPanel close behavior', () => {
     )
     expect(mocks.closeUnifiedTab).toHaveBeenCalledWith(tab.id)
     expect(mocks.closeFile).not.toHaveBeenCalledWith(tab.id)
+  })
+
+  it('closes a structured chat through the shared workspace command', async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: beforeEach installs the typed floating panel store fixture.
+    const state = storeBox.state as FloatingPanelStoreState
+    const baseTab = setFloatingSimulatorTab()
+    const tab: Tab = { ...baseTab, contentType: 'agent-session', entityId: 'session-1' }
+    state.unifiedTabsByWorktree[FLOATING_TERMINAL_WORKTREE_ID] = [tab]
+
+    const element = await renderPanel(true)
+    const tabBar = findByTypeName(element, 'TabBar')
+    ;(tabBar.props.onCloseFile as (tabId: string) => void)(tab.id)
+
+    expect(dispatchWorkspaceTabCommandMock).toHaveBeenCalledWith({
+      type: 'close',
+      target: { kind: 'tab', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, tabId: tab.id }
+    })
+    expect(mocks.closeFile).not.toHaveBeenCalledWith(tab.entityId)
   })
 
   it('keeps simulator tabs open when closing all files', async () => {

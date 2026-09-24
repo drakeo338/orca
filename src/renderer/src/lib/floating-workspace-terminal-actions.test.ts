@@ -3,6 +3,7 @@ import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shar
 import type { Tab } from '../../../shared/tab-types'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
 import {
+  countVisibleFloatingWorkspaceItems,
   createFloatingWorkspaceBrowserTab,
   createFloatingWorkspaceMarkdownTab,
   createFloatingWorkspaceTerminalTab,
@@ -151,6 +152,16 @@ const FLOATING_CHAT_TAB = {
   sortOrder: 0,
   createdAt: 0
 } satisfies Tab
+
+it('counts tabs in every floating split group when deciding whether a close emptied it', () => {
+  expect(
+    countVisibleFloatingWorkspaceItems(
+      floatingPanelState({
+        tabs: [FLOATING_CHAT_TAB, { ...FLOATING_CHAT_TAB, id: 'chat-2', groupId: 'other-group' }]
+      })
+    )
+  ).toBe(2)
+})
 
 describe('revealFloatingWorkspacePanel', () => {
   it('toggles the panel open only while the store says it is closed', () => {

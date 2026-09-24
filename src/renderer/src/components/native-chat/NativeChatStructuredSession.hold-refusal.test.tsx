@@ -13,6 +13,7 @@ const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
   subscribeStructuredAgentSession: vi.fn(() => new Promise(() => {})),
+  subscribeStructuredAgentSessionStatus: vi.fn(async () => ({ unsubscribe: () => {} })),
   supportsStructuredAgentSessionPromptCancel: vi.fn().mockResolvedValue(false)
 }))
 vi.mock('./use-native-chat-font-scale', () => moduleFactories.useNativeChatFontScale())

@@ -6,6 +6,7 @@ import {
   isFloatingWorkspacePanelFocused
 } from '@/lib/floating-workspace-terminal-actions'
 import { armFloatingPanelReclaimIntent } from '@/lib/floating-workspace-focus-reclaim'
+import { dispatchWorkspaceTabCommand } from '@/lib/workspace-tab-commands'
 import { useAppStore } from '@/store'
 import { destroyWorkspaceWebviews } from '@/store/slices/browser-webview-cleanup'
 import { guardPinnedTabClose, resolvePinnedTabLabel } from '@/store/pinned-tab-close-guard'
@@ -95,6 +96,13 @@ export function useFloatingTerminalCloseActions({
       }
       if (item.contentType === 'terminal') {
         closeTerminalTab(item.entityId, { onClosed: armIfEmptying })
+        return
+      }
+      if (item.contentType === 'agent-session') {
+        dispatchWorkspaceTabCommand({
+          type: 'close',
+          target: { kind: 'tab', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, tabId: item.id }
+        })
         return
       }
       const state = useAppStore.getState()

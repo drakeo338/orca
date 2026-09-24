@@ -2,7 +2,6 @@ import TabBar from '@/components/tab-bar/TabBar'
 import { TabGroupSplitNodeTree } from '@/components/tab-group/TabGroupSplitNodeTree'
 import { WorkspaceTabDragLayer } from '@/components/tab-group/WorkspaceTabDragLayer'
 import { WorkspacePaneOverlayLayers } from '@/components/WorkspacePaneOverlayLayers'
-import { shouldMountRetainedBrowserOverlay } from '@/components/browser-pane/host-guest/browser-worktree-surface-paintability'
 import { isTerminalImeInputContextRefreshing } from '@/components/terminal-pane/terminal-ime-input-context-refresh'
 import { buildDuplicatedBrowserTabOptions } from '@/lib/duplicate-browser-tab-options'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
@@ -39,7 +38,6 @@ export function renderFloatingTerminalPanelSurface({
   activeBrowserId,
   activeTab,
   activeTabType,
-  needsBrowserGuestPaint,
   expandedPaneByTabId,
   closeFloatingItemConfirmed,
   closeOthers,
@@ -247,11 +245,7 @@ export function renderFloatingTerminalPanelSurface({
                     activityTerminalPortals={NO_ACTIVITY_TERMINAL_PORTALS}
                     backgroundMountTabIds={null}
                     activationDeferredMountTabIds={null}
-                    mountRetainedBrowserOverlay={shouldMountRetainedBrowserOverlay({
-                      isWorktreeVisible: open,
-                      hasDeferredBackgroundMounts: false,
-                      needsBrowserGuestPaint
-                    })}
+                    mountRetainedBrowserOverlay={true}
                     mountEmulatorOverlay={true}
                     // Why: the active workspace's listener owns the chord while the panel overlays it.
                     ownsNativeChatToggleShortcut={false}

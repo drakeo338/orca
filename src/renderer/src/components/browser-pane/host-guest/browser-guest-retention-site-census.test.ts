@@ -61,12 +61,6 @@ const RETENTION_SITES = new Map<string, readonly string[]>([
   ['components/TerminalSurface.tsx', ['useAnyBrowserGuestNeedsPaint']],
   ['components/TerminalSplitWorkspaceSurfaces.tsx', ['useAnyBrowserGuestNeedsPaint']],
   ['components/TerminalWorktreeSplitSurface.tsx', ['useBrowserGuestPaintRetention']],
-  // The floating panel hosts the same retained overlay stack; its chrome model owns the
-  // guest-paint read that keeps hidden floating guests painting.
-  [
-    'components/floating-terminal/use-floating-workspace-chrome-model.ts',
-    ['useBrowserGuestPaintRetention']
-  ],
   [
     'components/browser-pane/assemble-chrome/BrowserPaneOverlayLayer.tsx',
     ['useBrowserGuestPaintRetention']

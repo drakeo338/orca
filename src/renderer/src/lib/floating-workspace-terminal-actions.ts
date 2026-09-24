@@ -11,6 +11,7 @@ import {
 import type { AppState } from '@/store/types'
 import {
   selectEmptyFloatingWorkspacePanelVisible,
+  selectFloatingVisibleTabCount,
   selectFloatingWorkspacePanelVisible,
   type EmptyFloatingWorkspacePanelState,
   type FloatingWorkspacePanelVisibilityState
@@ -96,9 +97,10 @@ function getFloatingWorkspaceVisibleTabs(
 // Live count of visible floating tabs from store state — lets close handlers re-derive "did this
 // actually empty the panel?" at the moment the close resolves, instead of trusting a frozen
 // pre-close render snapshot that a concurrent create/no-op close can invalidate.
-export function countVisibleFloatingWorkspaceItems(store: FloatingWorkspaceTabSwitchStore): number {
-  const group = getActiveFloatingWorkspaceGroup(store)
-  return group ? getFloatingWorkspaceVisibleTabs(store, group).length : 0
+export function countVisibleFloatingWorkspaceItems(
+  store: Parameters<typeof selectFloatingVisibleTabCount>[0]
+): number {
+  return selectFloatingVisibleTabCount(store)
 }
 
 function getFloatingWorkspaceActiveEntry(

@@ -6,6 +6,17 @@ import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { AGENT_LAUNCH_METHODS } from './agent-launch'
 import { CAPABLE_CLIENT, methodNamed, STRUCTURED_PREFERENCE } from './agent-launch.test-fixture'
 
+const createStructuredSession = vi.hoisted(() =>
+  vi.fn(async (args: { envelope: { sessionId: string } }) => ({
+    ok: true as const,
+    value: { sessionId: args.envelope.sessionId, fence: 1 }
+  }))
+)
+
+vi.mock('./structured-agent-session-create', () => ({
+  createStructuredAgentSessionForWorktree: createStructuredSession
+}))
+
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
   webContents: { fromId: vi.fn(() => null) },
@@ -16,7 +27,10 @@ vi.mock('electron', () => ({
 const launch = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const selectors = [FLOATING_TERMINAL_WORKTREE_ID, `id:${FLOATING_TERMINAL_WORKTREE_ID}`]
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  createStructuredSession.mockClear()
+})
 
 describe('floating workspace resolved-worktree minting', () => {
   // Regression: this mixin file is @ts-nocheck, so a missing module import there is invisible to
@@ -60,7 +74,7 @@ describe('agent.launch with the real floating workspace resolver', () => {
 
   // Why here: the runtime resolvers this crosses are @ts-nocheck, so only a call that runs them
   // proves the floating workspace resolves to a location a structured session can be filed under.
-  it.each(selectors)('files a structured session for %s on the local host', async (selector) => {
+  it.each(selectors)('supports a structured session for %s on the local host', async (selector) => {
     const runtime = new OrcaRuntimeService()
 
     await expect(
@@ -92,21 +106,29 @@ describe('agent.launch with the real floating workspace resolver', () => {
       })
 
       const result = await launch.handler(
-        launch.params.parse({ agent: 'claude', target: { kind: 'existing', worktree: selector } }),
+        launch.params.parse({ agent: 'codex', target: { kind: 'existing', worktree: selector } }),
         { runtime, ...CAPABLE_CLIENT }
       )
 
       expect(scope).toHaveBeenCalledExactlyOnceWith(selector)
       if (structuredPreference) {
-        // Why this changed: the floating workspace resolves to its configured directory, so the
-        // structured path is consulted for it like any other workspace. Kind no longer refuses.
-        expect(createSupport).toHaveBeenCalledWith(`id:${FLOATING_TERMINAL_WORKTREE_ID}`, 'claude')
+        expect(createSupport).toHaveBeenCalledWith(`id:${FLOATING_TERMINAL_WORKTREE_ID}`, 'codex')
+        expect(createStructuredSession).toHaveBeenCalledWith(
+          expect.objectContaining({ worktree: `id:${FLOATING_TERMINAL_WORKTREE_ID}` })
+        )
+        expect(createTerminal).not.toHaveBeenCalled()
+        expect(result).toMatchObject({
+          worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+          outcome: { kind: 'structured', sessionId: expect.any(String) },
+          receipt: { mode: 'structured' }
+        })
       } else {
+        expect(createStructuredSession).not.toHaveBeenCalled()
         expect(createSupport).not.toHaveBeenCalled()
         expect(structuredHost).not.toHaveBeenCalled()
         expect(createTerminal).toHaveBeenCalledExactlyOnceWith(
           `id:${FLOATING_TERMINAL_WORKTREE_ID}`,
-          { startupAgent: 'claude' }
+          { startupAgent: 'codex' }
         )
         expect(result).toMatchObject({
           worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
