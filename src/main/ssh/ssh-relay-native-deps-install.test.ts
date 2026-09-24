@@ -88,6 +88,7 @@ import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
 import {
   abandonInstall,
   finalizeInstall,
+  gcOldRelayVersions,
   isRelayAlreadyInstalled
 } from './ssh-relay-versioned-install'
 import { acquireInstallLock } from './ssh-relay-install-lock'
@@ -629,6 +630,7 @@ describe('installNativeDeps (via deployAndLaunchRelay)', () => {
     const conn1 = makeMockConnection(sftpCapture)
     feed(makeExecResponses({ npmInstall: 'ok', probe: 'ok' }))
     await deployAndLaunchRelay(conn1)
+    await vi.waitFor(() => expect(gcOldRelayVersions).toHaveBeenCalled())
     const firstPath = sftpCapture.paths.find((p) => p.endsWith('/package.json')) as string
     const first = sftpCapture.contents[firstPath]
 

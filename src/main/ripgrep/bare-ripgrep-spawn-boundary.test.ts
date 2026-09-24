@@ -25,7 +25,7 @@ const ALLOWED_BARE_RIPGREP_SPAWNS: readonly string[] = []
 // this guard, and `spawn(PATH_RIPGREP_COMMAND, args, { cwd: userRepo })` is exactly the hijack
 // this file exists to catch.
 const BARE_SPAWN_PATTERN =
-  /\b(?:spawn|spawnSync|exec|execFile|execFileSync|execSync)\w*\(\s*(?:['"]rg['"]|PATH_RIPGREP_COMMAND)/
+  /\b(?:wslAwareSpawn|runProcess|spawn|spawnSync|exec|execFile|execFileSync|execSync)\w*\(\s*(?:['"]rg['"]|PATH_RIPGREP_COMMAND)/
 
 const SCANNED_EXTENSIONS = ['.ts', '.tsx']
 const IGNORED_DIRECTORIES = new Set([
@@ -80,6 +80,15 @@ describe('bare ripgrep spawn boundary', () => {
     .map((file) => relative(repoRoot, file).split('\\').join('/'))
     .filter((path) => !isTestFile(path))
     .filter((path) => BARE_SPAWN_PATTERN.test(codeText(readFileSync(join(repoRoot, path), 'utf8'))))
+
+  it.each(['wslAwareSpawn', 'spawnProcess', 'runProcess', 'spawn', 'execFile'])(
+    'rejects a bare ripgrep command through %s',
+    (spawnName) => {
+      expect(BARE_SPAWN_PATTERN.test(`${spawnName}('rg', args, { cwd })`)).toBe(true)
+      expect(BARE_SPAWN_PATTERN.test(`${spawnName}(PATH_RIPGREP_COMMAND, args)`)).toBe(true)
+      expect(BARE_SPAWN_PATTERN.test(`${spawnName}(bundledCommand, args)`)).toBe(false)
+    }
+  )
 
   it('scans a plausible number of files', () => {
     // A broken root or extension list would make the guard silently vacuous.

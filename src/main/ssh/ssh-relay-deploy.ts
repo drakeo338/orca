@@ -617,24 +617,23 @@ async function deployAndLaunchRelayAttempt(
   }
   console.log('[ssh-relay] Relay started successfully')
 
-  // Why its own statement rather than the head of the chain below: bounded Quick Open search needs
-  // rg, but on a cold host this is a multi-MB upload, and chaining the sweep behind it would leave
-  // stale stages and superseded version dirs on the remote for its whole duration. The two touch
-  // different trees (`ripgrep/` is owned by no version GC), and neither delays connect.
-  // Why deploySignal is safe on a fire-and-forget call: the controller aborts only on the deploy
-  // timeout, never on success, so this cancels a still-running upload when the deploy gives up.
+  // Keep background commands serial for SSH transports that allow only one exec at a time.
   const ripgrepEntry = ripgrepLayout?.entryName
-  if (ripgrepReferenced) {
-    void ensureRemoteBundledRipgrep(conn, hostPlatform, remoteHome, {
-      signal: deploySignal
-    }).catch(() => {})
-  }
+  const ripgrepInstall = (
+    ripgrepReferenced
+      ? ensureRemoteBundledRipgrep(conn, hostPlatform, remoteHome, { signal: deploySignal })
+      : Promise.resolve()
+  ).catch(() => {})
+  const cleanupReady = conn.canRunConcurrentExecCommands() ? Promise.resolve() : ripgrepInstall
 
-  void execHostCommand(
-    conn,
-    hostPlatform,
-    recoverOneStaleRelayUploadStageCommand(hostPlatform, uploadStagePoolDir)
-  )
+  void cleanupReady
+    .then(() =>
+      execHostCommand(
+        conn,
+        hostPlatform,
+        recoverOneStaleRelayUploadStageCommand(hostPlatform, uploadStagePoolDir)
+      )
+    )
     .catch(() => {})
     // Why before GC: a superseded relay pins its version dir via the live-socket probe, so the
     // sweep has to settle first or GC keeps every orphan's tree forever.

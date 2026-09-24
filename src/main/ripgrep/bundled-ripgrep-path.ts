@@ -100,7 +100,7 @@ export function bundledRipgrepCommand(options: { wsl?: boolean } = {}): string {
 /**
  * Spawn options for a WSL-routed rg: inside the distro, pick the Linux build matching its own
  * architecture (Windows-on-ARM runs x64 Orca beside arm64 distros) from the Windows install via
- * wslpath (custom automount roots), else the distro's own rg when the install drive is not mounted.
+ * wslpath (custom automount roots). An inaccessible install fails through the missing-tool path.
  */
 export function bundledRipgrepWslSpawnOptions(command: string): { wslShellCommand?: string } {
   const ripgrepRoot = command.replace(/[\\/][^\\/]+[\\/][^\\/]+$/, '')
@@ -108,7 +108,7 @@ export function bundledRipgrepWslSpawnOptions(command: string): { wslShellComman
     return {}
   }
   return {
-    wslShellCommand: `"$(d=$(wslpath -u ${quotePosixShell(ripgrepRoot)} 2>/dev/null); case "$(uname -m)" in aarch64|arm64) a=linux-arm64;; *) a=linux-x64;; esac; if [ -n "$d" ] && [ -x "$d/$a/rg" ]; then printf %s "$d/$a/rg"; else printf rg; fi)"`
+    wslShellCommand: `"$(d=$(wslpath -u ${quotePosixShell(ripgrepRoot)} 2>/dev/null); case "$(uname -m)" in aarch64|arm64) a=linux-arm64;; *) a=linux-x64;; esac; if [ -n "$d" ]; then printf %s "$d/$a/rg"; else printf /dev/null/orca-ripgrep-unavailable; fi)"`
   }
 }
 

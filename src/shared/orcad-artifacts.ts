@@ -29,6 +29,7 @@ export const ORCAD_RIPGREP_LICENSE_ARTIFACTS = [
   'ripgrep/licenses/PCRE2-LICENCE.md',
   'ripgrep/licenses/README.md',
   'ripgrep/licenses/RUST-CRATE-NOTICES.txt',
+  'ripgrep/licenses/SLJIT-LICENSE',
   'ripgrep/licenses/UNLICENSE'
 ] as const
 

@@ -99,7 +99,7 @@ vi.mock('./ssh-connection-utils', () => ({
 import { deployAndLaunchRelay } from './ssh-relay-deploy'
 import { execCommand, waitForSentinel } from './ssh-relay-deploy-helpers'
 import { resolveRemoteNodePath } from './ssh-remote-node-resolution'
-import { isRelayAlreadyInstalled } from './ssh-relay-versioned-install'
+import { isRelayAlreadyInstalled, gcOldRelayVersions } from './ssh-relay-versioned-install'
 import { acquireInstallLock } from './ssh-relay-install-lock'
 import {
   ensureRemoteBundledRipgrep,
@@ -524,6 +524,30 @@ describe('deployAndLaunchRelay', () => {
     expect(launchCommand).not.toContain('--pty-source-credit-v1')
     expect(launchCommand).not.toContain('.pty-source-credit-policy')
   })
+
+  it.each([false, true])(
+    'waits for the ripgrep upload before cleanup (upload failure: %s)',
+    async (fails) => {
+      const conn = makeMockConnection()
+      vi.mocked(conn.canRunConcurrentExecCommands).mockReturnValue(false)
+      queueFreshLinuxDeploy()
+      let finishUpload = (): void => {}
+      vi.mocked(ensureRemoteBundledRipgrep).mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finishUpload = () => (fails ? reject(new Error('upload failed')) : resolve('present'))
+          })
+      )
+      await deployAndLaunchRelay(conn)
+      expect(ensureRemoteBundledRipgrep).toHaveBeenCalledOnce()
+      const execCount = vi.mocked(execCommand).mock.calls.length
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      expect(execCommand).toHaveBeenCalledTimes(execCount)
+      expect(gcOldRelayVersions).not.toHaveBeenCalled()
+      finishUpload()
+      await vi.waitFor(() => expect(gcOldRelayVersions).toHaveBeenCalledOnce())
+    }
+  )
 
   it('does not launch or upload an unprotected binary when recording its reference fails', async () => {
     const conn = makeMockConnection()

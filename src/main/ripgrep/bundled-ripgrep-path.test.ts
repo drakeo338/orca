@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { runProcess } from '../../shared/child-process/run-process'
 import { toBundledRipgrepPlatform } from '../../shared/bundled-ripgrep'
 import {
   bundledRipgrepCommand,
@@ -75,14 +76,34 @@ describe('bundled ripgrep path', () => {
     expect(bundledRipgrepContentKey('win32-x64')).not.toBe(key)
   })
 
-  it('picks the distro-arch Linux build via wslpath, else the distro rg', () => {
+  it('picks the distro-arch Linux build and fails closed when its drive is unavailable', () => {
     const { wslShellCommand } = bundledRipgrepWslSpawnOptions(
       'C:\\Program Files\\Orca\\resources\\ripgrep\\linux-x64\\rg'
     )
 
     expect(wslShellCommand).toContain(`wslpath -u 'C:\\Program Files\\Orca\\resources\\ripgrep'`)
     expect(wslShellCommand).toContain('aarch64|arm64) a=linux-arm64')
-    expect(wslShellCommand).toContain('else printf rg')
+    expect(wslShellCommand).toContain('printf %s "$d/$a/rg"')
+    expect(wslShellCommand).toContain('else printf /dev/null/orca-ripgrep-unavailable')
+    expect(wslShellCommand).not.toContain('else printf rg')
     expect(bundledRipgrepWslSpawnOptions('rg')).toEqual({})
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'never executes a PATH ripgrep when WSL cannot translate the install drive',
+    async () => {
+      const { wslShellCommand } = bundledRipgrepWslSpawnOptions(
+        'C:\\Orca\\resources\\ripgrep\\linux-x64\\rg'
+      )
+      const result = await runProcess({
+        program: '/bin/bash',
+        args: [
+          '-c',
+          `wslpath() { return 1; }; rg() { echo WRONG_RIPGREP; }; ${wslShellCommand} --version`
+        ]
+      })
+      expect(result.code).toBeGreaterThan(2)
+      expect(result.stdout).not.toContain('WRONG_RIPGREP')
+    }
+  )
 })
