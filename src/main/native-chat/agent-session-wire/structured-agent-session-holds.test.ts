@@ -2,6 +2,7 @@
 // deadline that keeps teardown from hanging.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { runKeyedSerializedOperation } from '../../cli/keyed-promise-queue'
 import { StructuredAgentSessionHolders } from './structured-agent-session-holders'
 import { StructuredAgentSessionReleaseClock } from './structured-agent-session-release-clock'
 import { StructuredAgentSessionHolds } from './structured-agent-session-holds'
@@ -15,6 +16,13 @@ import {
 } from './structured-agent-session-eviction-deadline'
 
 const clocks: StructuredAgentSessionReleaseClock[] = []
+
+/** The host's per-session queue, so a hold and a writer really take turns. */
+function keyedSerialize() {
+  const chains = new Map<string, Promise<void>>()
+  return <T>(sessionId: string, task: () => Promise<T>) =>
+    runKeyedSerializedOperation(chains, sessionId, task)
+}
 
 function clock(deps: {
   isWorking?: () => boolean
@@ -109,6 +117,42 @@ describe('the release clock', () => {
     expect(evict).not.toHaveBeenCalled()
   })
 
+  it('keeps an idle unheld child for thirty minutes, and activity starts the window over', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const evict = vi.fn(async () => {})
+      const idle = new StructuredAgentSessionReleaseClock({
+        hasOwedWork: () => false,
+        isHeld: () => false,
+        evict
+      })
+      clocks.push(idle)
+      const minutes = (count: number) => vi.advanceTimersByTimeAsync(count * 60_000)
+
+      idle.arm('session-1')
+      await minutes(20)
+      idle.renew('session-1')
+      await minutes(29)
+      expect(evict).not.toHaveBeenCalled()
+
+      await minutes(1)
+      expect(evict).toHaveBeenCalledWith('session-1')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not start a window for a session nothing released', async () => {
+    const evict = vi.fn(async () => {})
+    const releasing = clock({ evict })
+
+    releasing.renew('session-1')
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    expect(releasing.isArmed('session-1')).toBe(false)
+    expect(evict).not.toHaveBeenCalled()
+  })
+
   it('reports a failed eviction rather than swallowing it', async () => {
     const onError = vi.fn()
     const releasing = clock({
@@ -134,9 +178,11 @@ describe('holds', () => {
     let child = false
     const resume = vi.fn(async () => {
       child = true
+      return { ok: true as const }
     })
     const holds = new StructuredAgentSessionHolds({
       resume,
+      serialize: keyedSerialize(),
       hasProviderChild: () => child,
       isWorking: () => false,
       evict: async () => {},
@@ -155,10 +201,66 @@ describe('holds', () => {
     holds.dispose()
   })
 
+  it('runs one resume for a writer and a hold that ask in the same gap', async () => {
+    const gate = Promise.withResolvers<void>()
+    let child = false
+    const resume = vi.fn(async () => {
+      await gate.promise
+      child = true
+      return { ok: true as const }
+    })
+    const serialize = keyedSerialize()
+    const holds = new StructuredAgentSessionHolds({
+      resume,
+      serialize,
+      hasProviderChild: () => child,
+      hasOwedWork: () => false,
+      evict: async () => {},
+      graceMs: 1
+    })
+
+    // A send's ensure-owner step: already inside the session's serialize when it asks.
+    const writer = serialize('session-1', () => holds.ensureProviderChild('session-1'))
+    const hold = holds.hold('session-1', 'chat-1')
+    gate.resolve()
+
+    await expect(writer).resolves.toEqual({ ok: true })
+    await hold
+    // The hold ran after the writer's step and found the child: nothing to resume.
+    expect(resume).toHaveBeenCalledOnce()
+    // The surface arrived while the writer's resume ran, so the child it got is held, not idle.
+    expect(holds.isHeld('session-1')).toBe(true)
+    expect(holds.isReleasePending('session-1')).toBe(false)
+    holds.dispose()
+  })
+
+  it('puts a child a writer resumed with no surface on the idle clock', async () => {
+    let child = false
+    const serialize = keyedSerialize()
+    const holds = new StructuredAgentSessionHolds({
+      resume: async () => {
+        child = true
+        return { ok: true as const }
+      },
+      serialize,
+      hasProviderChild: () => child,
+      hasOwedWork: () => false,
+      evict: async () => {},
+      graceMs: 60_000
+    })
+
+    await serialize('session-1', () => holds.ensureProviderChild('session-1'))
+
+    expect(holds.isHeld('session-1')).toBe(false)
+    expect(holds.isReleasePending('session-1')).toBe(true)
+    holds.dispose()
+  })
+
   it('never arms the clock for a session with nothing to stop', async () => {
     const evict = vi.fn(async () => {})
     const holds = new StructuredAgentSessionHolds({
-      resume: async () => {},
+      resume: async () => ({ ok: true as const }),
+      serialize: keyedSerialize(),
       hasProviderChild: () => false,
       isWorking: () => false,
       evict,
@@ -176,7 +278,8 @@ describe('holds', () => {
 
   it('fails a write-capable hold when resume proves no provider child', async () => {
     const holds = new StructuredAgentSessionHolds({
-      resume: async () => {},
+      resume: async () => ({ ok: true as const }),
+      serialize: keyedSerialize(),
       hasProviderChild: () => false,
       isWorking: () => false,
       evict: async () => {},

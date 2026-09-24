@@ -1,4 +1,5 @@
-// The delay between "nothing holds this session" and "stop its provider child".
+// The delay between "nothing holds this session and nothing has happened in it" and "stop its
+// provider child".
 //
 // TWO reasons it is not immediate. A surface that reconnects — a mobile socket dropping on a
 // network switch, a renderer remounting a tab — releases and re-holds within a second, and killing
@@ -10,7 +11,7 @@
 // RE-ARMS instead of evicting. That is what makes the wait start at the later of the two events
 // rather than at whichever came first.
 
-export const STRUCTURED_AGENT_SESSION_RELEASE_GRACE_MS = 15_000
+export const STRUCTURED_AGENT_SESSION_RELEASE_GRACE_MS = 30 * 60_000
 
 export type StructuredAgentSessionReleaseClockDeps = {
   /** Never evict a session that shows as working; a true answer re-arms the clock instead. */
@@ -39,6 +40,13 @@ export class StructuredAgentSessionReleaseClock {
     // A pending release must never be the reason a process stays alive at quit.
     timer.unref?.()
     this.timers.set(sessionId, timer)
+  }
+
+  /** Activity in an unheld session: the idle window starts over. */
+  renew(sessionId: string): void {
+    if (this.timers.has(sessionId)) {
+      this.arm(sessionId)
+    }
   }
 
   cancel(sessionId: string): void {

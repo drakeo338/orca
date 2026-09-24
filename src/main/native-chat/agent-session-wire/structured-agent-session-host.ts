@@ -69,7 +69,8 @@ export class StructuredAgentSessionHost {
   private readonly clientDelivery = new StructuredAgentSessionClientDelivery(
     this.sessions,
     () => this.now(),
-    () => this.deps
+    () => this.deps,
+    (sessionId) => this.holds.renew(sessionId)
   )
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
@@ -114,18 +115,17 @@ export class StructuredAgentSessionHost {
     this.handoffs = createStructuredAgentSessionHostHandoff(deps, {
       session: (sessionId) => this.requireSession(sessionId),
       findSession: (sessionId) => this.sessions.get(sessionId),
-      eventSink: (sessionId) => this.runtimeState.eventSinkFor(sessionId),
+      eventSinks: this.runtimeState,
       flush: (sessionId) => this.flushStreamedEvents(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
       subscribers: this.subscribers,
       publishStatus: this.clientDelivery.publishStatus,
       now: this.now
     })
-    this.holds = createStructuredAgentSessionHolds(this.lifetimeContext(), {
-      reconcileLeases: this.reconcileLeases,
-      attach: (params) => this.attach({ callerKey: 'trusted-local:surface-hold' }, params),
-      close: (sessionId) => this.close(sessionId)
-    })
+    this.holds = createStructuredAgentSessionHolds(
+      () => this.attachContext(),
+      (sessionId) => this.close(sessionId)
+    )
     this.restore = createStructuredAgentSessionHostRestore(deps, this.sessions, () => this.now(), {
       reconcile: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
@@ -148,9 +148,11 @@ export class StructuredAgentSessionHost {
         this.subscribers.snapshot(sessionId, session.journal, session.fence),
       publishStatus: this.clientDelivery.publishStatusAndSettlement,
       hasResumeCapableHolder: (sessionId) => this.holds.hasResumeCapableHolder(sessionId),
-      serialize: (sessionId, task) => this.serialize(sessionId, task),
+      restartReleaseGrace: (sessionId) => this.holds.renew(sessionId),
+      // Tracked: a quit drains a queued restart before it evicts, so no child outlives it.
+      serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
       now: () => this.now(),
-      attachContext: () => this.attachContext(),
+      ensureProviderChild: (id, options) => this.holds.ensureProviderChild(id, options),
       onBarrierError: (sessionId, error) => deps.onEventSinkError?.({ sessionId, error })
     })
     this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
@@ -173,7 +175,7 @@ export class StructuredAgentSessionHost {
     options?: StructuredAgentSessionHoldOptions
   ): Promise<void> => this.holds.hold(sessionId, holderId, options)
 
-  /** That surface is gone. The child outlives it by the release grace, and by any running turn. */
+  /** That surface is gone. The child outlives it by the idle window, and by any running turn. */
   release = (sessionId: string, holderId: string): void => this.holds.release(sessionId, holderId)
 
   handleAdapterEvent = (event: Parameters<StructuredAgentSessionEventRecovery['handle']>[0]) =>
@@ -207,8 +209,7 @@ export class StructuredAgentSessionHost {
       await this.handoffs.closeRetainedTuiOwner(sessionId)
       await evictHeldStructuredAgentSession(this.lifetimeContext(), sessionId)
       this.clientDelivery.closeSession(sessionId)
-      // Whoever asked for the close, the surfaces that were holding this session are looking at a
-      // session that no longer exists. A failed eviction throws above and keeps them.
+      // The holders now look at a session that is gone; a failed eviction throws above, keeping them.
       this.holds.forget(sessionId)
     })
   }
@@ -278,12 +279,13 @@ export class StructuredAgentSessionHost {
       flushStreamedEvents: this.flushStreamedEvents,
       requireSession: (sessionId) => this.requireSession(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
+      holds: this.holds,
+      restoreReadable: (sessionId) => this.restore.restoreReadableUnderSerialize(sessionId),
       now: () => this.now()
     }
   }
 
-  send = (...args: Parameters<StructuredConversationCommandController['send']>) =>
-    this.conversationCommands.send(...args)
+  send = this.conversationCommands.send
 
   waitForSendSettlement = this.clientDelivery.waitForSendSettlement
 
