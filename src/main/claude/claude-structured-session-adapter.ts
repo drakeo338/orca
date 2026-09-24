@@ -23,8 +23,7 @@ import {
 import { closeAllClaudeSessions, closeClaudeSession } from './claude-structured-session-close'
 import { ClaudeReleasedChildCleanup } from './claude-released-child-cleanup'
 import {
-  retireClaudeReleasedSession,
-  retireClaudeSessionSupersededByFence,
+  retireClaudeSessionReleasedThrough,
   type ClaudeSessionRetirementInput
 } from './claude-structured-session-retirement'
 import {
@@ -97,7 +96,10 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
         settleExit: (sessionId, exit) =>
           settleClaudeUnexpectedExit(this.exitLifecycle, sessionId, exit),
         retireSuperseded: (sessionId, fence) =>
-          retireClaudeSessionSupersededByFence({ ...this.retirement(sessionId), fence })
+          retireClaudeSessionReleasedThrough({
+            ...this.retirement(sessionId),
+            releasedFence: fence - 1
+          })
       }
     })
   }
@@ -115,8 +117,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
 
   /** The host released this session's lease: drop it from the index and settle what it owned. */
-  acknowledgeSessionRelease = (sessionId: string): void => {
-    retireClaudeReleasedSession(this.retirement(sessionId))
+  acknowledgeSessionRelease = (sessionId: string, releasedFence: number): void => {
+    retireClaudeSessionReleasedThrough({ ...this.retirement(sessionId), releasedFence })
   }
 
   private deliver(attempt: ClaudeAcquisitionAttempt, sessionId: string, event: () => void): void {
