@@ -446,26 +446,30 @@ const MERMAID_PACKAGE = 'node_modules/mermaid/'
  *   modules        4220 -> 4219   (-1)
  *   local modules  1034 -> 1033   (-1)
  *
- * Host naming adds three local modules and no package: the shared display resolver and platform
- * label, plus the in-memory `src/transport/host-descriptor-store.ts`. The status gate above every
- * route writes the descriptor and the docked host header reads it.
+ * #22301 (`25d7c21fcb`) then added `src/shared/agent-session-context-usage.ts` and
+ * `src/shared/agent-session-context-usage-schema.ts`, which `agent-session-wire.ts` and
+ * `agent-session-journal-types.ts` on this route import. Two local modules; it touched nothing under
+ * `mobile/`, so its own CI never ran this suite.
  *
- *   modules        4219 -> 4222   (+3)
- *   local modules  1033 -> 1036   (+3)
+ *   modules        4219 -> 4221   (+2)
+ *   local modules  1033 -> 1035   (+2)
  *
- * #22301 (`25d7c21fcb`) added `src/shared/agent-session-context-usage.ts` and its schema, which
- * this route reaches. Two local modules; like #22452, its own CI never ran this suite.
+ * The browser pane's double buffer then moved into one pacer module, replacing the frame-apply
+ * hook, the pane-layers hook and the layer-flip module. Measured on main after the squash.
  *
- *   modules        4222 -> 4224   (+2)
- *   local modules  1036 -> 1038   (+2)
+ *   modules        4221 -> 4219   (-2)
+ *   local modules  1035 -> 1033   (-2)
  *
- * Host naming then took the machine name from the desktop on every connection. The status gate
- * records through `src/transport/host-descriptor-recorder.ts`, the capability probe became a
- * projection of the retrying `src/transport/runtime-status-probe.ts`, and the host header reads
- * `src/transport/use-host-display.ts`. Three local modules, measured.
+ * Host naming adds eight local modules and no package: the shared display resolver and platform
+ * label; `src/transport/mobile-runtime-host-platform.ts`, which the status reply and stored profile
+ * now read; the in-memory `src/transport/host-descriptor-store.ts` and
+ * `src/transport/host-descriptor-recorder.ts`, which the status gate above every route writes
+ * through, reaching the page's no-op `src/transport/host-store.web.ts`;
+ * `src/transport/runtime-status-probe.ts`, which the capability probe now projects; and
+ * `src/transport/use-host-display.ts`, which the docked host header reads. Measured on the merge.
  *
- *   modules        4224 -> 4227   (+3)
- *   local modules  1038 -> 1041   (+3)
+ *   modules        4219 -> 4227   (+8)
+ *   local modules  1033 -> 1041   (+8)
  */
 const SESSION_ROUTE_MODULES = 4227
 
