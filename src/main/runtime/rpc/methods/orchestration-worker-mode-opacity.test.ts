@@ -86,7 +86,9 @@ function installStructuredCoordinator(handle: string, sessionId: string): string
             deathEvidence: null,
             runtimeFence: 1
           }
-        })
+        }),
+        // No committed /clear: each session is its own conversation's root.
+        listRecords: () => []
       }
     }
   } as never)
