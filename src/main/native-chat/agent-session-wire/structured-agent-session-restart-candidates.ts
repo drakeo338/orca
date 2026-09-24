@@ -53,26 +53,30 @@ export function createStructuredAgentSessionRestartCandidateReader(deps: {
   adapter: StructuredAgentSessionAdapter
 }): StructuredAgentSessionRestartCandidateReader {
   return (markers, leaseState, options = {}) => {
-    const items = new Map<string, AgentJournalRenderItem[]>()
-    const itemsFor = (sessionId: string): AgentJournalRenderItem[] => {
-      let snapshot = items.get(sessionId)
-      if (!snapshot) {
-        snapshot = deps.sessions.get(sessionId)?.journal.snapshot().items ?? []
-        if (options.pendingContinuationId) {
-          const ownItemId = agentJournalSubmissionKey(options.pendingContinuationId)
-          snapshot = snapshot.filter((item) => item.itemId !== ownItemId)
-        }
-        items.set(sessionId, snapshot)
+    const items = new Map<string, AgentJournalRenderItem[] | undefined>()
+    const itemsFor = (sessionId: string): AgentJournalRenderItem[] | undefined => {
+      if (items.has(sessionId)) {
+        return items.get(sessionId)
       }
+      let snapshot = deps.sessions.get(sessionId)?.journal.snapshot().items
+      if (snapshot && options.pendingContinuationId) {
+        const ownItemId = agentJournalSubmissionKey(options.pendingContinuationId)
+        snapshot = snapshot.filter((item) => item.itemId !== ownItemId)
+      }
+      items.set(sessionId, snapshot)
       return snapshot
     }
     return structuredAgentSessionResumableSet({
       markers,
       getRecord: deps.getRecord,
       supportsRecord: (record) => adapterSupportsRecord(deps.adapter, record),
-      latestPrompt: (sessionId) => latestStructuredAgentSessionPrompt(itemsFor(sessionId)),
-      latestUserItemId: (sessionId) =>
-        latestStructuredAgentSessionUserItem(itemsFor(sessionId))?.itemId ?? null,
+      latestPrompt: (sessionId) => latestStructuredAgentSessionPrompt(itemsFor(sessionId) ?? []),
+      latestUserItemId: (sessionId) => {
+        const snapshot = itemsFor(sessionId)
+        return snapshot === undefined
+          ? undefined
+          : (latestStructuredAgentSessionUserItem(snapshot)?.itemId ?? null)
+      },
       leaseState
     })
   }

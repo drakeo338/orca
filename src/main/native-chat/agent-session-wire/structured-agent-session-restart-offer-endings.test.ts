@@ -3,6 +3,7 @@
 
 import { expect, it, vi } from 'vitest'
 import { AgentSessionRecoveryCapsule } from '../../runtime/agent-session-recovery-capsule'
+import { StructuredAgentSessionReadableRestorer } from './structured-agent-session-readable-restorer'
 import { interruptedRestart } from './structured-agent-session-restart-interruption-test-harness'
 import { CALLER, envelope } from './structured-agent-session-host-test-harness'
 import {
@@ -28,6 +29,22 @@ it('deletes the offer once the user sends their own message in that chat', async
     expect(await capsule.list(NOW)).toEqual([])
   })
   host.release(SESSION, 'pane')
+})
+
+// A journal this host cannot read says nothing about the user moving on, so it must not end the offer.
+it('keeps the offer when the chat cannot be read on this host', async () => {
+  const { host, root } = await interruptedRestart('submission')
+  const capsule = new AgentSessionRecoveryCapsule(root)
+  const restoring = vi
+    .spyOn(StructuredAgentSessionReadableRestorer.prototype, 'restoreOne')
+    .mockRejectedValue(new Error('journal unreadable'))
+  try {
+    expect(await host.restartResume.list()).toMatchObject([{ sessionId: SESSION }])
+  } finally {
+    restoring.mockRestore()
+  }
+  expect(await capsule.list(NOW)).toHaveLength(1)
+  expect(await host.restartResume.list()).toMatchObject([{ sessionId: SESSION }])
 })
 
 // Closing the chat is discarding it; its offer must not outlive it in the restart dialog.

@@ -75,7 +75,8 @@ export type StructuredAgentSessionResumeSetInput = {
   getRecord: (sessionId: string) => AgentSessionRecord | null
   supportsRecord: (record: AgentSessionRecord) => boolean
   latestPrompt: (sessionId: string) => string
-  latestUserItemId: (sessionId: string) => string | null
+  /** Undefined when the chat's journal is not readable here, which decides nothing. */
+  latestUserItemId: (sessionId: string) => string | null | undefined
   /**
    * Whether the lease must be free.
    *
@@ -109,7 +110,8 @@ export function structuredAgentSessionResumableSet(
     }
     // The user moving on is the one thing that withdraws the offer. Anything the provider does on
     // its own after reattaching — a turn it opens, a prompt, restated rows — is not.
-    if (input.latestUserItemId(marker.sessionId) !== marker.latestUserItemId) {
+    const latestUserItemId = input.latestUserItemId(marker.sessionId)
+    if (latestUserItemId !== undefined && latestUserItemId !== marker.latestUserItemId) {
       superseded.push(marker)
       continue
     }
