@@ -1,4 +1,5 @@
 import { settledClaudeTurnEndLeaf } from './claude-structured-resume-point'
+import type { ClaudeReleasedChildCleanup } from './claude-released-child-cleanup'
 import {
   claudeRootExitObserved,
   settleClaudeExitedSession
@@ -17,6 +18,8 @@ export type ClaudeExitLifecycle = {
   exits: Map<string, ClaudeSessionExit>
   /** A settled exit's diagnostic, kept for a send admitted before the host heard of the exit. */
   settledExitErrors: Map<string, Error>
+  /** Re-checks an exit whose close saw a descendant alive, so its `ended` is never withheld for good. */
+  cleanup: ClaudeReleasedChildCleanup
   deps: Pick<ClaudeStructuredSessionAdapterDeps, 'persistHandle' | 'now'>
   emit: (session: ClaudeSession, event: ClaudeStructuredSessionEvent) => void
 }
@@ -49,11 +52,23 @@ export function observeClaudeSessionExit(
         return settleClaudeUnexpectedExit(lifecycle, sessionId, exit)
       }
       // The lease follows the root, so a first-hand root exit publishes `ended` even while the
-      // tree is unverifiable; only a descendant seen alive withholds it.
+      // tree is unverifiable. A descendant seen alive only defers it: the bounded cleanup re-runs
+      // the ladder and publishes on proof, or at give-up with the last verdict reported.
       if (claudeRootExitObserved(session.connection)) {
-        exit.endedWithTreeUnproven = true
+        exit.ended = 'published'
         return settleClaudeUnexpectedExit(lifecycle, sessionId, exit)
       }
+      const verdict = session.connection.exitVerdict
+      if (verdict.root !== 'exited' || verdict.tree !== 'live') {
+        return undefined
+      }
+      exit.ended = 'withheld'
+      lifecycle.cleanup.adopt(sessionId, session.connection, (treeProven) => {
+        if (!treeProven) {
+          exit.ended = 'published'
+        }
+        void settleClaudeUnexpectedExit(lifecycle, sessionId, exit).catch(() => undefined)
+      })
       return undefined
     })
     .catch(() => undefined)
@@ -83,7 +98,7 @@ export function settleClaudeUnexpectedExit(
       return
     }
     // Unproven descendants stay indexed as evidence until the host's release retires them.
-    if (!exit.endedWithTreeUnproven) {
+    if (exit.ended !== 'published') {
       exits.delete(sessionId)
     }
     lifecycle.settledExitErrors.set(sessionId, exit.error)
