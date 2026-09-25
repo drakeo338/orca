@@ -26,6 +26,8 @@ export function useHostModelCatalogUpgrade(args: {
   enabled: boolean
   /** A launch runs the CLI default when nothing is seeded; a reopened session may not. */
   namesDefault: boolean
+  /** Where the launch runs: the host names no default its config could replace. */
+  worktree?: string
   fence: number | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
@@ -41,7 +43,8 @@ export function useHostModelCatalogUpgrade(args: {
     optionCatalog,
     sessionId,
     target,
-    updateOptionState
+    updateOptionState,
+    worktree
   } = args
   useEffect(() => {
     if (!enabled || !optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
@@ -51,7 +54,7 @@ export function useHostModelCatalogUpgrade(args: {
     void callStructuredAgentSession<AgentSessionModelCatalogResult>(
       target,
       'agentSession.modelCatalog',
-      { agent, sessionId }
+      { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
     )
       .then((catalog) => {
         if (!stale) {
@@ -77,6 +80,7 @@ export function useHostModelCatalogUpgrade(args: {
     optionCatalog,
     sessionId,
     target,
-    updateOptionState
+    updateOptionState,
+    worktree
   ])
 }

@@ -6,7 +6,7 @@ import type { StructuredAgentSessionState } from '../../../../shared/structured-
 import type * as LaunchIntentModule from '@/lib/launch-structured-agent-session'
 
 const mocks = vi.hoisted(() => ({
-  call: vi.fn<(target: unknown, method: string) => Promise<unknown>>(),
+  call: vi.fn<(target: unknown, method: string, params?: unknown) => Promise<unknown>>(),
   launch: vi.fn<(intent: { sessionId: string }) => Promise<{ sessionId: string; fence: number }>>()
 }))
 
@@ -135,6 +135,12 @@ describe('a chat pane over its own launch', () => {
     act(() => saveSelection('gpt-5.6-luna'))
     rerender()
     expect(currentModel(result.current.optionSnapshot)).toBe('gpt-5.5')
+    // The catalog read names where this chat runs, so the host can check that workspace's config.
+    expect(mocks.call).toHaveBeenCalledWith(
+      LOCAL_TARGET,
+      'agentSession.modelCatalog',
+      expect.objectContaining({ worktree: 'id:wt-second' })
+    )
   })
 
   it('shows a pick the launch could not apply the way a refused option change is shown', async () => {

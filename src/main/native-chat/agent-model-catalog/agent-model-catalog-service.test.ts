@@ -163,4 +163,55 @@ describe('agent model catalog service', () => {
     expect(await service.read({ agent: 'codex' })).toEqual({ origin: 'unknown' })
     expect(probe).not.toHaveBeenCalled()
   })
+
+  describe('a read for the workspace a new chat runs in', () => {
+    function serviceWith(mayOverride: boolean) {
+      const store = new AgentModelCatalogStore()
+      store.recordSuccess(selectedHomeFingerprint('/homes/selected'), 'codex', listing('gpt-user'))
+      const workspaceMayOverrideDefaultModel = vi.fn(async () => mayOverride)
+      const service = createAgentModelCatalogService({
+        store,
+        getRecord: () => undefined,
+        resolveAccountHome: async () => CODEX_HOME('/homes/selected'),
+        workspaceMayOverrideDefaultModel
+      })
+      return { service, workspaceMayOverrideDefaultModel }
+    }
+
+    function defaults(
+      result: Awaited<ReturnType<ReturnType<typeof serviceWith>['service']['read']>>
+    ) {
+      return result.origin === 'unknown' ? null : result.models.map((model) => model.isDefault)
+    }
+
+    it('names no default when the workspace config could pick another model', async () => {
+      const { service, workspaceMayOverrideDefaultModel } = serviceWith(true)
+      const result = await service.read({ agent: 'codex', workspacePath: '/repo/wt' })
+      expect(defaults(result)).toEqual([false])
+      expect(workspaceMayOverrideDefaultModel).toHaveBeenCalledWith({
+        agent: 'codex',
+        workspacePath: '/repo/wt',
+        accountHomePath: '/homes/selected'
+      })
+    })
+
+    it('keeps the listed default when nothing in the workspace can replace it', async () => {
+      const { service } = serviceWith(false)
+      expect(defaults(await service.read({ agent: 'codex', workspacePath: '/repo/wt' }))).toEqual([
+        true
+      ])
+    })
+
+    it('names no default for a workspace it could not place on this machine', async () => {
+      const { service, workspaceMayOverrideDefaultModel } = serviceWith(false)
+      expect(defaults(await service.read({ agent: 'codex', workspacePath: null }))).toEqual([false])
+      expect(workspaceMayOverrideDefaultModel).not.toHaveBeenCalled()
+    })
+
+    it('leaves a read that names no workspace as it was', async () => {
+      const { service, workspaceMayOverrideDefaultModel } = serviceWith(true)
+      expect(defaults(await service.read({ agent: 'codex' }))).toEqual([true])
+      expect(workspaceMayOverrideDefaultModel).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -7,6 +7,7 @@ import {
   useStructuredAgentSessionLaunchLifecycle,
   useStructuredAgentSessionLaunchSelection
 } from '@/lib/structured-agent-session-launch'
+import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 
 /** A chat this view launched: a new conversation, or one resumed from history. */
 export type StructuredAgentSessionLaunchView = {
@@ -15,6 +16,8 @@ export type StructuredAgentSessionLaunchView = {
   seedOptions?: Readonly<Record<string, string>>
   /** Picks the launch holds and applies before it publishes. */
   heldOptions: Readonly<Record<string, string>>
+  /** Where the chat runs; its own config may replace the listed default. */
+  worktree?: string
 }
 
 const NO_HELD_OPTIONS: Readonly<Record<string, string>> = {}
@@ -28,6 +31,7 @@ type LatchedLaunch = {
  *  runs its own options. The seed follows the launch while it lives (a retry or accepted pick). */
 function useLatchedLaunchView(
   sessionId: string,
+  worktreeId: string | null | undefined,
   launching: boolean
 ): StructuredAgentSessionLaunchView | undefined {
   const selection = useStructuredAgentSessionLaunchSelection(sessionId)
@@ -49,10 +53,11 @@ function useLatchedLaunchView(
         ? {
             kind: latched.kind,
             ...(latched.seed ? { seedOptions: latched.seed } : {}),
-            heldOptions: held
+            heldOptions: held,
+            ...(worktreeId ? { worktree: toRuntimeWorktreeSelector(worktreeId) } : {})
           }
         : undefined,
-    [held, latched]
+    [held, latched, worktreeId]
   )
 }
 
@@ -62,7 +67,7 @@ export function useNativeChatProvisionalLaunch(
 ) {
   const lifecycle = useStructuredAgentSessionLaunchLifecycle(worktreeId ?? '', sessionId)
   const failureReason = useStructuredAgentSessionLaunchFailureReason(worktreeId ?? '', sessionId)
-  const launch = useLatchedLaunchView(sessionId, lifecycle !== null)
+  const launch = useLatchedLaunchView(sessionId, worktreeId, lifecycle !== null)
   const retry = useCallback(() => {
     if (worktreeId) {
       retryStructuredAgentSessionLaunch(worktreeId, sessionId)

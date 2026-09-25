@@ -71,6 +71,7 @@ type RenderProps = {
   hidden?: boolean
   launchSeedOptions?: Record<string, string>
   heldOptions?: Record<string, string>
+  worktree?: string
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
@@ -101,7 +102,8 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
               launch: {
                 kind: props.launch,
                 ...(props.launchSeedOptions ? { seedOptions: props.launchSeedOptions } : {}),
-                heldOptions: props.heldOptions ?? {}
+                heldOptions: props.heldOptions ?? {},
+                ...(props.worktree ? { worktree: props.worktree } : {})
               }
             }
           : {})
@@ -267,6 +269,32 @@ describe('useStructuredAgentSessionOptions', () => {
       ])
       expect(mocks.enqueue).not.toHaveBeenCalled()
       unmount()
+    })
+
+    it('names the worktree a new chat runs in, so its own config can withhold the default', async () => {
+      answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+      const { unmount } = renderOptions(
+        { ...PROVISIONAL, worktree: 'id:wt-1' },
+        mutateWith(async () => null).mutate
+      )
+      await waitFor(() =>
+        expect(mocks.call).toHaveBeenCalledWith(LOCAL_TARGET, 'agentSession.modelCatalog', {
+          agent: 'codex',
+          sessionId: 'session-1',
+          worktree: 'id:wt-1'
+        })
+      )
+      unmount()
+      mocks.call.mockClear()
+      // A resumed chat names no listed default, so its read asks nothing of the workspace.
+      renderOptions(
+        { ...PROVISIONAL, launch: 'resume', worktree: 'id:wt-1' },
+        mutateWith(async () => null).mutate
+      ).unmount()
+      expect(mocks.call).toHaveBeenCalledWith(LOCAL_TARGET, 'agentSession.modelCatalog', {
+        agent: 'codex',
+        sessionId: 'session-1'
+      })
     })
 
     it('names the host catalog default when no selection is stored', async () => {

@@ -123,6 +123,15 @@ export class OrcaRuntimeWithResolveRecoveredStructuredTuiTranscript extends Orca
     }
   }
 
+  /** Where a structured chat here would run, when that is a directory on this machine. */
+  async resolveStructuredAgentSessionLocalWorkspacePath(worktreeSelector: string) {
+    const location = await this.resolveStructuredAgentSessionLocation(worktreeSelector)
+    if (location.executionHostId !== LOCAL_EXECUTION_HOST_ID || location.wslDistro) {
+      return null
+    }
+    return (await this.resolveRuntimeFileTarget(worktreeSelector)).worktree.path
+  }
+
   async resolveStructuredAgentSessionCreateIntent(input: {
     envelope: { sessionId: string; clientOperationId: string }
     worktree: string

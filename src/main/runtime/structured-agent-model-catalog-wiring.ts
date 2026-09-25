@@ -7,6 +7,7 @@ import {
 } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
 import { createCodexModelCatalogProbe } from '../codex/codex-model-catalog-probe'
 import { createClaudeModelCatalogProbe } from '../claude/claude-model-catalog-probe'
+import { workspaceMayOverrideDefaultModel } from '../native-chat/agent-model-catalog/agent-project-model-override'
 import type { ClaudeStructuredLaunchResolverDeps } from '../claude/claude-structured-launch-resolution'
 import type { CodexStructuredLaunchResolverDeps } from '../codex/codex-structured-launch-resolution'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
@@ -68,6 +69,7 @@ export async function modelCatalogHostDeps(input: {
     store: agentModelCatalogStore,
     getRecord: (sessionId) => input.store.getRecord(sessionId) ?? undefined,
     resolveAccountHome: deps.resolveAgentAccountHome,
+    workspaceMayOverrideDefaultModel,
     probes: {
       codex: createCodexModelCatalogProbe({
         resolveEnvironment: input.envResolvers.resolveCodexEnvironment,

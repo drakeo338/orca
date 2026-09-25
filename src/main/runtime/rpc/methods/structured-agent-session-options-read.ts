@@ -21,7 +21,18 @@ export const STRUCTURED_AGENT_SESSION_OPTIONS_READ_METHODS = [
   defineMethod({
     name: 'agentSession.modelCatalog',
     params: ModelCatalogParams,
-    handler: async (params, ctx) =>
-      (await requireHost(ctx).deps.modelCatalog?.read(params)) ?? { origin: 'unknown' as const }
+    handler: async ({ worktree, ...params }, ctx) => {
+      const catalog = requireHost(ctx).deps.modelCatalog
+      if (!catalog) {
+        return { origin: 'unknown' as const }
+      }
+      if (worktree === undefined) {
+        return catalog.read(params)
+      }
+      const workspacePath = await ctx.runtime
+        .resolveStructuredAgentSessionLocalWorkspacePath(worktree)
+        .catch(() => null)
+      return catalog.read({ ...params, workspacePath })
+    }
   })
 ]

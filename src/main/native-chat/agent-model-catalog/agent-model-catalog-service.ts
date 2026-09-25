@@ -21,21 +21,55 @@ export type AgentModelCatalogServiceDeps = {
   ) => Promise<{ variable: 'CLAUDE_CONFIG_DIR' | 'CODEX_HOME'; path: string }>
   /** Session-less listers, one per agent that has one on this host. */
   probes?: Partial<Record<'claude' | 'codex', AgentModelCatalogProbe>>
+  /** Whether the workspace's own config could pick a model other than the listed default. */
+  workspaceMayOverrideDefaultModel?: (input: {
+    agent: 'claude' | 'codex'
+    workspacePath: string
+    accountHomePath: string
+  }) => Promise<boolean>
 }
 
 export type AgentModelCatalogService = {
   read: (params: {
     agent: 'claude' | 'codex'
     sessionId?: string
+    /** Where a new chat would run; null when one was named but is not a local directory. */
+    workspacePath?: string | null
   }) => Promise<AgentSessionModelCatalogResult>
 }
 
-function resultFromEntry(entry: AgentModelCatalogEntry): AgentSessionModelCatalogResult {
+function resultFromEntry(
+  entry: AgentModelCatalogEntry,
+  namesDefault: boolean
+): AgentSessionModelCatalogResult {
   return {
     origin: entry.origin,
-    models: entry.models.map((model) => ({ ...model })),
+    // Without a default the picker names nothing until the chat reports its model.
+    models: entry.models.map((model) =>
+      namesDefault ? { ...model } : { ...model, isDefault: false }
+    ),
     ...(entry.fastModeSupport ? { fastModeSupport: entry.fastModeSupport } : {}),
     fetchedAt: entry.fetchedAt
+  }
+}
+
+/** A named workspace keeps the listed default only when none of its own config can replace it. */
+async function workspaceKeepsListedDefault(
+  deps: AgentModelCatalogServiceDeps,
+  agent: 'claude' | 'codex',
+  workspacePath: string | null | undefined,
+  accountHomePath: string | null
+): Promise<boolean> {
+  if (workspacePath === undefined) {
+    return true
+  }
+  if (workspacePath === null || !accountHomePath || !deps.workspaceMayOverrideDefaultModel) {
+    return false
+  }
+  try {
+    return !(await deps.workspaceMayOverrideDefaultModel({ agent, workspacePath, accountHomePath }))
+  } catch {
+    return false
   }
 }
 
@@ -82,7 +116,13 @@ export function createAgentModelCatalogService(
         const home = accountHomePath
         void deps.store.refresh(fingerprint, params.agent, () => probe(home))
       }
-      return entry ? resultFromEntry(entry) : { origin: 'unknown' }
+      if (!entry) {
+        return { origin: 'unknown' }
+      }
+      return resultFromEntry(
+        entry,
+        await workspaceKeepsListedDefault(deps, params.agent, params.workspacePath, accountHomePath)
+      )
     }
   }
 }
