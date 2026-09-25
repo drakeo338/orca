@@ -211,3 +211,22 @@ Native build, focused TypeScript/oxlint/formatting, changed-code quality and dif
 checks passed. Package and reverse-map queries were empty after cleanup; the
 headless emulator exited 0 and its dedicated AVD was deleted. No PR was opened;
 independent follow-up review remains required.
+
+### Fixture startup correction
+
+Independent tracing resolved the earlier duplicate B load: delayed initial
+`index.html` writes reached Vite's watcher after startup, queuing a full reload
+before B connected. The fixture now excludes that exact immutable HTML path from
+watching; `revision.js` remains watched. No delay, retry, or load-count relaxation
+is needed.
+
+[watcher-evidence.json](./watcher-evidence.json) retains a controlled before/after
+regression and the native validation summary. Rewriting identical HTML before the
+first WebSocket connection queued and delivered a real full reload on the old
+fixture; the corrected fixture ignored it. Both fixtures still emitted real Vite
+module updates when `revision.js` changed. The corrected normal Android scenario
+passed, and both directional no-op controls reached their intended lifecycle
+assertion with one load per document. Each scenario ran once after emulator boot;
+a separate pre-boot invocation stopped before installation or route creation.
+Raw evidence and the reproduction driver remain under `/tmp/orca-watcher-fix`.
+Independent focused re-review is still required before publication.

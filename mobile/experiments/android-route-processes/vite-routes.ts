@@ -2,7 +2,7 @@ import { mkdtemp, writeFile, rm, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { connect } from 'node:net'
-import { createServer } from 'vite'
+import { createServer, normalizePath } from 'vite'
 import { RemoteBrowserSocksServer } from '../../../src/main/browser/remote-browser-socks-server'
 
 export async function createRoute(route: string) {
@@ -60,7 +60,13 @@ if (import.meta.hot) import.meta.hot.accept('/revision.js', module => {
       configFile: false,
       root,
       logLevel: 'error',
-      server: { host: '127.0.0.1', port: 0, hmr: { clientPort: 5173 } },
+      server: {
+        host: '127.0.0.1',
+        port: 0,
+        hmr: { clientPort: 5173 },
+        // Late creation events for immutable HTML must not queue a startup reload.
+        watch: { ignored: [normalizePath(join(root, 'index.html'))] }
+      },
       plugins: [
         {
           name: 'route-reports',
