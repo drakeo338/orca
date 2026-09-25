@@ -40,6 +40,9 @@ export type AgentStatusStoreMode = 'authority' | 'replica'
 
 export type AgentStatusStore = {
   getParent(subject: AgentStatusSubject): AgentStatusParentRecord | null
+  /** Every parent in insertion order, without materializing the child records a snapshot holds. */
+  getParents(): AgentStatusParentRecord[]
+  getRevision(): { epoch: string; revision: number }
   getChildren(subject: AgentStatusSubject): AgentChildWorkRecord[]
   getChild(childWorkId: string): AgentChildWorkRecord | null
   getAlias(identity: AgentChildWorkAliasIdentity): AgentChildWorkAliasRecord | null
@@ -75,6 +78,12 @@ export function createAgentStatusStore(options: CreateAgentStatusStoreOptions): 
       }
       const record = state.parents.get(serializeAgentStatusSubject(parsed))
       return record ? deepFreezeAgentStatusStoreValue(parseAgentStatusParentRecord(record)) : null
+    },
+    getParents() {
+      return [...state.parents.values()]
+    },
+    getRevision() {
+      return { epoch: state.epoch, revision: state.revision }
     },
     getChildren(subject) {
       const parsed = parseAgentStatusSubject(subject)

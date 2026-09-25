@@ -2,10 +2,7 @@ import {
   parseAgentChildWorkAliasRecord,
   type AgentChildWorkAliasRecord
 } from './agent-status-child-work-alias'
-import {
-  deserializeAgentChildWorkBindingKey,
-  serializeAgentChildWorkBindingKey
-} from './agent-status-child-work-binding'
+import { serializeAgentChildWorkBindingKey } from './agent-status-child-work-binding'
 import {
   agentChildWorkBelongsTo,
   agentChildWorkFencesEqual,
@@ -28,7 +25,6 @@ import {
   parseAgentStatusTombstoneRecord
 } from './agent-status-store-codec'
 import {
-  deserializeAgentStatusFactKey,
   parseAgentStatusFactRecord,
   serializeAgentStatusFactKey
 } from './agent-status-store-fact-codec'
@@ -36,7 +32,8 @@ import {
   parseAgentStatusParentRecord,
   type AgentStatusParentRecord
 } from './agent-status-store-parent'
-import { deserializeAgentStatusSubject, serializeAgentStatusSubject } from './agent-status-subject'
+import { storedBindingKey, storedTombstoneKeyIsValid } from './agent-status-store-record-keys'
+import { serializeAgentStatusSubject } from './agent-status-subject'
 
 export type AgentStatusStoreState = {
   epoch: string
@@ -151,7 +148,7 @@ export function validateAgentStatusStoreState(state: AgentStatusStoreState): boo
     const child = state.children.get(alias.childWorkId)
     const tombstone = state.tombstones.get(agentStatusTombstoneMapKey('alias', key))
     if (
-      key !== serializeAgentChildWorkBindingKey(alias) ||
+      key !== storedBindingKey(alias) ||
       alias.revision > state.revision ||
       !child ||
       !agentChildWorkBelongsTo(child, alias.parent) ||
@@ -175,12 +172,7 @@ export function validateAgentStatusStoreState(state: AgentStatusStoreState): boo
     }
   }
   for (const item of state.tombstones.values()) {
-    if (
-      item.revision > state.revision ||
-      (item.entity === 'parent' && !deserializeAgentStatusSubject(item.key)) ||
-      (item.entity === 'alias' && !deserializeAgentChildWorkBindingKey(item.key)) ||
-      (item.entity === 'fact' && !deserializeAgentStatusFactKey(item.key))
-    ) {
+    if (item.revision > state.revision || !storedTombstoneKeyIsValid(item)) {
       return false
     }
   }

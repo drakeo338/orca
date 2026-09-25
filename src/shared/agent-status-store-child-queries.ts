@@ -3,7 +3,7 @@ import {
   type AgentChildWorkAliasInput,
   type AgentChildWorkAliasRecord
 } from './agent-status-child-work-alias'
-import { deserializeAgentChildWorkBindingKey } from './agent-status-child-work-binding'
+import { storedAliasKey, storedRetiredAlias } from './agent-status-store-record-keys'
 import {
   deepFreezeAgentStatusStoreValue,
   type AgentStatusStoreState
@@ -17,7 +17,7 @@ export function resolveAgentStatusChildBindings(
   const keys = new Set(aliases.map(serializeAgentChildWorkAliasKey))
   const matches: AgentChildWorkAliasRecord[] = []
   for (const alias of state.aliases.values()) {
-    if (keys.has(serializeAgentChildWorkAliasKey(alias))) {
+    if (keys.has(storedAliasKey(alias))) {
       matches.push(alias)
     }
   }
@@ -25,9 +25,11 @@ export function resolveAgentStatusChildBindings(
     if (tombstone.entity !== 'alias' || state.aliases.has(tombstone.key)) {
       continue
     }
-    const alias = deserializeAgentChildWorkBindingKey(tombstone.key)
-    if (alias && keys.has(serializeAgentChildWorkAliasKey(alias))) {
-      matches.push(deepFreezeAgentStatusStoreValue({ ...alias, revision: tombstone.revision }))
+    const retired = storedRetiredAlias(tombstone)
+    if (retired && keys.has(retired.key)) {
+      matches.push(
+        deepFreezeAgentStatusStoreValue({ ...retired.alias, revision: tombstone.revision })
+      )
     }
   }
   return matches

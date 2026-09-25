@@ -174,6 +174,9 @@ export function reconcileAgentChildWorkEvidence(
       )
     }
   }
-  trimSettled(ctx)
+  // Only a settle adds settled history; skipping the scan otherwise keeps progress edges cheap.
+  if (ctx.outcome.settled > 0) {
+    trimSettled(ctx)
+  }
   return ctx.outcome
 }
