@@ -8,12 +8,12 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import type { AgentSessionWireRefusalCode } from '../../../shared/agent-session-wire-refusals'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../shared/tui-agent-display-names'
-import { boundJournalStatusText } from '../agent-session-journal/journal-prompt-body-bounds'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import {
   ownerRestartFailedOutcome,
   providerStartupFailureOutcome
 } from './structured-agent-session-dead-generation-settlement'
+import { recordStructuredAgentSessionStartFailure } from './structured-agent-session-start-failure-row'
 
 export type StructuredAgentSessionResumeRefusalOutcome = 'transient' | 'failed' | 'unresumable'
 
@@ -66,9 +66,8 @@ export function failedStructuredAgentSessionResumeText(
       })
 }
 
-/** Writes the refused resume into the chat and publishes it to every open surface. The journal is
- *  made readable for it when the failed attach left none behind. Bookkeeping: a write that fails is
- *  reported and never changes the refusal the asker gets. */
+/** Writes the refused resume into the chat as a start that failed, once per attempt. Bookkeeping:
+ *  a write that fails is reported and never changes the refusal the asker gets. */
 export async function recordFailedStructuredAgentSessionResume(input: {
   context: Pick<StructuredAgentSessionAttachContext, 'deps' | 'sessions' | 'subscribers'>
   restoreReadable: (sessionId: string) => Promise<boolean>
@@ -83,36 +82,16 @@ export async function recordFailedStructuredAgentSessionResume(input: {
     return
   }
   try {
-    if (!context.sessions.has(sessionId)) {
-      await input.restoreReadable(sessionId)
-    }
-    const session = context.sessions.get(sessionId)
-    if (!session) {
-      return
-    }
-    // A child the failed attach proved gone died starting: the host reads that off the session the
-    // same way whether the child died before it was published or after.
-    if (refusal.ownerVerdict === 'exited') {
-      session.providerChildPhase = 'starting'
-    }
-    const settlementId = `failed-restart:${input.operationId}`
-    await session.journal.appendLifecycleBatch({
-      settlementId,
-      fence: session.fence,
-      recovered: true,
-      mutations: [
-        {
-          kind: 'item',
-          identity: { provider: 'orca', clientMessageId: settlementId },
-          body: {
-            kind: 'status',
-            text: boundJournalStatusText(failedStructuredAgentSessionResumeText(record, refusal)),
-            tone: 'error'
-          }
-        }
-      ]
-    })
-    context.subscribers.publish(sessionId, session.journal)
+    await recordStructuredAgentSessionStartFailure(
+      {
+        sessions: context.sessions,
+        restoreReadable: input.restoreReadable,
+        publish: (id, journal) => context.subscribers.publish(id, journal)
+      },
+      sessionId,
+      `failed-restart:${input.operationId}`,
+      failedStructuredAgentSessionResumeText(record, refusal)
+    )
   } catch (error) {
     context.deps.onEventSinkError?.({ sessionId, error })
   }

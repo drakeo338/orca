@@ -14,7 +14,9 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import { providerStartupFailureOutcome } from './structured-agent-session-dead-generation-settlement'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { recordStructuredAgentSessionStartFailure } from './structured-agent-session-start-failure-row'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -247,5 +249,43 @@ describe('a restart whose child is published and then dies starting', () => {
     expect(deliveredErrorRows(events).map((item) => item.body)).toEqual([
       { kind: 'status', text: ROW_TEXT, tone: 'error' }
     ])
+  })
+})
+
+describe('a chat whose create made the conversation but not its agent', () => {
+  it('is not started by the pane that opens it; the first send starts it', async () => {
+    // A failed create answers a readable chat whose first row is the start failure.
+    const events = await openChatWithoutChild()
+    await recordStructuredAgentSessionStartFailure(
+      {
+        sessions: host['sessions'],
+        restoreReadable: (id) => host['restore'].restoreReadableUnderSerialize(id),
+        publish: (id, journal) => host['subscribers'].publish(id, journal)
+      },
+      SESSION,
+      'failed-start:create',
+      providerStartupFailureOutcome(CAUSE)
+    )
+
+    await viewHold()
+    expect(acquire).not.toHaveBeenCalled()
+    expect(deliveredErrorRows(events).map((item) => item.body)).toEqual([
+      { kind: 'status', text: ROW_TEXT, tone: 'error' }
+    ])
+
+    await expect(host.send(CALLER, sendParams('hello'))).resolves.toMatchObject({ ok: true })
+    expect(acquire).toHaveBeenCalledOnce()
+  })
+})
+
+describe('a chat this host cannot run', () => {
+  it('says so once, not once per view', async () => {
+    const events = await openChatWithoutChild()
+    host.deps.adapter.supportsLocation = () => false
+
+    await expect(viewHold()).rejects.toThrow('structured_agent_session_unsupported')
+    await viewHold()
+
+    expect(deliveredErrorRows(events)).toHaveLength(1)
   })
 })
