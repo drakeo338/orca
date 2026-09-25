@@ -215,7 +215,7 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
   }
 
   protected buildColdRestorePayload(restoreInfo: ColdRestoreInfo): ColdRestorePayload | null {
-    // Why: alt-screen prefers normal scrollback, else snapshotAnsi alone — not rehydrate, which starts with \x1b[?1049h that POST_REPLAY_MODE_RESET won't undo — so a hibernated TUI's last frame isn't blank on wake.
+    // Why no rehydrate on alt-screen: its ?1049h would paint the TUI frame on the alt buffer, which the appended ground's ?1049l then discards.
     const scrollback = restoreInfo.modes.alternateScreen
       ? restoreInfo.scrollbackAnsi || restoreInfo.snapshotAnsi || null
       : restoreInfo.rehydrateSequences + restoreInfo.snapshotAnsi

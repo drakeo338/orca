@@ -59,8 +59,9 @@ const SHOW_CURSOR = '\x1b[?25h'
  * The one "the process that armed these modes is gone" reset, for every boundary
  * the daemon or main knows (cold-restore seed) or proves (recovery barrier). It must stay
  * inert for ownership: no OSC 133 and no enables the lifecycle scanner treats as a new owner.
+ * Kitty is reset on both sides of `?1049l` because kitty stacks are per screen.
  */
-export const PROCESS_BOUNDARY_GROUND = `${ABORT_TRUNCATED_CONTROL_STRING}${LEAVE_ALTERNATE_SCREEN_KEEPING_NORMAL_CURSOR}${RESET_MOUSE_REPORTING}${RESET_LEGACY_MOUSE_ENCODINGS}${RESET_FOCUS_REPORTING}${RESET_BRACKETED_PASTE}${RESET_APPLICATION_CURSOR_AND_KEYPAD}${SHOW_CURSOR}${RESET_TERMINAL_CURSOR_STYLE}${RESET_KITTY_KEYBOARD_PROTOCOL}${RESET_GRAPHIC_RENDITION}${SAVE_GROUNDED_CURSOR}`
+export const PROCESS_BOUNDARY_GROUND = `${RESET_KITTY_KEYBOARD_PROTOCOL}${LEAVE_ALTERNATE_SCREEN_KEEPING_NORMAL_CURSOR}${RESET_MOUSE_REPORTING}${RESET_LEGACY_MOUSE_ENCODINGS}${RESET_FOCUS_REPORTING}${RESET_BRACKETED_PASTE}${RESET_APPLICATION_CURSOR_AND_KEYPAD}${SHOW_CURSOR}${RESET_TERMINAL_CURSOR_STYLE}${RESET_KITTY_KEYBOARD_PROTOCOL}${RESET_GRAPHIC_RENDITION}${SAVE_GROUNDED_CURSOR}`
 
 // Live-stream grounding: the drop marker and the abandon paths, which drain
 // queued chunks instead of repainting. Parser + pen only — a live TUI keeps

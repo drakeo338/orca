@@ -1,3 +1,4 @@
+import { Terminal } from '@xterm/headless'
 import { describe, expect, it } from 'vitest'
 import {
   POST_REPLAY_LIVE_AGENT_REATTACH_RESET,
@@ -50,8 +51,21 @@ describe('terminal mode reset profiles', () => {
   // Why: the one reset for a process boundary (cold-restore seed, proven crash).
   it('pins the process boundary ground', () => {
     expect(PROCESS_BOUNDARY_GROUND).toBe(
-      '\x18\x1b7\x1b[?1049l\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l\x1b[?1005l\x1b[?1015l\x1b[?1004l\x1b[?2004l\x1b[?1l\x1b[?66l\x1b[?25h\x1b[0 q\x1b[<99u\x1b[=0u\x1b[0m\x1b7'
+      '\x1b[<99u\x1b[=0u\x1b7\x1b[?1049l\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l\x1b[?1005l\x1b[?1015l\x1b[?1004l\x1b[?2004l\x1b[?1l\x1b[?66l\x1b[?25h\x1b[0 q\x1b[<99u\x1b[=0u\x1b[0m\x1b7'
     )
+  })
+
+  it("clears a dead TUI's alternate-screen kitty flags for the next alternate-screen app", async () => {
+    const term = new Terminal({ allowProposedApi: true, vtExtensions: { kittyKeyboard: true } })
+    const replies: string[] = []
+    term.onData((data) => replies.push(data))
+    const write = (data: string): Promise<void> =>
+      new Promise((resolve) => term.write(data, resolve))
+    await write(`\x1b[?1049h\x1b[>7u\x1b[>1u${PROCESS_BOUNDARY_GROUND}\x1b[?1049h`)
+    // Query, then pop once and query again: an empty stack pops to 0.
+    await write('\x1b[?u\x1b[<1u\x1b[?u')
+    expect(replies).toEqual(['\x1b[?0u', '\x1b[?0u'])
+    term.dispose()
   })
 
   // Why: the recovery barrier scans it for ownership, so it may only disable modes.
@@ -61,7 +75,11 @@ describe('terminal mode reset profiles', () => {
     expect(enabled.map((mode) => mode.slice(0, mode.indexOf('h')))).toEqual(['25'])
     expect(PROCESS_BOUNDARY_GROUND).not.toContain('\x1b]133;')
     expect(PROCESS_BOUNDARY_GROUND).not.toContain('\x1b[>')
-    expect(PROCESS_BOUNDARY_GROUND.split('\x1b[=').slice(1)).toEqual(['0u\x1b[0m\x1b7'])
+    expect(
+      PROCESS_BOUNDARY_GROUND.split('\x1b[=')
+        .slice(1)
+        .map((set) => set.slice(0, 2))
+    ).toEqual(['0u', '0u'])
   })
 
   // Why byte equality and not just `not.toContain`: a profile that lost every mode
