@@ -75,6 +75,8 @@ async function persistLiveOwner(): Promise<void> {
     },
     now: NOW
   })
+  // Commits the visibility index, so a later hide changes nothing but a pending rewrite.
+  await store.setSessionTabVisibility(SESSION, false)
 }
 
 describe('a lease the removed terminal handoff wrote', () => {
