@@ -184,9 +184,10 @@ async function runSteps(steps: readonly { data: string; confirm?: boolean }[]) {
     await session.settleShellOwnershipConfirmation()
   }
   const snapshot = session.getSnapshot()
+  const records = session.takePendingOutput(false)?.records ?? []
   const proofs = sub.confirmShellForeground.mock.calls.length
   session.dispose()
-  return { snapshot, proofs }
+  return { snapshot, records, proofs }
 }
 
 describe('host-armed modes survive and command-armed modes do not', () => {
@@ -213,6 +214,25 @@ describe('host-armed modes survive and command-armed modes do not', () => {
     ])
 
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
+  })
+
+  it('keeps host focus through a mid-command RIS that ConPTY answers by re-arming it', async () => {
+    const { snapshot, records } = await runSteps([
+      { data: `\x1b[?1004h${PROMPT_START}PS> ${COMMAND_START}` },
+      {
+        data: `\x1bc\x1b[?1004h\x1b[?9001h\x1b[?1000hRUN\r\n\x1b]133;D;0\x07${PROMPT_START}PS> `,
+        confirm: true
+      }
+    ])
+
+    expect(
+      records.some(
+        (record) =>
+          record.kind === 'output' && record.data.includes(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`)
+      )
+    ).toBe(true)
+    expect(snapshot?.modes.mouseTrackingMode).toBe('none')
+    expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
   })
 
   it('keeps a host mode host-owned when a program re-sends its enable', async () => {

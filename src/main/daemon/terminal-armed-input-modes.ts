@@ -130,9 +130,13 @@ export class TerminalArmedInputModes {
     return modes.length > 0 ? `\x1b[?${modes.join(';')}h` : ''
   }
 
-  /** `ESC c`: every mode is off, but a running command is still running. */
+  /** `ESC c`: modes go off but host ownership stands (ConPTY re-arms ?1004h itself). */
   reset(): void {
-    this.owners.clear()
+    for (const [key, owner] of this.owners) {
+      if (owner !== 'host' || typeof key !== 'number') {
+        this.owners.delete(key)
+      }
+    }
     this.kittyFlags = 0
     this.kittyMainFlags = 0
     this.kittyAltFlags = 0
