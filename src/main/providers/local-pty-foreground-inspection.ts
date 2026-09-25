@@ -13,7 +13,7 @@ import {
   ptyAgentForegroundContextPaths,
   ptyLastRecognizedForeground,
   ptyProcesses,
-  ptyShellName,
+  getPtyShellName,
   ptyShellPath
 } from './local-pty-provider-state'
 import { resolveStableForegroundProcess } from './stable-foreground-process'
@@ -39,7 +39,7 @@ export function inspectLocalPtyChildProcesses(id: string): PtyChildProcessVerdic
   }
   try {
     const foreground = proc.process
-    const shell = ptyShellName.get(id)
+    const shell = getPtyShellName(id)
     if (!shell) {
       return 'children'
     }
@@ -90,7 +90,7 @@ export async function getLocalPtyForegroundProcess(id: string): Promise<string |
   }
   const fallbackProcess = resolveForegroundFallbackProcess(
     proc.process || null,
-    ptyShellName.get(id)
+    getPtyShellName(id)
   )
   const cachedEntry = ptyLastRecognizedForeground.get(id)
   const cachedAgent = cachedEntry?.name ?? null
@@ -236,7 +236,7 @@ export async function confirmLocalPtyForegroundProcess(id: string): Promise<stri
   try {
     const resolution = await resolveAgentForegroundProcessWithAvailability(
       proc.pid,
-      resolveForegroundFallbackProcess(proc.process || null, ptyShellName.get(id)),
+      resolveForegroundFallbackProcess(proc.process || null, getPtyShellName(id)),
       {
         contextPaths: ptyAgentForegroundContextPaths.get(id),
         fresh: true,

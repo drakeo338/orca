@@ -93,7 +93,8 @@ export async function confirmShellForegroundProcess(
       return false
     }
     const tree = [{ ...root, depth: 0 }, ...collectDescendantsFromIndex(index, shellPid)]
-    const spawnedShellBasename = executableBasename(spawnedShellProcess)
+    // A path, not a command line: splitting on whitespace would cut `/Users/John Doe/bin/zsh` to `john`.
+    const spawnedShellBasename = spawnedShellProcess.split(/[\\/]/).pop()?.toLowerCase() ?? ''
     const foregroundShell = tree
       .filter(
         (row) =>

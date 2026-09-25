@@ -38,34 +38,29 @@ export async function isWindowsShellAloneInJob(
   if (members.length !== jobProcessIds.size) {
     return false
   }
+  const startMsByPid = new Map(members.map((row) => [row.pid, row.creationTimeMs]))
   const visited = new Set([shellPid])
-  let parent = members.find((row) => row.pid === shellPid)
-  while (parent && visited.size < members.length) {
-    const current = parent
-    const children = members.filter((row) => row.ppid === current.pid && !visited.has(row.pid))
+  let parentPid = shellPid
+  while (visited.size < members.length) {
+    const children = members.filter((row) => row.ppid === parentPid && !visited.has(row.pid))
     const child = children[0]
     if (
       children.length !== 1 ||
-      !child ||
       child.name.toLowerCase() !== MSYS_BASH_IMAGE ||
-      startedBefore(child, current)
+      startedBefore(child.creationTimeMs, startMsByPid.get(parentPid))
     ) {
       return false
     }
     visited.add(child.pid)
-    parent = child
+    parentPid = child.pid
   }
-  return parent !== undefined && visited.size === members.length
+  return true
 }
 
 /** A child older than its parent carries a reused ppid; only checkable when the snapshot has start times. */
 function startedBefore(
-  child: WindowsProcessIdentityRow,
-  parent: WindowsProcessIdentityRow
+  childStartMs: number | undefined,
+  parentStartMs: number | undefined
 ): boolean {
-  return (
-    child.creationTimeMs !== undefined &&
-    parent.creationTimeMs !== undefined &&
-    child.creationTimeMs < parent.creationTimeMs
-  )
+  return childStartMs !== undefined && parentStartMs !== undefined && childStartMs < parentStartMs
 }

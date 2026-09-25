@@ -116,9 +116,8 @@ export function isGitForWindowsBashPath(shellPath: string): boolean {
 
 /** Git for Windows' `bin\bash.exe` is a launcher: it runs `..\usr\bin\bash.exe` as a child and waits. */
 export function isGitForWindowsBashLauncherPath(shellPath: string): boolean {
-  return (
-    isGitForWindowsBashPath(shellPath) &&
-    !pathWin32.normalize(shellPath).toLowerCase().endsWith('\\usr\\bin\\bash.exe')
+  return /(?:^|\\)(?:git|portablegit)\\bin\\bash\.exe$/.test(
+    pathWin32.normalize(shellPath).toLowerCase()
   )
 }
 
