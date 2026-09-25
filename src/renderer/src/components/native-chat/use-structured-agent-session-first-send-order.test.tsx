@@ -53,7 +53,6 @@ function sessionState(fence: number | null): StructuredAgentSessionState {
     retainedItemLimit: 1_024,
     hasOlder: false,
     status: 'ready',
-    error: null,
     handoff: null,
     commands: []
   }
@@ -77,13 +76,11 @@ describe('a pick and a first message made while the chat launches', () => {
         return { ok: true, value: { key: 'model', value: 'gpt-picked' } }
       }
       if (method === 'agentSession.send') {
-        const envelope = (params as { envelope: { clientOperationId: string } }).envelope
-        return {
-          ok: true,
-          value: {
-            submission: { clientMessageId: envelope.clientOperationId, dispatchState: 'accepted' }
-          }
-        }
+        const clientMessageId =
+          typeof params === 'object' && params !== null && 'clientMessageId' in params
+            ? params.clientMessageId
+            : undefined
+        return { ok: true, value: { submission: { clientMessageId, dispatchState: 'accepted' } } }
       }
       return new Promise(() => {})
     })
