@@ -68,6 +68,20 @@ function opensNewTurn(event: AgentHookEventPayload): boolean {
   )
 }
 
+/** A child's own event: one naming its agent id, or a teammate's idle, which names it by `teammate_name` only. */
+function isChildAttributed(event: AgentHookEventPayload): boolean {
+  return event.toolAgentId !== undefined || event.hookEventName === 'TeammateIdle'
+}
+
+/** A child restates its listener's cached prompt, which a restarted relay has lost; empty there is unknown, not another turn. */
+function restatesAnotherPrompt(
+  previous: EnrichedAgentHookEventPayload,
+  incoming: AgentHookEventPayload
+): boolean {
+  const prompt = incoming.payload.prompt
+  return prompt !== previous.payload.prompt && (prompt !== '' || !isChildAttributed(incoming))
+}
+
 /**
  * The store's hold on a cancel verdict against restatements that predate it: a relay never learns
  * of the cancel the desktop infers, and TUIs emit late same-turn hooks after Ctrl+C. The latch dies
@@ -85,7 +99,7 @@ export function resolveCancelVerdictLatch(
     !previous ||
     !isCancelVerdictLatched(previous) ||
     previous.payload.agentType !== incoming.payload.agentType ||
-    previous.payload.prompt !== incoming.payload.prompt ||
+    restatesAnotherPrompt(previous, incoming) ||
     incoming.payload.mainAgent?.state === 'done' ||
     opensNewTurn(incoming)
   ) {
@@ -97,7 +111,7 @@ export function resolveCancelVerdictLatch(
     latched &&
     incoming.payload.agentType !== 'codex' &&
     incoming.payload.state !== 'done' &&
-    (incoming.toolAgentId !== undefined || incoming.isReplay === true) &&
+    (isChildAttributed(incoming) || incoming.isReplay === true) &&
     carriesChildWork(incoming)
   ) {
     return { hold: false, event: refoldUnderLatchedMainAgent(previous, latched, incoming) }
