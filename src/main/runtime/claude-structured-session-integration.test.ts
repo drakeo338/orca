@@ -557,8 +557,10 @@ describe('a structured Claude session over agentSession.*', () => {
     expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'released', handoffStage: null })
   })
 
-  it('reconciles a Claude crash whose descendants could not be verified at once', async () => {
+  it('restarts an open chat after a Claude crash whose descendants could not be verified', async () => {
     await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    // The open chat surface is what asks the host to bring Claude back.
+    await getStructuredAgentSessionHost()?.hold(SESSION, 'desktop-chat:open')
     const connection = claude.live()
     connection.exitVerdict = { root: 'exited', tree: 'unverifiable' }
     connection.close = async () => {
@@ -569,7 +571,9 @@ describe('a structured Claude session over agentSession.*', () => {
 
     // Held back, sends failed with the crash until the idle clock stopped the chat.
     await waitForStructuredAgentSessionRecovery()
-    expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'released', handoffStage: null })
+    expect(claude.connections).toHaveLength(2)
+    expect(claude.live().launch.options).toMatchObject({ resume: PROVIDER_SESSION })
+    expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'live', handoffStage: null })
   })
 
   it('creates, sends, streams, approves, interrupts, and resumes from the chain head', async () => {
