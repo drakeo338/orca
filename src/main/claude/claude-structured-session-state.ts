@@ -19,6 +19,7 @@ import type {
 } from '../../shared/agent-session-wire'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
+import type { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import type { ClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
 
@@ -161,6 +162,8 @@ export type ClaudeSession = {
   /** CLI-advertised protocol capabilities from init; gates interrupt-receipt handling. */
   capabilities: readonly string[]
   backgroundTasks: ClaudeBackgroundTaskTracker
+  /** Each child's own task frames, as evidence for the host's child records. */
+  childWork: ClaudeChildWorkDecoder
   /** The `/` surface the CLI reports for itself; seeded from init, kept current
    *  by later init and `commands_changed` frames. */
   commands: ClaudeSlashCommandCatalog

@@ -121,7 +121,7 @@ export function applyAgentChildWorkLive(
   ctx: AgentChildWorkEvidenceContext,
   child: AgentChildWorkLiveObservation,
   observedAt: number,
-  listed: boolean
+  restart: boolean
 ): void {
   const { handle } = child
   const resolution = resolveAgentChildWorkHandle(ctx, [handle.idKind], handle.id)
@@ -159,9 +159,9 @@ export function applyAgentChildWorkLive(
   if (run === 'previous') {
     return
   }
-  // A different spawn call for the same child is the provider starting it again; an
-  // authoritative inventory listing a settled child is the provider saying it runs again.
-  if (run === 'new' || (existing.membership === 'settled' && listed)) {
+  // A different spawn call for the same child is the provider starting it again, and so is a
+  // start the producer reports for a child that had ended.
+  if (run === 'new' || (existing.membership === 'settled' && restart)) {
     const result = ctx.admission.resume({
       // A reclassification lands on the next edge: resume keeps the kind its bindings carry.
       ...liveFields(ctx, { ...child, kind: existing.kind }, observedAt, existing, null),

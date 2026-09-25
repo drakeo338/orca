@@ -113,6 +113,7 @@ async function finalizeClaudePublishedSession(
     }
     return false
   }
+  session.childWork.clear()
   if (session.backgroundTasks.clear()) {
     input.onBackgroundTasksChanged?.(input.sessionId, null)
   }

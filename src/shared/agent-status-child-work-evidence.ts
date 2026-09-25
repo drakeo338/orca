@@ -46,6 +46,8 @@ export type AgentChildWorkLiveEvidence = {
   type: 'live'
   observedAt: number
   child: AgentChildWorkLiveObservation
+  /** The provider started a child that had ended: a new run, even under the same run handle. */
+  restart?: true
 }
 
 /** A child's own tool traffic: the call it has open now, or that none is open any more. Applies

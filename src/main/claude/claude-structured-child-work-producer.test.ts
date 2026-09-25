@@ -1,166 +1,19 @@
 // A Claude session's frames, through the real adapter, into the host's child records: the order
-// the host receives them in, and whether the parent row the records imply is today's row.
+// the host receives them in, and the record each child ends up with.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { foldAgentLeadStatus } from '../../shared/agent-lead-status-fold'
-import { createAgentChildWorkAdmission } from '../../shared/agent-status-child-work-admission'
-import type { AgentChildWorkRecord } from '../../shared/agent-status-child-work'
-import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
-import { agentChildWorkLiveness } from '../../shared/agent-status-child-work-liveness'
 import {
-  reconcileAgentChildWorkEvidence,
-  type AgentChildWorkReconcileOutcome
-} from '../../shared/agent-status-child-work-reconciliation'
-import { createAgentStatusStore } from '../../shared/agent-status-store'
-import { makeStructuredAgentStatusSubject } from '../../shared/agent-status-subject'
-import { AgentHookServer } from '../agent-hooks/server'
-import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
-import {
-  fakeClaude,
-  identityFor,
-  PROVIDER_SESSION_ID
-} from './claude-structured-session-test-support'
+  frame,
+  hostWithParent,
+  producer,
+  system,
+  toolResult,
+  toolUse
+} from './claude-child-work-producer-harness.test-fixture'
 
 vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
 vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: vi.fn(() => ({})) }))
 afterEach(() => vi.restoreAllMocks())
-
-const parent = makeStructuredAgentStatusSubject(
-  {
-    executionHostId: 'local',
-    wslDistro: null,
-    workspaceId: 'workspace-1',
-    workspaceKind: 'folder'
-  },
-  'session-1'
-)
-
-let uuid = 0
-function frame(fields: Record<string, unknown>): Record<string, unknown> {
-  return { session_id: PROVIDER_SESSION_ID, uuid: `frame-${++uuid}`, ...fields }
-}
-function system(subtype: string, fields: Record<string, unknown>) {
-  return frame({ type: 'system', subtype, ...fields })
-}
-function toolUse(id: string, name: string, input: unknown, parentToolUseId: string | null = null) {
-  return frame({
-    type: 'assistant',
-    parent_tool_use_id: parentToolUseId,
-    message: {
-      id: `msg-${id}`,
-      role: 'assistant',
-      content: [{ type: 'tool_use', id, name, input }]
-    }
-  })
-}
-function toolResult(
-  toolUseId: string,
-  text: string,
-  parentToolUseId: string | null = null,
-  isError = false
-) {
-  return frame({
-    type: 'user',
-    parent_tool_use_id: parentToolUseId,
-    message: {
-      role: 'user',
-      content: [{ type: 'tool_result', tool_use_id: toolUseId, content: text, is_error: isError }]
-    }
-  })
-}
-
-type Delivery = { kind: 'journal' | 'legacy' | 'evidence'; detail: string }
-
-/** A real hook server already holding the session's parent row. */
-function hostWithParent(): AgentHookServer {
-  const host = new AgentHookServer()
-  host.ingestStructuredStatus(
-    {
-      sessionId: parent.sessionId,
-      workspaceId: parent.workspaceId,
-      agent: 'claude',
-      status: 'working',
-      hostExecutionOwned: true,
-      latestPrompt: 'find the flaky tests',
-      updatedAt: 100
-    },
-    parent
-  )
-  return host
-}
-
-/** With `host`, evidence goes through the host's own ingest instead of straight to reconciliation. */
-async function producer(host?: AgentHookServer) {
-  const claude = fakeClaude()
-  const store = createAgentStatusStore({ epoch: 'epoch-1', mode: 'authority' })
-  expect(store.applyMutation({ parent: { subject: parent } })).not.toBeNull()
-  const admission = createAgentChildWorkAdmission(store, {
-    mintChildWorkId: (() => {
-      let minted = 0
-      return () => `child-${++minted}`
-    })()
-  })
-  const deliveries: Delivery[] = []
-  /** The producer linkage the journal stamped on each child row. */
-  const stamps: { providerParentRef?: string; attempt?: number }[] = []
-  const evidenceLog: AgentChildWorkEvidence[][] = []
-  const ingested: (AgentChildWorkReconcileOutcome | null)[] = []
-  const adapter = new ClaudeStructuredSessionAdapter({
-    resolveLaunch: async () => ({
-      pathToClaudeCodeExecutable: 'claude',
-      options: {},
-      cwd: '/work/repo',
-      claudeConfigDir: '/accounts/claude',
-      providerSessionId: PROVIDER_SESSION_ID,
-      resumeLeafUuid: null,
-      resumesTranscript: false,
-      continuesChain: false
-    }),
-    openConnection: claude.openConnection,
-    readProcessStartTime: async () => 1_700_000_000_000,
-    now: () => 1_700_000_000_500,
-    persistHandle: async () => {},
-    onBackgroundTasksChanged: (_sessionId, state) =>
-      deliveries.push({ kind: 'legacy', detail: String(state?.tasks?.length ?? 0) }),
-    onChildWorkEvidence: (sessionId, evidence) => {
-      expect(sessionId).toBe('session-1')
-      deliveries.push({ kind: 'evidence', detail: evidence.map((edge) => edge.type).join(',') })
-      evidenceLog.push(evidence)
-      if (host) {
-        ingested.push(host.ingestStructuredChildWork(parent, evidence, 'claude'))
-      } else {
-        reconcileAgentChildWorkEvidence({ store, admission, parent, provider: 'claude', evidence })
-      }
-    }
-  })
-  const journal: StructuredAgentSessionEventSink = {
-    appendItem: (identity, _body, options) => {
-      deliveries.push({ kind: 'journal', detail: JSON.stringify(identity) })
-      if (options?.agentId !== undefined) {
-        stamps.push(options)
-      }
-    },
-    appendTombstone: () => {},
-    publish: () => {}
-  }
-  await adapter.acquire({
-    identity: identityFor(),
-    fence: 7,
-    spawnToken: 'spawn-9',
-    events: journal
-  })
-  const send = (message: Record<string, unknown>): Delivery[] => {
-    const from = deliveries.length
-    claude.connections[0]!.handlers.onMessage?.(message)
-    return deliveries.slice(from)
-  }
-  const records = (): AgentChildWorkRecord[] =>
-    host ? host.getStructuredChildWork(parent) : store.getChildren(parent)
-  const byDescription = (description: string) =>
-    records().find((record) => record.description === description)
-  return { adapter, store, send, records, byDescription, evidenceLog, stamps, ingested }
-}
 
 describe('Claude structured child-work producer', () => {
   it('delivers evidence only after the journal wrote the frame and the legacy row republished', async () => {
@@ -185,17 +38,10 @@ describe('Claude structured child-work producer', () => {
     ])
   })
 
-  it('records the parent state today reads, frame by frame, while adding outcome and activity', async () => {
+  it("settles each child only on its own ending, whatever the parent's turn or roster does", async () => {
     const { adapter, send, records, byDescription } = await producer()
-    const steps: {
-      message: Record<string, unknown>
-      lead: 'working' | 'done'
-      check?: () => void
-    }[] = [
-      {
-        message: toolUse('toolu_fg', 'Agent', { description: 'Find flaky tests' }),
-        lead: 'working'
-      },
+    const steps: { message: Record<string, unknown>; check?: () => void }[] = [
+      { message: toolUse('toolu_fg', 'Agent', { description: 'Find flaky tests' }) },
       {
         message: system('task_started', {
           task_id: 'agent-fg',
@@ -204,8 +50,7 @@ describe('Claude structured child-work producer', () => {
           subagent_type: 'Explore',
           description: 'Find flaky tests',
           is_backgrounded: false
-        }),
-        lead: 'working'
+        })
       },
       // The foreground child starts a background shell of its own.
       {
@@ -215,7 +60,6 @@ describe('Claude structured child-work producer', () => {
           { command: 'npm test', run_in_background: true },
           'toolu_fg'
         ),
-        lead: 'working',
         // Its own call is what it is doing, previewed as a CLI row previews Bash.
         check: () =>
           expect(byDescription('Find flaky tests')?.operation).toMatchObject({
@@ -232,21 +76,18 @@ describe('Claude structured child-work producer', () => {
           description: 'npm test',
           is_backgrounded: true
         }),
-        lead: 'working'
-      },
-      {
-        message: system('background_tasks_changed', {
-          tasks: [{ task_id: 'shell-1', task_type: 'local_bash', description: 'npm test' }]
-        }),
-        lead: 'working',
         check: () =>
           expect(byDescription('npm test')?.parentChildWorkId).toBe(
             byDescription('Find flaky tests')?.childWorkId
           )
       },
       {
+        message: system('background_tasks_changed', {
+          tasks: [{ task_id: 'shell-1', task_type: 'local_bash', description: 'npm test' }]
+        })
+      },
+      {
         message: toolResult('toolu_bash', 'Command running in background', 'toolu_fg'),
-        lead: 'working',
         check: () => expect(byDescription('Find flaky tests')?.operation).toBeUndefined()
       },
       {
@@ -256,16 +97,24 @@ describe('Claude structured child-work producer', () => {
           last_tool_name: 'Bash',
           usage: { total_tokens: 1_200, tool_uses: 2, duration_ms: 800 }
         }),
-        lead: 'working',
         check: () =>
           expect(byDescription('Find flaky tests')).toMatchObject({
             operation: { toolName: 'Bash', basis: 'reported' },
             totalTokens: 1_200
           })
       },
+      // The spawn call returning is the parent's view; the child's own frame ends it.
       {
         message: toolResult('toolu_fg', 'Two tests flake on CI'),
-        lead: 'working',
+        check: () => expect(byDescription('Find flaky tests')?.membership).toBe('live')
+      },
+      {
+        message: system('task_notification', {
+          task_id: 'agent-fg',
+          tool_use_id: 'toolu_fg',
+          status: 'completed',
+          summary: 'Two tests flake on CI'
+        }),
         check: () =>
           expect(byDescription('Find flaky tests')).toMatchObject({
             membership: 'settled',
@@ -273,10 +122,7 @@ describe('Claude structured child-work producer', () => {
             lastMessage: 'Two tests flake on CI'
           })
       },
-      {
-        message: toolUse('toolu_bg', 'Agent', { description: 'Audit the build' }),
-        lead: 'working'
-      },
+      { message: toolUse('toolu_bg', 'Agent', { description: 'Audit the build' }) },
       {
         message: system('task_started', {
           task_id: 'agent-bg',
@@ -284,8 +130,7 @@ describe('Claude structured child-work producer', () => {
           task_type: 'local_agent',
           description: 'Audit the build',
           is_backgrounded: true
-        }),
-        lead: 'working'
+        })
       },
       {
         message: system('background_tasks_changed', {
@@ -293,17 +138,15 @@ describe('Claude structured child-work producer', () => {
             { task_id: 'shell-1', task_type: 'local_bash', description: 'npm test' },
             { task_id: 'agent-bg', task_type: 'local_agent', description: 'Audit the build' }
           ]
-        }),
-        lead: 'working'
+        })
       },
-      { message: frame({ type: 'result', subtype: 'success', is_error: false }), lead: 'done' },
+      { message: frame({ type: 'result', subtype: 'success', is_error: false }) },
       // Claude drops a finished task from the roster BEFORE its outcome frame arrives.
       {
         message: system('background_tasks_changed', {
           tasks: [{ task_id: 'shell-1', task_type: 'local_bash', description: 'npm test' }]
         }),
-        lead: 'done',
-        check: () => expect(byDescription('Audit the build')).toMatchObject({ outcome: 'unknown' })
+        check: () => expect(byDescription('Audit the build')?.membership).toBe('live')
       },
       {
         message: system('task_notification', {
@@ -312,7 +155,6 @@ describe('Claude structured child-work producer', () => {
           summary: 'Build broke',
           usage: { total_tokens: 900 }
         }),
-        lead: 'done',
         check: () =>
           expect(byDescription('Audit the build')).toMatchObject({
             membership: 'settled',
@@ -320,38 +162,34 @@ describe('Claude structured child-work producer', () => {
             lastMessage: 'Build broke'
           })
       },
-      { message: system('background_tasks_changed', { tasks: [] }), lead: 'done' },
+      {
+        message: system('background_tasks_changed', { tasks: [] }),
+        check: () => expect(byDescription('npm test')?.membership).toBe('live')
+      },
       {
         message: system('task_updated', { task_id: 'shell-1', patch: { status: 'killed' } }),
-        lead: 'done',
         check: () => expect(byDescription('npm test')).toMatchObject({ outcome: 'cancelled' })
       },
-      // Claude resumes a finished background agent by listing it again.
+      // Messaging a finished background agent starts it again under the message call.
+      { message: toolUse('toolu_msg', 'SendMessage', { to: 'agent-bg', message: 'Again' }) },
       {
-        message: system('background_tasks_changed', {
-          tasks: [{ task_id: 'agent-bg', task_type: 'local_agent', description: 'Audit the build' }]
+        message: system('task_started', {
+          task_id: 'agent-bg',
+          tool_use_id: 'toolu_msg',
+          task_type: 'local_agent',
+          description: 'Audit the build',
+          is_backgrounded: true
         }),
-        lead: 'done',
         check: () =>
           expect(byDescription('Audit the build')).toMatchObject({
             membership: 'live',
-            invocation: { generation: 2 },
+            invocation: { invocationId: 'toolu_msg', generation: 2 },
             previousInvocations: [expect.objectContaining({ outcome: 'failed' })]
           })
       }
     ]
-    for (const [index, step] of steps.entries()) {
+    for (const step of steps) {
       send(step.message)
-      const legacy = agentChildWorkLiveness(adapter.backgroundTaskState('session-1')?.tasks)
-      const recorded = agentChildWorkLiveness(
-        records().filter((record) => record.membership === 'live')
-      )
-      const fold = (childWorkLiveness: typeof legacy) =>
-        foldAgentLeadStatus({ leadState: step.lead, childWorkLiveness })
-      expect({ index, parent: fold(recorded) }).toEqual({ index, parent: fold(legacy) })
-      if (step.lead === 'done') {
-        expect({ index, liveness: recorded }).toEqual({ index, liveness: legacy })
-      }
       step.check?.()
     }
     await adapter.closeSession('session-1')
@@ -359,7 +197,7 @@ describe('Claude structured child-work producer', () => {
     expect(adapter.backgroundTaskState('session-1')).toBeUndefined()
   })
 
-  it("counts a child's runs the way the journal does, and hears a restarted run before any roster", async () => {
+  it("counts a child's runs the way the journal does, and ends each run on its own frame", async () => {
     const { adapter, send, byDescription, stamps } = await producer()
     const start = (toolUseId: string) =>
       system('task_started', {
@@ -407,18 +245,15 @@ describe('Claude structured child-work producer', () => {
       operation: { toolName: 'Grep', basis: 'reported' },
       totalTokens: 300
     })
+    // An errored spawn result says nothing about how the child ended.
     send(toolResult('toolu_2', 'Could not reproduce', null, true))
-    expect(byDescription('Find flaky tests')).toMatchObject({
-      membership: 'settled',
-      outcome: 'unknown',
-      lastMessage: 'Could not reproduce',
-      invocation: { invocationId: 'toolu_2', generation: 2 },
-      previousInvocations: [expect.objectContaining({ outcome: 'succeeded' })]
-    })
+    expect(byDescription('Find flaky tests')?.membership).toBe('live')
     send(system('task_notification', { task_id: 'agent-fg', status: 'failed' }))
     expect(byDescription('Find flaky tests')).toMatchObject({
+      membership: 'settled',
       outcome: 'failed',
-      invocation: { invocationId: 'toolu_2', generation: 2 }
+      invocation: { invocationId: 'toolu_2', generation: 2 },
+      previousInvocations: [expect.objectContaining({ outcome: 'succeeded' })]
     })
   })
 
@@ -438,7 +273,14 @@ describe('Claude structured child-work producer', () => {
           is_backgrounded: false
         })
       )
-      run.send(toolResult('toolu_fg', 'Two tests flake on CI'))
+      run.send(
+        system('task_notification', {
+          task_id: 'agent-fg',
+          tool_use_id: 'toolu_fg',
+          status: 'completed',
+          summary: 'Two tests flake on CI'
+        })
+      )
       expect(run.byDescription('Find flaky tests')).toMatchObject({
         membership: 'settled',
         outcome: 'succeeded',
@@ -487,85 +329,5 @@ describe('Claude structured child-work producer', () => {
       expect(warn).not.toHaveBeenCalled()
       expect(error).not.toHaveBeenCalled()
     })
-  })
-
-  describe('an interrupted foreground child', () => {
-    const rejected =
-      "The user doesn't want to proceed with this tool use. The tool use was rejected."
-    const killed = system('task_updated', { task_id: 'agent-fg', patch: { status: 'killed' } })
-    const stopped = system('task_notification', {
-      task_id: 'agent-fg',
-      tool_use_id: 'toolu_fg',
-      status: 'stopped',
-      summary: 'Run sleep command and report'
-    })
-    // Frame orders captured from the real CLI interrupting a foreground agent.
-    it.each([
-      [
-        'its own tool running, the spawn result first',
-        [toolResult('toolu_fg', rejected, null, true), killed, stopped]
-      ],
-      [
-        'between tools, its own stop first',
-        [killed, stopped, toolResult('toolu_fg', rejected, null, true)]
-      ]
-    ])('ends cancelled with %s', async (_case, ending) => {
-      const { send, byDescription } = await producer()
-      send(toolUse('toolu_fg', 'Agent', { description: 'Run sleep command and report' }))
-      send(
-        system('task_started', {
-          task_id: 'agent-fg',
-          tool_use_id: 'toolu_fg',
-          task_type: 'local_agent',
-          subagent_type: 'general-purpose',
-          description: 'Run sleep command and report',
-          is_backgrounded: false
-        })
-      )
-      for (const message of ending) {
-        send(message)
-      }
-      send(frame({ type: 'result', subtype: 'error_during_execution', is_error: true }))
-      expect(byDescription('Run sleep command and report')).toMatchObject({
-        membership: 'settled',
-        outcome: 'cancelled'
-      })
-    })
-  })
-
-  it("keeps a finished foreground child's final summary and usage, in the order the CLI sends them", async () => {
-    const { send, byDescription, ingested } = await producer(hostWithParent())
-    send(toolUse('toolu_fg', 'Agent', { description: 'Run echo hi command' }))
-    send(
-      system('task_started', {
-        task_id: 'agent-fg',
-        tool_use_id: 'toolu_fg',
-        task_type: 'local_agent',
-        subagent_type: 'general-purpose',
-        description: 'Run echo hi command',
-        is_backgrounded: false
-      })
-    )
-    // Captured from the real CLI: the child's own ending, then its summary, then the spawn result.
-    send(system('task_updated', { task_id: 'agent-fg', patch: { status: 'completed' } }))
-    send(
-      system('task_notification', {
-        task_id: 'agent-fg',
-        tool_use_id: 'toolu_fg',
-        status: 'completed',
-        summary: 'The command ran. Output: hi',
-        usage: { total_tokens: 16_908, tool_uses: 1, duration_ms: 3_393 }
-      })
-    )
-    send(toolResult('toolu_fg', 'hi'))
-    send(frame({ type: 'result', subtype: 'success', is_error: false }))
-    expect(byDescription('Run echo hi command')).toMatchObject({
-      membership: 'settled',
-      outcome: 'succeeded',
-      lastMessage: 'The command ran. Output: hi',
-      totalTokens: 16_908,
-      invocation: { invocationId: 'toolu_fg', generation: 1 }
-    })
-    expect(ingested.flatMap((outcome) => outcome?.rejected ?? [])).toEqual([])
   })
 })

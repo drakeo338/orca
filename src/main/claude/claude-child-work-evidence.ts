@@ -1,24 +1,14 @@
-// Claude task frames, decoded into child-work evidence for the host's records.
-//
-// The background-task tracker already reads every task frame and decides when a task is live,
-// settled, or dropped by a roster; it queues an edge at each of those decisions. This module
-// holds what those edges say, the frames only this path reads (a spawn call's result, the
-// progress the tracker's legacy row ignores), and the owner lookup through the journal's
-// linkage. Edges are stamped with the host clock when drained, after the journal has handled the
-// frame, so the host never admits evidence ahead of the frame's own rows.
+// Claude child work as the host records it: the outcome vocabulary, what a progress frame says,
+// the owner of each child through the journal's own linkage, and the tool a child has open.
+// The task frames themselves are read by `claude-child-work-decoder`; everything here is drained
+// after the journal handled the frame, so the host never admits evidence ahead of its rows.
 
-import type {
-  AgentChildWorkOperation,
-  AgentChildWorkOutcome
-} from '../../shared/agent-status-child-work'
+import type { AgentChildWorkOutcome } from '../../shared/agent-status-child-work'
 import type {
   AgentChildWorkEvidence,
-  AgentChildWorkEvidenceHandle,
   AgentChildWorkLiveObservation
 } from '../../shared/agent-status-child-work-evidence'
-import { record, taskText, taskUsageTotalTokens } from './claude-background-task-frames'
-import { isAgentChildWorkKind } from '../../shared/agent-status-child-work-liveness'
-import type { TrackedClaudeBackgroundTask } from './claude-settled-background-tasks'
+import { taskText, taskUsageTotalTokens } from './claude-background-task-frames'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { deriveToolInputPreview } from '../../shared/agent-hook-listener/tool-input-preview'
 import {
@@ -28,10 +18,7 @@ import {
   type ClaudeToolUse
 } from './claude-structured-item-translation'
 
-/** An edge the tracker decided on, stamped with the host clock once the frame is journaled. */
-export type ClaudePendingChildWork = (observedAt: number) => AgentChildWorkEvidence
-
-type ClaudeTaskFacts = {
+export type ClaudeTaskFacts = {
   /** The tool the provider last reported; stamped at drain. */
   toolName?: string
   lastMessage?: string
@@ -54,50 +41,6 @@ export function claudeChildWorkOutcome(status: unknown): AgentChildWorkOutcome {
   }
 }
 
-function claudeTaskHandle(id: string, toolUseId?: string): AgentChildWorkEvidenceHandle {
-  return { idKind: 'task_id', id, ...(toolUseId !== undefined ? { runId: toolUseId } : {}) }
-}
-
-/** One tracked task as the host reads it: the tracker's own live row, plus what this frame said. */
-export function claudeTaskObservation(
-  id: string,
-  task: TrackedClaudeBackgroundTask,
-  facts: ClaudeTaskFacts = {},
-  observedAt = 0
-): AgentChildWorkLiveObservation {
-  const operation: AgentChildWorkOperation | undefined = facts.toolName
-    ? { toolName: facts.toolName, basis: 'reported', observedAt }
-    : undefined
-  return {
-    handle: claudeTaskHandle(id, task.toolUseId),
-    kind: task.kind,
-    residency: task.backgrounded ? 'background' : 'foreground',
-    // The legacy row's own state rule, so both read the same child the same way.
-    state: task.state === 'working' || task.kind !== 'monitor' ? 'working' : 'monitoring',
-    // The published row names a task's type as both its name and its agent type.
-    ...(task.name ? { name: task.name, agentType: task.name } : {}),
-    ...(task.description ? { description: task.description } : {}),
-    ...(facts.totalTokens !== undefined ? { totalTokens: facts.totalTokens } : {}),
-    ...(operation ? { operation } : {}),
-    ...(facts.lastMessage ? { lastMessage: facts.lastMessage } : {}),
-    // Only a backgrounded task has a stop the host can target.
-    stoppable: task.backgrounded
-  }
-}
-
-export function pendingClaudeTaskLive(
-  id: string,
-  task: TrackedClaudeBackgroundTask,
-  facts: ClaudeTaskFacts = {}
-): ClaudePendingChildWork {
-  const snapshot = { ...task }
-  return (observedAt) => ({
-    type: 'live',
-    observedAt,
-    child: claudeTaskObservation(id, snapshot, facts, observedAt)
-  })
-}
-
 /** What a `task_progress` frame says: the tool the child last ran, its newest summary, usage.
  *  Its `description` restates the tool ("Running Bash") and is not the task's own. */
 export function claudeTaskProgressFacts(message: Record<string, unknown>): ClaudeTaskFacts {
@@ -111,111 +54,8 @@ export function claudeTaskProgressFacts(message: Record<string, unknown>): Claud
   }
 }
 
-function pendingClaudeTaskEnded(
-  id: string,
-  outcome: AgentChildWorkOutcome,
-  reported: { lastMessage?: string; totalTokens?: number; toolUseId?: string }
-): ClaudePendingChildWork {
-  return (observedAt) => ({
-    type: 'ended',
-    observedAt,
-    handle: claudeTaskHandle(id, reported.toolUseId),
-    outcome,
-    ...(reported.lastMessage ? { lastMessage: reported.lastMessage } : {}),
-    ...(reported.totalTokens !== undefined ? { totalTokens: reported.totalTokens } : {})
-  })
-}
-
-export const pendingClaudeTurnEnded: ClaudePendingChildWork = (observedAt) => ({
-  type: 'turn-ended',
-  observedAt
-})
-
-export const pendingClaudeSessionEnded: ClaudePendingChildWork = (observedAt) => ({
-  type: 'session-ended',
-  observedAt
-})
-
-/** A `task_notification`: the child's own ending, with its final summary and usage. */
-export function pendingClaudeNotification(
-  id: string,
-  message: Record<string, unknown>
-): ClaudePendingChildWork {
-  return pendingClaudeTaskEnded(id, claudeChildWorkOutcome(message.status), {
-    lastMessage: taskText(message.summary),
-    totalTokens: taskUsageTotalTokens(message)
-  })
-}
-
-/** A terminal `task_updated`: its error, when it has one, is the child's last word. */
-export function pendingClaudeTerminalUpdate(
-  id: string,
-  message: Record<string, unknown>
-): ClaudePendingChildWork {
-  const patch = record(message.patch)
-  return pendingClaudeTaskEnded(id, claudeChildWorkOutcome(patch?.status), {
-    lastMessage: taskText(patch?.error)
-  })
-}
-
-/** The roster's complete live BACKGROUND inventory: a background child it omits has ended. */
-export function pendingClaudeInventory(
-  listed: readonly (readonly [string, TrackedClaudeBackgroundTask])[]
-): ClaudePendingChildWork {
-  const children = listed.map(([id, task]) => [id, { ...task }] as const)
-  return (observedAt) => ({
-    type: 'inventory',
-    observedAt,
-    residency: 'background',
-    children: children.map(([id, task]) => claudeTaskObservation(id, task))
-  })
-}
-
-function foregroundAgentFor(
-  runs: readonly ReadonlyMap<string, TrackedClaudeBackgroundTask>[],
-  toolUseId: string
-): string | null {
-  for (const tasks of runs) {
-    for (const [id, task] of tasks) {
-      if (task.toolUseId === toolUseId && !task.backgrounded && isAgentChildWorkKind(task.kind)) {
-        return id
-      }
-    }
-  }
-  return null
-}
-
-/**
- * A spawn call's result, for each FOREGROUND agent task this frame answers. The call blocked on
- * the child, so its result is the child's ending; a backgrounded spawn returns at launch and
- * proves nothing. An errored result does not say why: an interrupt can deliver it before the
- * child's own stop, so it ends the child `unknown` for that frame to refine.
- */
-export function claudeSpawnResults(
-  message: Record<string, unknown>,
-  runs: readonly ReadonlyMap<string, TrackedClaudeBackgroundTask>[]
-): ClaudePendingChildWork[] {
-  const envelope = message.type === 'user' ? readClaudeMessageEnvelope(message) : null
-  if (!envelope) {
-    return []
-  }
-  return claudeToolResults(envelope).flatMap((result) => {
-    const id = foregroundAgentFor(runs, result.toolUseId)
-    if (id === null) {
-      return []
-    }
-    return [
-      pendingClaudeTaskEnded(id, result.failed ? 'unknown' : 'succeeded', {
-        lastMessage: taskText(result.output),
-        toolUseId: result.toolUseId
-      })
-    ]
-  })
-}
-
 /** Name the child that owns each live child: the agent whose own traffic made the spawn (or
- *  shell) call. A call the session's own agent made has no owner, and neither does work a
- *  backgrounded child launched: such a child sends no traffic to attribute. */
+ *  shell) call. A call the session's own agent made has no owner. */
 export function withClaudeChildWorkOwners(
   evidence: AgentChildWorkEvidence[],
   ownerOf: ((toolUseId: string) => string | null) | undefined
@@ -228,19 +68,14 @@ export function withClaudeChildWorkOwners(
     return ownerId !== null && ownerId !== child.handle.id ? { ...child, ownerId } : child
   }
   return evidence.map((edge) =>
-    edge.type === 'live'
-      ? { ...edge, child: owned(edge.child) }
-      : edge.type === 'inventory'
-        ? { ...edge, children: edge.children.map(owned) }
-        : edge
+    edge.type === 'live' ? { ...edge, child: owned(edge.child) } : edge
   )
 }
 
 /**
  * A child's own tool traffic, read after the journal handled the frame: the call the child has
- * open now (a foreground child's traffic reaches the parent's stream; a backgrounded child's does
- * not), previewed as a hook-reported row previews its own tool. A frame that only delivers the
- * caller's own spawn result belongs to the caller, not the child it names.
+ * open now, previewed as a hook-reported row previews its own tool. A frame that only delivers
+ * the caller's own spawn result belongs to the caller, not the child it names.
  */
 export function claudeChildOperation(
   message: Record<string, unknown>,
@@ -276,16 +111,18 @@ export function claudeChildOperation(
 
 /** Everything one frame (or a close) said about the session's child work, owners named. */
 export function drainClaudeChildWork(
-  session: Pick<ClaudeSession, 'backgroundTasks' | 'translator'> | null | undefined,
+  session: Pick<ClaudeSession, 'childWork' | 'translator'> | null | undefined,
   message: Record<string, unknown> | null,
   observedAt: number
 ): AgentChildWorkEvidence[] {
   if (!session) {
     return []
   }
-  const decided = session.backgroundTasks.drainChildWorkEvidence(observedAt)
   return [
-    ...withClaudeChildWorkOwners(decided, session.translator?.childToolOwner),
+    ...withClaudeChildWorkOwners(
+      session.childWork.drain(observedAt),
+      session.translator?.childToolOwner
+    ),
     ...(message ? claudeChildOperation(message, session.translator?.childActivity, observedAt) : [])
   ]
 }

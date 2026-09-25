@@ -129,6 +129,11 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     })
 
   private emit(session: ClaudeSession | null, event: ClaudeStructuredSessionEvent): void {
+    if (event.type === 'ended') {
+      session?.childWork.clear()
+    } else if (event.type === 'message') {
+      session?.childWork.observe(event.message)
+    }
     const backgroundTasksChanged =
       event.type === 'ended'
         ? (session?.backgroundTasks.clear() ?? false)

@@ -49,7 +49,9 @@ function applyEnded(ctx: ReconcileContext, edge: AgentChildWorkEndedEvidence): v
   if (!existing) {
     return
   }
-  if (agentChildWorkRunVerdict(ctx, existing, edge.handle.runId) !== 'current') {
+  // A run that is already over cannot end the current one; a run id the record never saw can,
+  // so an ending is never lost to a spawn call the host missed.
+  if (agentChildWorkRunVerdict(ctx, existing, edge.handle.runId) === 'previous') {
     return
   }
   // Admission owns what a second ending may change: an `unknown` one keeps a definite outcome and
@@ -158,7 +160,7 @@ export function reconcileAgentChildWorkEvidence(
       continue
     }
     if (edge.type === 'live') {
-      applyAgentChildWorkLive(ctx, edge.child, edge.observedAt, false)
+      applyAgentChildWorkLive(ctx, edge.child, edge.observedAt, edge.restart === true)
     } else if (edge.type === 'operation') {
       applyOperation(ctx, edge)
     } else if (edge.type === 'ended') {
