@@ -104,6 +104,8 @@ export function NativeChatStructuredSession(
     [controller, props.agent, props.sessionId]
   )
   const viewState = selectNativeChatViewState(session)
+  // Nothing can be sent into a chat whose history cannot be opened; its pane offers only Close.
+  const historyUnavailable = viewState.kind === 'history-unavailable'
   const fontScale = useNativeChatFontScale(viewState.kind === 'ready')
   const imageRuntimeContext = useNativeChatImageRuntimeContext(props.tabId)
   const { onLinkClick, linkActionRequest, closeLinkActions } = useNativeChatLinkActions(
@@ -334,7 +336,7 @@ export function NativeChatStructuredSession(
         sessionId={props.sessionId}
         agentLabel={structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')}
         startupPhase={startupPhase}
-        error={controller.error}
+        error={historyUnavailable ? null : controller.error}
         composerError={composerError}
         isVisible={props.isVisible}
         backgroundTasks={controller.backgroundTasks}
@@ -352,7 +354,7 @@ export function NativeChatStructuredSession(
           onChange={(change) => void controller.threadGoal?.change(change)}
         />
       ) : null}
-      {prompt ? null : (
+      {prompt || historyUnavailable ? null : (
         <NativeChatComposer
           ref={composerRef}
           terminalTabId={props.tabId}

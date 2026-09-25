@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeAgentSessionQuestionAnswers } from '../../../../shared/agent-session-question-answer'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { useAppStore } from '@/store'
+import { AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE } from '../../../../shared/structured-agent-session-read-refusal'
 import {
   claudeGroupedQuestionPromptItems,
   legacySingleQuestionPromptItems
@@ -33,6 +34,24 @@ describe('NativeChatStructuredSession', () => {
   afterEach(() => {
     cleanup()
     resetStructuredSessionMocks()
+  })
+
+  it('offers no composer and no raw refusal for a chat whose history cannot be opened', () => {
+    mocks.status = 'error'
+    mocks.error = AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE
+    const { container } = render(
+      <NativeChatStructuredSession
+        isVisible
+        isFocusedGroup
+        tabId="damaged-tab"
+        sessionId="damaged-session"
+        target={{ kind: 'local' }}
+        agent="claude"
+      />
+    )
+
+    expect(screen.queryByTestId('structured-composer')).toBeNull()
+    expect(container.textContent).not.toContain(AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE)
   })
 
   it('routes the launch draft and app-menu paste to the structured composer', () => {
