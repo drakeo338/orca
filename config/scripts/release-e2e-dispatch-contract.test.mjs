@@ -22,6 +22,10 @@ describe('release E2E dispatch contract', () => {
       'git checkout "$WORKFLOW_SHA" -- config/scripts/release-gate-harness-rescue.mjs'
     )
     expect(restoreStep.run).not.toContain('tests/e2e/')
+    // The rescue moves the tag run's traces out of test-results/ before its re-run can fail.
+    expect(
+      goldenJob.steps.find((step) => step.name === 'Upload harness rescue evidence').if
+    ).toContain("hashFiles('release-gate-rescue/*/tag-run-test-results/**'")
   })
 
   it('dispatches tag-scoped E2E only after publication', () => {

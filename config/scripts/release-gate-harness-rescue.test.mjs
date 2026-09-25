@@ -132,8 +132,9 @@ describe('verifyHarnessRescue', () => {
 
 // A fake gate: each spec line `test <title> = pass|fail` becomes a Playwright JSON result.
 const FAKE_GATE = `
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+rmSync('test-results', { recursive: true, force: true })
 const grepArg = process.argv.find((arg) => arg.startsWith('--grep='))
 const grep = grepArg ? new RegExp(grepArg.slice('--grep='.length)) : null
 const rootDir = join(process.cwd(), 'tests/e2e')
@@ -145,6 +146,10 @@ for (const file of readdirSync(rootDir).sort()) {
     const match = /^test (.+) = (pass|fail)$/.exec(line)
     if (!match || (grep && !grep.test(' electron-headless ' + file + ' ' + match[1]))) continue
     failed ||= match[2] === 'fail'
+    if (match[2] === 'fail') {
+      mkdirSync('test-results', { recursive: true })
+      writeFileSync(join('test-results', match[1] + '.trace'), '')
+    }
     specs.push({ title: match[1], file, tests: [{ projectName: 'electron-headless', status: match[2] === 'pass' ? 'expected' : 'unexpected' }] })
   }
   if (specs.length) suites.push({ title: file, file, specs })
@@ -219,6 +224,12 @@ describe('release gate harness rescue', () => {
     expect(result.status).toBe(0)
     expect(result.summary).toContain('passed only with the workflow ref')
     expect(readFileSync(join(cut.repoDir, SPEC), 'utf8')).toBe(tagSpec)
+    // Playwright empties test-results on the re-run, so the tag run's first-failure trace must move.
+    expect(
+      readdirSync(
+        join(cut.repoDir, 'release-gate-rescue/workspace-session-linux/tag-run-test-results')
+      )
+    ).toEqual(['switches back.trace'])
     const rescueRun = JSON.parse(
       readFileSync(
         join(cut.repoDir, 'release-gate-rescue/workspace-session-linux/rescue-run.json'),

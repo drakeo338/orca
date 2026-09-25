@@ -949,8 +949,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # Why: a rescue moves the tag run's traces out of test-results/ first; keep them even if its re-run writes no report.
       - name: Upload harness rescue evidence
-        if: always() && hashFiles('release-gate-rescue/*/rescue-run.json') != ''
+        if: always() && hashFiles('release-gate-rescue/*/tag-run-test-results/**', 'release-gate-rescue/*/rescue-run.json') != ''
         uses: actions/upload-artifact@v7
         with:
           name: golden-e2e-${{ matrix.platform }}-harness-rescue
