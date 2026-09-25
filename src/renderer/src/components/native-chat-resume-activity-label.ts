@@ -47,7 +47,7 @@ export function resumeActivityLabel(
     )
   }
   const agents = activity.tasks.filter((task) => task.kind === 'agent')
-  // Monitoring speaks only for an idle lead, as in the sidebar: a reply's own command is in the roster too.
+  // Not for a mid-reply lead: the roster also lists the reply's own foreground command.
   const watches =
     activity.state === 'working' ? [] : activity.tasks.filter((task) => task.kind !== 'agent')
   const [onlyAgent] = agents
