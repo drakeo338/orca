@@ -19,7 +19,7 @@ export type RunScopeParams = {
   callerTerminalHandle?: string
   callerPaneKey?: string
   /** Resolved at the dispatch entry; when set it is the caller, whatever the declared handle. */
-  callerSession?: OrchestrationSessionCaller
+  callerSession: OrchestrationSessionCaller | undefined
   requireCurrentConsumer: boolean
   legacyCoordinatorRunId?: string
   // Why: the caller's declared handle is a user param; this is the attested one to check it against.
@@ -55,7 +55,7 @@ export function orchestrationCallerIdentity(
   caller: {
     handle: string
     paneKey: string | null | undefined
-    session?: OrchestrationSessionCaller
+    session: OrchestrationSessionCaller | undefined
   }
 ): OrchestrationCallerIdentity {
   if (caller.session) {
@@ -74,7 +74,7 @@ export type OrchestrationCallerParams = {
   callerTerminalHandle: string
   callerEvidence?: OrchestrationCompatibilityEvidence
   callerAuthority?: OrchestrationCompatibilityCallerAuthority
-  callerSession?: OrchestrationSessionCaller
+  callerSession: OrchestrationSessionCaller | undefined
   /** Preserve legacy callers that treated a missing pane as an ordinary fence. */
   requireStablePane?: boolean
   /**

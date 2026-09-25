@@ -20,7 +20,7 @@ import { isStructuredWorkerHandle } from '../../structured-worker-identity'
 export async function resolveDispatchCallerWorktreeId(
   runtime: Pick<OrcaRuntimeService, 'showTerminal' | 'getOrchestrationDispatchAuthority'>,
   callerHandle: string,
-  callerSession?: OrchestrationSessionCaller
+  callerSession: OrchestrationSessionCaller | undefined
 ): Promise<string> {
   // A session caller's workspace is on its record, whichever owner (chat or terminal) holds it.
   if (callerSession) {

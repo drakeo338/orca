@@ -13,7 +13,7 @@ import { orchestrationCallerIdentity } from './run-scope'
 export function resolveDispatchCreator(
   runtime: OrcaRuntimeService,
   callerHandle: string | undefined,
-  callerSession?: OrchestrationSessionCaller
+  callerSession: OrchestrationSessionCaller | undefined
 ): DispatchCreator {
   if (!callerHandle) {
     // No declared caller means no resolvable parent. Depth 0 is the same answer
