@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { setupPtyIpcSuite } from './pty-ipc-test-harness'
+import { setupPtyIpcSuite, type PtyIpcSuiteFixtures } from './pty-ipc-test-harness'
 import { SessionNotFoundError } from '../daemon/daemon-errors'
 import { makePaneKey } from '../../shared/stable-pane-id'
 import { registerPtyHandlers, setLocalPtyProvider } from './pty'
@@ -54,12 +54,13 @@ const tabId = 'tab-restart'
 const leafId = '12121212-1212-4212-8212-121212121212'
 const paneKey = makePaneKey(tabId, leafId)
 
-function installFakeLocalProvider(provider: object): void {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restart path calls only the provider members this fake defines.
-  setLocalPtyProvider(provider as Parameters<typeof setLocalPtyProvider>[0])
-}
+type RestartHarness = ReturnType<typeof installRestartHarness>
 
-function registerWithFakes(mainWindow: object, runtime: object, store: object): void {
+function registerWithFakes(
+  mainWindow: PtyIpcSuiteFixtures['mainWindow'],
+  runtime: RestartHarness['runtime'],
+  store: RestartHarness['store']
+): void {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: spawn and kill read only the window, runtime and store members these fakes define.
   const args = [
     mainWindow,
@@ -93,7 +94,7 @@ function installRestartHarness(
     }
     oldSessionAlive = false
   })
-  installFakeLocalProvider({
+  const provider = {
     spawn: providerSpawn,
     write: vi.fn(),
     resize: vi.fn(),
@@ -115,7 +116,9 @@ function installRestartHarness(
     attach: vi.fn(),
     getDefaultShell: vi.fn(),
     getProfiles: vi.fn()
-  })
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the restart path calls only the provider members this fake defines.
+  setLocalPtyProvider(provider as unknown as Parameters<typeof setLocalPtyProvider>[0])
   let session = {
     tabsByWorktree: { [worktreeId]: [{ id: tabId, worktreeId, ptyId: 'pty-old' }] },
     terminalLayoutsByTabId: {

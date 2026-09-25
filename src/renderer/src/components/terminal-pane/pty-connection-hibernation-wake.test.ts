@@ -7,13 +7,12 @@ import {
   leafIdForPane,
   createMockTransport,
   createPane,
-  createManager,
-  type ConnectCallbacks
+  createManager
 } from './pty-connection-test-pane-fixtures'
 import { buildPaneConnectionDeps } from './pty-connection-test-deps'
 import { createInitialStoreState } from './pty-connection-test-store-fixtures'
 import type { StoreState } from './pty-connection-test-store-state'
-import type { MockTransport } from './pty-connection-test-pane-fixtures'
+import type { ConnectCallbacks, MockTransport } from './pty-connection-test-pane-fixtures'
 import {
   installTerminalTestGlobals,
   restoreTerminalTestGlobals
