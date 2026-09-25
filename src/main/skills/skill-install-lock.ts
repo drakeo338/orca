@@ -276,10 +276,8 @@ export async function acquireSkillInstallLock(input: {
         await markReleased(join(input.path, `${owner.token}.released`))
         try {
           await rename(input.path, releasedPath)
-        } catch (error) {
-          if ((await readSkillInstallLockOwner(ownerPath))?.token === owner.token) {
-            throw error
-          }
+        } catch {
+          // The marker already released the lock and acquirers reclaim from it; a retry could move a newer holder's lock.
           return
         }
         await cleanupReleasedSkillInstallLock(releasedPath, owner.token, input.removeLock)
