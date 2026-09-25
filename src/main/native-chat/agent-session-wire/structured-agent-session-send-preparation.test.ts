@@ -320,7 +320,7 @@ describe('a send with no live owner', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
-  it('rebases a send that arrives after the restart has already claimed the lease', async () => {
+  it('admits a send that arrives after the restart has already claimed the lease', async () => {
     await loseOwner()
     const lostFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     let claimed = () => {}
