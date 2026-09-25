@@ -206,13 +206,9 @@ async function executeDetachedCodexPaneRestart(
     return
   }
 
-  // Why: main stops this PTY before launching its replacement, and a parked tab's exit sidecar
-  // would read that exit as the pane dying — collapsing the leaf or closing the tab.
-  disposeParkedTerminalWatchersForPtyIds([ptyId])
-  // Why: a tab revealed mid-restart would otherwise replay this PTY's exit into its pane; with no
-  // admissible session it spawns by pane identity, and main hands it the replacement.
-  discardPreHandlerPtyState(ptyId)
   // Hidden replacements converge on mount; provider sizing must not delay ownership transfer.
+  // Main stops `ptyId` first and labels its exit as a replacement, so parked watchers and the
+  // pre-attach buffer leave the pane alone; a failed stop sends no exit and changes nothing here.
   const spawned = await window.api.pty.spawn({
     cols: 80,
     rows: 24,
@@ -351,6 +347,9 @@ function reapUnboundCodexPty(ptyId: string, reason: string): void {
 }
 
 function releaseReplacedCodexPanePty(ptyId: string): void {
+  // Why the disposal: a parked tab's exit sidecar treats an unlabeled exit as the pane
+  // dying — it would collapse the just-rebound leaf or close the whole tab.
+  disposeParkedTerminalWatchersForPtyIds([ptyId])
   for (const snapshot of unregisterPtyDataHandlers([ptyId])) {
     snapshot.commit()
   }
@@ -358,9 +357,6 @@ function releaseReplacedCodexPanePty(ptyId: string): void {
 }
 
 function killReplacedCodexPanePty(ptyId: string): void {
-  // Why the disposal: a parked tab's exit sidecar treats any exit as the pane
-  // dying — it would collapse the just-rebound leaf or close the whole tab.
-  disposeParkedTerminalWatchersForPtyIds([ptyId])
   releaseReplacedCodexPanePty(ptyId)
   reapUnboundCodexPty(ptyId, 'replaced Codex pane PTY')
 }

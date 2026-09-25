@@ -39,6 +39,8 @@ export async function spawnIpcPty(
   } = transportOptions
   const shouldSendLocalCwdFallback =
     cwdFallback === 'worktree' && !connectionId && !admittedSessionId
+  // Why: a reattach under an admitted session id must never stop the PTY it is reattaching.
+  const replacesPtyId = admittedSessionId ? null : (connectOptions.claimReplacedPtyId?.() ?? null)
   return window.api.pty.spawn({
     cols: connectOptions.cols ?? 80,
     rows: connectOptions.rows ?? 24,
@@ -75,10 +77,7 @@ export async function spawnIpcPty(
     worktreeId,
     ...(tabId ? { tabId } : {}),
     ...(leafId ? { leafId } : {}),
-    // Why: a reattach under an admitted session id must never stop the PTY it is reattaching.
-    ...(connectOptions.replacesPtyId && !admittedSessionId
-      ? { replacesPtyId: connectOptions.replacesPtyId }
-      : {}),
+    ...(replacesPtyId ? { replacesPtyId } : {}),
     ...(shellOverride ? { shellOverride } : {}),
     ...(projectRuntime ? { projectRuntime } : {}),
     ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),

@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushAsyncTicks, createDeferred } from './pty-connection-test-async'
 import { sendTerminalInputThroughPane } from './pty-connection-test-dom'
 import {
+  LEAF_2,
   leafIdForPane,
   createMockTransport,
   createPane,
-  createManager
+  createManager,
+  type ConnectCallbacks
 } from './pty-connection-test-pane-fixtures'
 import { buildPaneConnectionDeps } from './pty-connection-test-deps'
 import { createInitialStoreState } from './pty-connection-test-store-fixtures'
@@ -288,11 +290,15 @@ describe('connectPanePty', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the pane binding exposes the wake hook this test drives.
     const binding = connectPanePty(...args) as unknown as {
       wakeHibernatedAgentIfArmed: (claimedProviderSessions?: Set<string>) => string | null
+      dispose: () => void
     }
     await flushAsyncTicks()
 
     expect(transport.connect).toHaveBeenCalledTimes(1)
-    expect(transport.connect.mock.calls[0]?.[0]).toMatchObject({ replacesPtyId: 'pty-replaced' })
+    const restartConnect: { claimReplacedPtyId?: () => string | null } | undefined =
+      transport.connect.mock.calls[0]?.[0]
+    // The IPC transport takes the id as it sends the spawn; this mock transport does it here.
+    expect(restartConnect?.claimReplacedPtyId?.()).toBe('pty-replaced')
     // Why: transport options outlive the first spawn, so the field must not ride them.
     expect(createdTransportOptions[0]).not.toHaveProperty('replacesPtyId')
 
@@ -317,7 +323,68 @@ describe('connectPanePty', () => {
     await flushAsyncTicks()
 
     expect(transport.connect).toHaveBeenCalledTimes(2)
-    expect(transport.connect.mock.calls[1]?.[0]).not.toHaveProperty('replacesPtyId')
+    expect(transport.connect.mock.calls[1]?.[0]).not.toHaveProperty('claimReplacedPtyId')
+    binding.dispose()
+    await flushAsyncTicks()
+    expect(window.api.pty.kill).not.toHaveBeenCalledWith('pty-replaced')
+  })
+
+  it('keeps an established split pane mounted when main labels its exit as a restart replacement', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const { deliverPtyExitToHandlers } = await import('./pty-exit-delivery')
+    let onData: ((data: string) => void) | undefined
+    const transport = createMockTransport('pty-pane-2')
+    transport.connect.mockImplementation(async ({ callbacks }: { callbacks: ConnectCallbacks }) => {
+      onData = callbacks.onData
+      return 'pty-pane-2'
+    })
+    transportFactoryQueue.push(transport)
+    const manager = createManager(2)
+    const deps = createDeps({
+      restoredLeafId: LEAF_2,
+      paneTransportsRef: { current: new Map([[1, createMockTransport('pty-pane-1')]]) }
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixtures implement the pane, manager and deps members connectPanePty reads.
+    const args = [createPane(2), manager, deps] as unknown as Parameters<typeof connectPanePty>
+    connectPanePty(...args)
+    const onPtyExit = createdTransportOptions[0]?.onPtyExit
+    expect(onPtyExit).toBeTypeOf('function')
+    await flushAsyncTicks()
+    onData?.('codex prompt')
+
+    deliverPtyExitToHandlers({
+      ptyId: 'pty-pane-2',
+      code: 0,
+      replacedByRestart: true,
+      primary: (code) => {
+        if (typeof onPtyExit === 'function') {
+          onPtyExit('pty-pane-2', code)
+        }
+      },
+      sidecars: []
+    })
+
+    expect(manager.closePane).not.toHaveBeenCalled()
+    expect(deps.clearExitedPanePtyLayoutBinding).not.toHaveBeenCalled()
+  })
+
+  it('stops the replaced PTY itself when the pane is disposed before a spawn carried the stop', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    transportFactoryQueue.push(createMockTransport('pty-restarted'))
+    const deps = createDeps({
+      tabId: 'tab-restart-closed',
+      startup: { command: 'codex', launchAgent: 'codex' },
+      replacesPtyId: 'pty-replaced'
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixtures implement the pane, manager and deps members connectPanePty reads.
+    const args = [createPane(2), createManager(1), deps] as unknown as Parameters<
+      typeof connectPanePty
+    >
+    // Closing the tab (or parking it) disposes the pane before its deferred connect runs.
+    connectPanePty(...args).dispose()
+    await flushAsyncTicks()
+
+    expect(window.api.pty.kill).toHaveBeenCalledWith('pty-replaced')
   })
 
   it('latches a navigation-free wake that lands before the hibernation kill arms the pane', async () => {

@@ -31,6 +31,23 @@ export function installPtyKillIpcHandler(deps: PtyKillIpcDeps): void {
   )
 }
 
+/** Stops a pane's PTY for the spawn replacing it. `markReplaced` labels the exit so the renderer
+ *  reads it as a handoff, not the pane dying; a failed stop removes the label with nothing sent. */
+export async function stopReplacedPanePty(
+  deps: PtyKillIpcDeps,
+  id: string,
+  markReplaced: (id: string) => (stopped: boolean) => void
+): Promise<void> {
+  const settle = markReplaced(id)
+  try {
+    await stopRendererOwnedPty(deps, { id })
+  } catch (err) {
+    settle(false)
+    throw err
+  }
+  settle(true)
+}
+
 /** Stops a renderer-owned PTY and settles only once its shutdown has been observed or synthesized. */
 export async function stopRendererOwnedPty(
   deps: PtyKillIpcDeps,

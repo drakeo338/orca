@@ -76,6 +76,7 @@ function installRestartHarness(
   options: { shutdownFails?: boolean; shutdownGate?: Promise<void> } = {}
 ) {
   let oldSessionAlive = true
+  const control = { shutdownFails: options.shutdownFails ?? false }
   const providerSpawn = vi.fn(async (spawnOptions: { attachOnly?: boolean }) => {
     if (!spawnOptions.attachOnly) {
       return { id: 'pty-new', incarnationId: 'inc-new' }
@@ -87,7 +88,7 @@ function installRestartHarness(
   })
   const shutdown = vi.fn(async () => {
     await options.shutdownGate
-    if (options.shutdownFails) {
+    if (control.shutdownFails) {
       throw new Error('daemon unreachable')
     }
     oldSessionAlive = false
@@ -158,7 +159,7 @@ function installRestartHarness(
     onPtyExit: vi.fn(),
     onPtyData: vi.fn()
   }
-  return { providerSpawn, shutdown, store, runtime }
+  return { providerSpawn, shutdown, store, runtime, control }
 }
 
 function restartSpawnArgs(extra: { replacesPtyId?: string } = {}) {
@@ -178,6 +179,12 @@ function restartSpawnArgs(extra: { replacesPtyId?: string } = {}) {
 
 describe('pty:spawn replacing a pane owner', () => {
   const { handlers, mainWindow } = setupPtyIpcSuite()
+
+  function exitPayloads(id: string): Record<string, unknown>[] {
+    return mainWindow.webContents.send.mock.calls
+      .filter(([channel, payload]) => channel === 'pty:exit' && payload?.id === id)
+      .map(([, payload]) => payload)
+  }
 
   it('reattaches a live pane owner when the spawn does not name it as replaced', async () => {
     const { providerSpawn, store, runtime } = installRestartHarness()
@@ -208,6 +215,27 @@ describe('pty:spawn replacing a pane owner', () => {
     )
   })
 
+  it('labels the replaced owner exit so the renderer keeps the pane', async () => {
+    const { store, runtime } = installRestartHarness()
+    registerWithFakes(mainWindow, runtime, store)
+
+    await handlers.get('pty:spawn')!(null, restartSpawnArgs({ replacesPtyId: 'pty-old' }))
+
+    expect(exitPayloads('pty-old')).toEqual([
+      expect.objectContaining({ id: 'pty-old', replacedByRestart: true })
+    ])
+  })
+
+  it('never labels an ordinary close', async () => {
+    const { store, runtime } = installRestartHarness()
+    registerWithFakes(mainWindow, runtime, store)
+
+    await handlers.get('pty:kill')!(null, { id: 'pty-old' })
+
+    expect(exitPayloads('pty-old')).toHaveLength(1)
+    expect(exitPayloads('pty-old')[0]).not.toHaveProperty('replacedByRestart')
+  })
+
   it('hands a spawn for the pane that arrives mid-stop the replacement, not the dying owner', async () => {
     let finishShutdown!: () => void
     const shutdownGate = new Promise<void>((resolve) => {
@@ -228,17 +256,25 @@ describe('pty:spawn replacing a pane owner', () => {
   })
 
   it('refuses to launch a second process when the replaced owner could not be stopped', async () => {
-    const { providerSpawn, store, runtime } = installRestartHarness({ shutdownFails: true })
+    const { providerSpawn, store, runtime, control } = installRestartHarness({
+      shutdownFails: true
+    })
     registerWithFakes(mainWindow, runtime, store)
 
     await expect(
       handlers.get('pty:spawn')!(null, restartSpawnArgs({ replacesPtyId: 'pty-old' }))
     ).rejects.toThrow('daemon unreachable')
     expect(providerSpawn).not.toHaveBeenCalled()
+    expect(exitPayloads('pty-old')).toEqual([])
     // The pane is released: a later spawn still reaches the surviving owner instead of hanging.
     await expect(handlers.get('pty:spawn')!(null, restartSpawnArgs())).resolves.toMatchObject({
       id: 'pty-old',
       isReattach: true
     })
+    // The failed restart left no label behind: a later close of the same PTY reads as a close.
+    control.shutdownFails = false
+    await handlers.get('pty:kill')!(null, { id: 'pty-old' })
+    expect(exitPayloads('pty-old')).toHaveLength(1)
+    expect(exitPayloads('pty-old')[0]).not.toHaveProperty('replacedByRestart')
   })
 })

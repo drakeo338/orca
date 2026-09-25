@@ -15,9 +15,10 @@ import type { GetSelectedCodexHomePath, PrepareClaudeAuth } from './host-env/typ
 import { installPtyInspectIpcHandlers } from './ipc/inspect'
 import {
   installPtyKillIpcHandler,
-  stopRendererOwnedPty,
+  stopReplacedPanePty,
   type PtyKillIpcDeps
 } from './ipc/renderer-kill'
+import { markReplacedPtyStop } from './delivery/exit'
 import { installPtyWriteIpcHandlers } from './ipc/write'
 import { installPtySpawnIpcHandler } from './ipc/spawn'
 import { installPtyRuntimeController } from './runtime/controller'
@@ -273,7 +274,8 @@ export function registerPtyHandlers(
     trustedTerminalHandleEnv: session.trustedTerminalHandleEnv,
     sendPtySpawnedToRenderer: session.sendPtySpawnedToRenderer,
     syncPtyBackgroundedDelivery: session.syncPtyBackgroundedDelivery,
-    stopReplacedPty: (id) => stopRendererOwnedPty(killDeps, { id })
+    stopReplacedPty: (id) =>
+      stopReplacedPanePty(killDeps, id, (ptyId) => markReplacedPtyStop(session, ptyId))
   })
   installPtyWriteIpcHandlers({
     mainWindow,

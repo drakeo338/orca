@@ -32,12 +32,27 @@ describe('releasePaneTransportForRestart', () => {
     const { createIpcPtyTransport } = await import('./pty-transport')
     await createIpcPtyTransport({ command: 'codex', worktreeId: 'wt1' }).connect({
       url: '',
-      replacesPtyId: 'wt1@@old',
+      claimReplacedPtyId: () => 'wt1@@old',
       callbacks: {}
     })
     expect(window.api.pty.spawn).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'codex', replacesPtyId: 'wt1@@old' })
     )
+  })
+
+  it('leaves the replaced PTY with its owner when the connect stands down before spawning', async () => {
+    const { createIpcPtyTransport } = await import('./pty-transport')
+    const claimReplacedPtyId = vi.fn(() => 'wt1@@old')
+
+    await createIpcPtyTransport({ command: 'codex', worktreeId: 'wt1' }).connect({
+      url: '',
+      claimReplacedPtyId,
+      shouldContinue: () => false,
+      callbacks: {}
+    })
+
+    expect(window.api.pty.spawn).not.toHaveBeenCalled()
+    expect(claimReplacedPtyId).not.toHaveBeenCalled()
   })
 
   it('keeps kill-then-connect for a remote-runtime PTY whose host ignores the replace field', async () => {
@@ -55,7 +70,7 @@ describe('releasePaneTransportForRestart', () => {
     await createIpcPtyTransport({}).connect({
       url: '',
       sessionId: 'wt1@@live',
-      replacesPtyId: 'wt1@@old',
+      claimReplacedPtyId: () => 'wt1@@old',
       callbacks: {}
     })
 

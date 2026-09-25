@@ -5,10 +5,13 @@ import { awaitsCodexRestartAnswer, blocksCodexPaneInput } from '../codex-restart
 import { ptyDataHandlers } from './pty-dispatcher'
 import { deliverPtyExitToHandlers } from './pty-exit-delivery'
 import {
+  bufferPreHandlerPtyData,
   clearPreHandlerPtyState,
+  drainPreHandlerPtyData,
   hasPreHandlerPtyExit,
   isPreHandlerPtyStateDiscarded
 } from './pty-pre-handler-buffer'
+import { parkedWatchersByTabId } from './terminal-parked-watcher-registry'
 import { sweepUnclaimedCodexPaneRestarts } from './codex-detached-pane-restart'
 import {
   hasAddedPendingCodexPaneRestart,
@@ -170,8 +173,8 @@ describe('codex detached pane restart executor', () => {
     seedQueuedRestart()
     let revealView: { exitReplayed: boolean; sessionAdmitted: boolean } | null = null
     vi.mocked(window.api.pty.spawn).mockImplementation(async () => {
-      // Main stops the replaced PTY before replying; no pane handler owns it yet.
-      deliverPtyExitToHandlers({ ptyId: OLD_PTY, code: 0, sidecars: [] })
+      // Main stops the replaced PTY before replying, labeled as a replacement; no pane owns it yet.
+      deliverPtyExitToHandlers({ ptyId: OLD_PTY, code: 0, replacedByRestart: true, sidecars: [] })
       // What a pane revealed now consults before reconnecting under the layout's old id.
       revealView = {
         exitReplayed: hasPreHandlerPtyExit(OLD_PTY),
@@ -458,6 +461,38 @@ describe('codex detached pane restart executor', () => {
     expect(state.pendingCodexPaneRestartIds).toEqual({})
     // The question is back on screen; input stays blocked but never silently.
     expect(awaitsCodexRestartAnswer(state.codexRestartNoticeByPtyId[OLD_PTY])).toBe(true)
+  })
+
+  it('keeps parked watchers and buffered output for the old PTY when main cannot stop it', async () => {
+    clearPreHandlerPtyState(OLD_PTY)
+    seedQueuedRestart()
+    bufferPreHandlerPtyData(OLD_PTY, 'still running')
+    const disposeWatcher = vi.fn()
+    parkedWatchersByTabId.set('tab-1', {
+      worktreeId: 'wt1',
+      tabPtyId: OLD_PTY,
+      paneIdByPtyId: new Map([[OLD_PTY, 1]]),
+      disposersByPtyId: new Map([[OLD_PTY, disposeWatcher]])
+    })
+    vi.mocked(window.api.pty.spawn).mockRejectedValue(new Error('daemon unreachable'))
+
+    try {
+      await sweepUnclaimedCodexPaneRestarts()
+
+      // No exit was sent, so the still-running Codex keeps every renderer observer it had.
+      expect(disposeWatcher).not.toHaveBeenCalled()
+      expect(parkedWatchersByTabId.get('tab-1')?.disposersByPtyId.has(OLD_PTY)).toBe(true)
+      expect(isPreHandlerPtyStateDiscarded(OLD_PTY)).toBe(false)
+      const replayed: string[] = []
+      drainPreHandlerPtyData(OLD_PTY, (data) => replayed.push(data))
+      expect(replayed).toEqual(['still running'])
+      expect(
+        awaitsCodexRestartAnswer(useAppStore.getState().codexRestartNoticeByPtyId[OLD_PTY])
+      ).toBe(true)
+    } finally {
+      parkedWatchersByTabId.delete('tab-1')
+      clearPreHandlerPtyState(OLD_PTY)
+    }
   })
 
   it('kills now and defers the Codex respawn to mount when the layout leaf is unknown', async () => {
