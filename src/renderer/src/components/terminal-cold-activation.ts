@@ -1,11 +1,12 @@
 import { useAppStore } from '../store'
 import {
+  canAdmitTerminalTabsForStartup,
   canDeferColdActivationTabsForHost,
-  canMountTerminalWorkspaceForStartup,
   planColdActivationTabDeferral,
   pruneClosedBackgroundMountTabs,
   revealActivationDeferredTabs
 } from './terminal/background-terminal-worktree-mount'
+import { holdTerminalTabsForStartup } from './terminal/startup-terminal-tab-hold'
 import { hasRegisteredRuntimeTerminalTab } from '../runtime/sync-runtime-graph'
 import { anyMountedWorktreeHasLayout as computeAnyMountedWorktreeHasLayout } from './terminal/split-group-mount'
 import { isParkRestorableTerminalPty } from './terminal-pane/terminal-hidden-view-parking'
@@ -40,14 +41,28 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
     workspaceSurfaceIds,
     workspaceSurfaceIdSet
   } = controller
+  // Why the surface mounts on the tab model alone: the hydrated tabs, groups, and layout are
+  // everything the tab strip and the chat, browser, and editor panes need. Only terminal
+  // panes wait, held below, for startup restoration to publish PTY ownership — gating the
+  // whole surface on that chain left a restored session blank until its last step.
   if (
     renderedActiveWorktreeId &&
-    canMountTerminalWorkspaceForStartup({
+    !canAdmitTerminalTabsForStartup({
       workspaceSessionReady,
       hydrationSucceeded,
       startupWorktreeRefreshCompleted
     })
   ) {
+    // Why null: the gate opening must run the activation plan, which replaces the hold.
+    lastActivationWorktreeIdRef.current = null
+    holdTerminalTabsForStartup(
+      backgroundMountTabIdsByWorktreeRef.current,
+      activationDeferredMountTabIdsByWorktreeRef.current,
+      mountedWorktreeIdsRef.current,
+      renderedActiveWorktreeId
+    )
+    mountedWorktreeIdsRef.current.add(renderedActiveWorktreeId)
+  } else if (renderedActiveWorktreeId) {
     const worktreeTabs = tabsByWorktree[renderedActiveWorktreeId] ?? []
     const coldActivationDeferralEnabled =
       terminalParkingEnabled && terminalTitleSnapshotAuthorityEnabled
