@@ -4,7 +4,7 @@ import type {
   AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { DISPATCH_REJECTED_PROVIDER_CLOSED } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import {
@@ -154,26 +154,29 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   unexpectedExitReason?: string
   /** The provider never finished starting; the outcome says so instead of naming a response. */
   exitedDuringStartup?: boolean
+  /** Why messages queued for delivery are rejected: given only when the child they were queued
+   *  for is the one that ended. A retry for an earlier generation leaves them to the next child. */
+  queuedRejection?: string
   onError?: (sessionId: string, error: unknown) => void
 }): Promise<boolean> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
     const showUnexpectedExitOutcome = input.showUnexpectedExitOutcome ?? hasUnfinishedWork
-    if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
+    // Settled even with nothing else in flight: left queued, delivery would start another child
+    // for them, and one that dies the same way would start another.
+    const rejectsQueued =
+      input.queuedRejection !== undefined &&
+      input.journal.submissions?.().some(isQueuedAgentJournalSubmission) === true
+    if (!showUnexpectedExitOutcome && !hasUnfinishedWork && !rejectsQueued) {
       return true
     }
     // A queued message was never handed to this child, so it is provably unwritten. A child
     // that never proved its start accepted nothing either — input is written only after it
     // initializes — so every send it left unanswered is rejected with the child's own diagnostic.
     // A proven child's handed-over sends stay in doubt.
-    await input.journal.rejectQueuedSubmissions(
-      input.fence,
-      input.exitedDuringStartup
-        ? providerStartupFailureRejection(input.unexpectedExitReason)
-        : input.unexpectedExitReason === undefined
-          ? DISPATCH_REJECTED_PROVIDER_CLOSED
-          : providerExitBeforeDeliveryRejection(input.unexpectedExitReason)
-    )
+    if (input.queuedRejection !== undefined) {
+      await input.journal.rejectQueuedSubmissions(input.fence, input.queuedRejection)
+    }
     await (input.exitedDuringStartup
       ? input.journal.rejectPendingSubmissions(
           input.fence,

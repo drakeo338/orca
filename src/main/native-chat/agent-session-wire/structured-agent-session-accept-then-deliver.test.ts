@@ -425,6 +425,32 @@ describe('what an earlier host process left behind', () => {
   })
 })
 
+describe('a child that exits before its message is handed over', () => {
+  it('rejects the message with the exit reason instead of starting another child (W24)', async () => {
+    // Each child the loop starts dies between its start step and its handover step.
+    const awaitStarted = vi.fn(async (sessionId: string) => {
+      await host.handleAdapterEvent({
+        type: 'ended',
+        sessionId,
+        fence: store.getRecord(sessionId)!.lease.runtimeFence,
+        acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
+        reason: 'codex app-server crashed',
+        cause: 'unexpected-exit'
+      })
+    })
+    adapterExtras = { awaitStarted }
+    await host.close(SESSION)
+    await startHost()
+
+    const id = await accept('hello')
+
+    await eventually(() => expect(submission(id)?.dispatchState).toBe('rejected'))
+    expect(submission(id)?.reason).toContain('codex app-server crashed')
+    expect(acquire).toHaveBeenCalledTimes(2)
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+})
+
 describe('Stop withdraws what is queued', () => {
   it('withdraws a crash leftover the open could not settle, ahead of any delivery step (W17a)', async () => {
     await writeAsEarlierProcess(async (journal, fence) => {

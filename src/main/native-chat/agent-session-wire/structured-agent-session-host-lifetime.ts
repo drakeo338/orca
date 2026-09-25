@@ -115,6 +115,7 @@ export async function evictHeldStructuredAgentSession(
         pendingSubmissionReason: 'provider_closed_before_acknowledgement',
         verdict: { state: 'interrupted', completedAt: context.now() },
         showUnexpectedExitOutcome: false,
+        queuedRejection: DISPATCH_REJECTED_PROVIDER_CLOSED,
         onError: (id, error) => {
           settlementError = error
           context.deps.onEventSinkError?.({ sessionId: id, error })

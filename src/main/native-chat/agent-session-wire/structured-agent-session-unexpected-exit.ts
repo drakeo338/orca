@@ -11,6 +11,8 @@ import type { StructuredAgentSessionSinkBarrier } from './structured-agent-sessi
 import {
   captureUnfinishedStructuredAgentSessionWork,
   MAX_UNEXPECTED_EXIT_REASON_CHARS,
+  providerExitBeforeDeliveryRejection,
+  providerStartupFailureRejection,
   settleStructuredAgentSessionDeadGeneration,
   type DeadGenerationJournal,
   unfinishedStructuredAgentSessionWorkWasInterrupted
@@ -209,6 +211,9 @@ async function retryUnexpectedExitSettlement(input: {
     showUnexpectedExitOutcome: input.showUnexpectedExitOutcome,
     unexpectedExitReason: input.event.reason,
     exitedDuringStartup: input.exitedDuringStartup,
+    queuedRejection: input.exitedDuringStartup
+      ? providerStartupFailureRejection(input.event.reason)
+      : providerExitBeforeDeliveryRejection(input.event.reason),
     onError: input.context.onBarrierError
   })
 }

@@ -119,6 +119,31 @@ describe('pending settlement retry', () => {
     expect(record.lease.settlementRetryRequired).toBeUndefined()
   })
 
+  it('leaves a message queued for the next child to that child', async () => {
+    await seedRunningTurn()
+    await journal.appendSubmission({
+      clientMessageId: 'queued',
+      payloadFingerprint: 'fingerprint',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
+      fence: FENCE,
+      handoverRecorded: true
+    })
+
+    await expect(
+      retry(`restart-eviction:${SESSION}:${FENCE}`, {
+        kind: 'pid-absent',
+        detail: 'recorded pid absent on host',
+        observedAt: 1_500
+      })
+    ).resolves.toBe(true)
+
+    // The retry settles the generation that died; the message was never that child's.
+    expect(journal.submissions()).toEqual([
+      expect.objectContaining({ clientMessageId: 'queued', dispatchState: 'pending' })
+    ])
+    expect(journal.submissions()[0]?.handedOverAt).toBeUndefined()
+  })
+
   it('writes no status row for an identity mismatch either', async () => {
     await seedRunningTurn()
 
