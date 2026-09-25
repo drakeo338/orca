@@ -120,7 +120,7 @@ describe('WSL CLI PowerShell boundary', () => {
   )
 
   it.skipIf(process.platform !== 'win32')(
-    'pins a non-ASCII app identity and forwards hidden-child output through Windows PowerShell 5.1',
+    'pins a non-ASCII app identity and the dev launcher env through Windows PowerShell 5.1',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'orca-wsl-managed-bridge-'))
       const userDataPath = join(root, "张三's Orca")
@@ -130,7 +130,7 @@ describe('WSL CLI PowerShell boundary', () => {
         await writeFile(bridgePath, buildWslBridgeScript({ userDataPath, cliEntryPath }), 'utf8')
         await writeFile(
           cliEntryPath,
-          'console.error("to stderr"); console.log(JSON.stringify({ argv: process.argv.slice(2), owner: process.env.ORCA_USER_DATA_PATH, app: process.env.ORCA_APP_EXECUTABLE }))\n',
+          'console.error("to stderr"); const e = process.env; console.log(JSON.stringify({ argv: process.argv.slice(2), owner: e.ORCA_USER_DATA_PATH, app: e.ORCA_APP_EXECUTABLE, nodeOptions: e.NODE_OPTIONS ?? null, stashed: e.ORCA_NODE_OPTIONS, cliDir: e.ORCA_WSL_CLI_DIR ?? null }))\n',
           'utf8'
         )
         const result = spawnSync(
@@ -150,7 +150,12 @@ describe('WSL CLI PowerShell boundary', () => {
           {
             encoding: 'utf8',
             windowsHide: true,
-            env: { ...process.env, ORCA_APP_EXECUTABLE: '' }
+            env: {
+              ...process.env,
+              ORCA_APP_EXECUTABLE: '',
+              NODE_OPTIONS: '--max-old-space-size=4096',
+              ORCA_WSL_CLI_DIR: 'C:\\guest-only'
+            }
           }
         )
 
@@ -160,7 +165,10 @@ describe('WSL CLI PowerShell boundary', () => {
         expect(JSON.parse(result.stdout.trim())).toEqual({
           argv: FORWARDED_ARGS,
           owner: userDataPath,
-          app: process.execPath
+          app: process.execPath,
+          nodeOptions: null,
+          stashed: '--max-old-space-size=4096',
+          cliDir: null
         })
       } finally {
         await removeTree(root)

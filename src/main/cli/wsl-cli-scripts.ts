@@ -66,33 +66,10 @@ export function buildWslBridgeScript(app?: {
   const setAppEnv = app
     ? [
         `$env:ORCA_USER_DATA_PATH = ${quotePowerShell(app.userDataPath)}`,
-        // Why: run the dev CLI directly (its .cmd launcher adds a cmd.exe quoting boundary),
-        // with the same app-launch env as buildWindowsDevLauncher.
-        ...(app.cliEntryPath
-          ? [
-              "$env:ELECTRON_RUN_AS_NODE = '1'",
-              "if (-not $env:ORCA_APP_EXECUTABLE) { $env:ORCA_APP_EXECUTABLE = $OrcaLauncher; $env:ORCA_APP_EXECUTABLE_NEEDS_APP_ROOT = '1' }",
-              `$ForwardArgs = @(${quotePowerShell(app.cliEntryPath)}) + $ForwardArgs`
-            ]
-          : [])
+        // Why: WSLENV /p maps this guest-only dir back; an app the CLI starts must not inherit it.
+        'Remove-Item Env:ORCA_WSL_CLI_DIR -ErrorAction SilentlyContinue',
+        ...(app.cliEntryPath ? buildDevCliEnv(app.cliEntryPath) : [])
       ]
-    : []
-  // Why: a hidden child has no console, so its output must be piped back explicitly.
-  const hideWindow = app
-    ? [
-        '$StartInfo.CreateNoWindow = $true',
-        '$StartInfo.RedirectStandardOutput = $true',
-        '$StartInfo.RedirectStandardError = $true'
-      ]
-    : []
-  const startOutputCopy = app
-    ? [
-        '$stdoutCopy = $Process.StandardOutput.BaseStream.CopyToAsync([Console]::OpenStandardOutput())',
-        '$stderrCopy = $Process.StandardError.BaseStream.CopyToAsync([Console]::OpenStandardError())'
-      ]
-    : []
-  const finishOutputCopy = app
-    ? ['[void]$stdoutCopy.GetAwaiter().GetResult()', '[void]$stderrCopy.GetAwaiter().GetResult()']
     : []
   // Why the BOM: PowerShell 5.1 reads BOM-less scripts as ANSI, garbling non-ASCII embedded paths.
   return `${app ? '\uFEFF' : ''}${BRIDGE_MANAGED_MARKER}
@@ -159,7 +136,7 @@ ${bridgeLines(setAppEnv)}  $StartInfo.Arguments = (($ForwardArgs | ForEach-Objec
     ConvertTo-NativeCommandLineArgument $_
   }) -join ' ')
   $StartInfo.UseShellExecute = $false
-${bridgeLines(hideWindow)}  # Why (#16463): Push-Location moves the PowerShell provider location, not the
+  # Why (#16463): Push-Location moves the PowerShell provider location, not the
   # Win32 current directory, and an empty WorkingDirectory with UseShellExecute
   # disabled means "inherit the caller's". Launched from a WSL shell that is the
   # user's worktree on the 9P share, so without this the app stands in a
@@ -170,8 +147,8 @@ ${bridgeLines(hideWindow)}  # Why (#16463): Push-Location moves the PowerShell p
   if ($null -eq $Process) {
     throw 'Unable to start the Orca Windows CLI launcher.'
   }
-${bridgeLines(startOutputCopy)}  $Process.WaitForExit()
-${bridgeLines(finishOutputCopy)}  $exitCode = $Process.ExitCode
+  $Process.WaitForExit()
+  $exitCode = $Process.ExitCode
   $Process.Dispose()
 } catch {
   Write-Error $_
@@ -179,6 +156,18 @@ ${bridgeLines(finishOutputCopy)}  $exitCode = $Process.ExitCode
 }
 exit $exitCode
 `
+}
+
+/** Runs the dev CLI directly (its .cmd launcher adds a cmd.exe quoting boundary) with that launcher's env. */
+function buildDevCliEnv(cliEntryPath: string): string[] {
+  return [
+    "$env:ELECTRON_RUN_AS_NODE = '1'",
+    "if (-not $env:ORCA_APP_EXECUTABLE) { $env:ORCA_APP_EXECUTABLE = $OrcaLauncher; $env:ORCA_APP_EXECUTABLE_NEEDS_APP_ROOT = '1' }",
+    '$env:ORCA_NODE_OPTIONS = $env:NODE_OPTIONS',
+    '$env:ORCA_NODE_REPL_EXTERNAL_MODULE = $env:NODE_REPL_EXTERNAL_MODULE',
+    'Remove-Item Env:NODE_OPTIONS, Env:NODE_REPL_EXTERNAL_MODULE -ErrorAction SilentlyContinue',
+    `$ForwardArgs = @(${quotePowerShell(cliEntryPath)}) + $ForwardArgs`
+  ]
 }
 
 function bridgeLines(lines: readonly string[]): string {

@@ -171,8 +171,9 @@ ${indentBlock(getZshShellReadyMarkerRegistrationBlock(spec.readyMarkerEscaped, t
   (( $+_orca_deferred_init_done )) && return 0
   builtin typeset -g _orca_deferred_init_done=1
   builtin typeset -g precmd_functions
-${permanentPrecmd}${spec.restores.managedWslCli ? `\n${indentBlock(WSL_MANAGED_CLI_PATH_RESTORE, '  ')}` : ''}
+${permanentPrecmd}
 ${joinBlocks([
+  spec.restores.managedWslCli ? indentBlock(WSL_MANAGED_CLI_PATH_RESTORE, '  ') : null,
   featureGuard('overlay', getOverlayRestoreBlocks(spec)),
   // Why no /etc/zshrc repair branch: ZDOTDIR was handed back before that file
   // ran, so the value it derives is the user's own path. #11044 is unreachable.

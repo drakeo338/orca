@@ -21,13 +21,15 @@ WSL shells still need Settings → General registration.
 
 The colocated launcher finds its bridge beside itself and PowerShell by Windows
 path, so neither guest PATH nor the automount root matters. The bridge pins this
-app's user-data directory, is written with a UTF-8 BOM so Windows PowerShell 5.1
-reads non-ASCII paths correctly, and forwards output from its hidden child. In
-development it runs Electron as Node on `out/cli/index.js` directly, with the same
-app-launch env as `buildWindowsDevLauncher`.
+app's user-data directory and is written with a UTF-8 BOM so Windows PowerShell 5.1
+reads non-ASCII paths correctly. It clears `ORCA_WSL_CLI_DIR`, which WSLENV maps
+back to Windows, so an app the CLI starts never inherits it. In development it runs
+Electron as Node on `out/cli/index.js` directly, with the environment
+`buildWindowsDevLauncher` sets (`ORCA_APP_EXECUTABLE`, stashed `NODE_OPTIONS`).
+Otherwise it launches its child exactly like the registered bridge.
 
 A missing runtime or unwritable directory leaves `ORCA_WSL_CLI_DIR` unset and logs
-on the host.
+once on the host.
 
 Run the opt-in end-to-end test on Windows with `ORCA_BACKGROUND_LAUNCH=1`,
 `ORCA_TEST_MANAGED_WSL=1`, and optionally `ORCA_TEST_WSL_DISTRO=<distro>`.

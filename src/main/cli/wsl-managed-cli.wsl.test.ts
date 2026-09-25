@@ -5,7 +5,9 @@ import { expect, it } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
 import { removeTree } from '../../shared/windows-transient-lock-removal'
 import { buildWslExecArgs } from '../../shared/wsl-login-shell-command'
-import { ensureManagedWslCli } from './wsl-managed-cli'
+import { setAppEnvironment } from '../../shared/app-environment'
+import { addOrcaWslInteropEnv } from '../pty/wsl-orca-env'
+import { getManagedWslCliDir } from './wsl-managed-cli'
 import { getBashShellReadyRcfileContent } from '../providers/local-pty-shell-ready-bash-rcfile'
 
 // Explicit opt-in: never require a developer's WSL installation for unit tests.
@@ -49,20 +51,23 @@ it.skipIf(process.platform !== 'win32' || process.env.ORCA_TEST_MANAGED_WSL !== 
       const translated = await wsl(['wslpath', '-u', root])
       expect(translated.code, translated.stderr).toBe(0)
       const guestRoot = translated.stdout.trim()
-      const directory = ensureManagedWslCli({
-        commandName: 'orca-dev',
-        userDataPath,
-        launcherPath: process.execPath,
-        cliEntryPath
+      setAppEnvironment({
+        getPath: () => userDataPath,
+        getAppPath: () => root,
+        getVersion: () => '0.0.0-test',
+        isPackaged: () => false,
+        onWillQuit: () => {},
+        exit: () => {},
+        getAppMetrics: () => []
       })
+      const directory = getManagedWslCliDir({ isPackaged: false, userDataPath })
       expect(directory).not.toBeNull()
-      // Mirrors the entries addOrcaWslInteropEnv publishes for a WSL pane.
       Object.assign(env, {
         ORCA_WSL_CLI_DIR: directory ?? '',
         ORCA_CLI_COMMAND: 'orca-dev',
-        ORCA_TERMINAL_HANDLE: 'term_managed_fixture',
-        WSLENV: 'ORCA_WSL_CLI_DIR/p:ORCA_CLI_COMMAND/u:ORCA_TERMINAL_HANDLE/u'
+        ORCA_TERMINAL_HANDLE: 'term_managed_fixture'
       })
+      addOrcaWslInteropEnv(env)
       const shell = (command: string) =>
         wsl([
           'env',

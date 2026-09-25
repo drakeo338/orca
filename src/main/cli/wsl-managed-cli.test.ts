@@ -2,7 +2,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ensureManagedWslCli, getManagedWslCliDir } from './wsl-managed-cli'
+import { setAppEnvironment } from '../../shared/app-environment'
+import { getManagedWslCliDir } from './wsl-managed-cli'
 
 const roots: string[] = []
 afterEach(() => {
@@ -42,22 +43,28 @@ describe('managed WSL CLI provisioning', () => {
     expect(getManagedWslCliDir(host)).toBeNull()
   })
 
-  it('runs the development CLI directly with the dev launcher app-launch env', () => {
+  it('runs the development CLI directly with the dev launcher env', () => {
     const host = fixture()
-    const cliEntryPath = join(host.resourcesPath, 'out', 'cli', 'index.js')
-    const directory =
-      ensureManagedWslCli({
-        commandName: 'orca-dev',
-        userDataPath: host.userDataPath,
-        launcherPath: process.execPath,
-        cliEntryPath
-      }) ?? ''
+    const appPath = host.resourcesPath
+    const cliEntryPath = join(appPath, 'out', 'cli', 'index.js')
+    mkdirSync(join(appPath, 'out', 'cli'), { recursive: true })
+    writeFileSync(cliEntryPath, 'fixture')
+    setAppEnvironment({
+      getPath: () => host.userDataPath,
+      getAppPath: () => appPath,
+      getVersion: () => '0.0.0-test',
+      isPackaged: () => false,
+      onWillQuit: () => {},
+      exit: () => {},
+      getAppMetrics: () => []
+    })
+    const directory = getManagedWslCliDir({ ...host, isPackaged: false }) ?? ''
     expect(readFileSync(join(directory, 'orca-dev'), 'utf8')).toContain(process.execPath)
     const bridge = readFileSync(join(directory, 'orca-wsl-bridge.ps1'), 'utf8')
     expect(bridge.startsWith('\uFEFF')).toBe(true)
-    expect(bridge).toContain("$env:ELECTRON_RUN_AS_NODE = '1'")
-    expect(bridge).toContain('$env:ORCA_APP_EXECUTABLE_NEEDS_APP_ROOT')
     expect(bridge).toContain(host.userDataPath)
     expect(bridge).toContain(cliEntryPath)
+    expect(bridge).toContain('$env:ORCA_APP_EXECUTABLE_NEEDS_APP_ROOT')
+    expect(bridge).toContain('Remove-Item Env:NODE_OPTIONS')
   })
 })
