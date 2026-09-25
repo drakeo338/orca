@@ -211,6 +211,9 @@ export type AgentSessionStatusSummary = {
   status: StructuredAgentSessionProjectedStatus | null
   /** Present only while this host has the provider child executing the session. */
   hostExecutionOwned?: true
+  /** With `hostExecutionOwned`: whether that child has proven its start. `starting` is a
+   *  published session whose provider has not yet answered startup; absent on older hosts. */
+  hostExecutionPhase?: 'starting' | 'ready'
   latestPrompt: string
   /** Provider model in force for the next turn; absent until the host has read the options. */
   model?: string
@@ -231,6 +234,10 @@ export type AgentSessionStatusSummary = {
   backgroundTasks?: AgentSessionBackgroundTask[]
   providerSession?: AgentProviderSessionMetadata
   updatedAt: number
+  /** When the session's own agent entered `status`, dated by its own lifecycle edges and never by
+   *  row activity: `updatedAt` also moves for a subagent's rows. Absent from older hosts, and when
+   *  the journal records no such edge; readers then keep dating the state themselves. */
+  statusStartedAt?: number
 }
 
 /** A summary outlives its provider child: an evicted idle session is still idle, so the host
@@ -317,6 +324,8 @@ export type AgentSessionAttachResult = {
   page: AgentSessionHistoryPage
   /** Submissions the crash boundary settled as `unknown` while attaching. */
   unconfirmedClientMessageIds: string[]
+  /** The host-owned id of the tab that shows this chat. Absent from hosts that predate it. */
+  tabId?: string
 }
 
 export type AgentSessionSendResult = {
