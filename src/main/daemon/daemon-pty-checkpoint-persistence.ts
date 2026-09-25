@@ -112,7 +112,7 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
         take.drainedRecords === undefined || opts.forceLiveSnapshot === true || take.overflowed
           ? take.snapshot
           : await this.buildDurableHistorySnapshot(sessionId, take.snapshot, take.drainedRecords, {
-              pendingRecordsAreComplete: take.seq === 1,
+              isFirstTake: take.seq === 1,
               ...(opts.requireContinuityProof === true
                 ? { requiredPreviousPendingOutputSeq: take.seq - 1 }
                 : {})
@@ -125,27 +125,23 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
         this.sessionsNeedingLiveCheckpoint.add(sessionId)
         this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
         this.markSessionDirty(sessionId)
-        return { checkpoint, snapshot: take.snapshot, liveSnapshot: take.snapshot }
+        return { checkpoint, snapshot: take.snapshot }
       }
       if (checkpoint === 'unavailable') {
         this.sessionsNeedingFullCheckpoint.delete(sessionId)
         this.sessionsNeedingLiveCheckpoint.delete(sessionId)
         this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
-        return { checkpoint, snapshot: take.snapshot, liveSnapshot: take.snapshot }
+        return { checkpoint, snapshot: take.snapshot }
       }
       this.lastFullCheckpointAt.set(sessionId, Date.now())
       this.sessionsNeedingLiveCheckpoint.delete(sessionId)
       this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
-      return { checkpoint: 'committed', snapshot, liveSnapshot: take.snapshot }
+      return { checkpoint: 'committed', snapshot }
     }
     this.sessionsNeedingFullCheckpoint.delete(sessionId)
     this.sessionsNeedingLiveCheckpoint.delete(sessionId)
     this.sessionsNeedingContinuityCheckpoint.delete(sessionId)
-    return {
-      checkpoint: 'unavailable',
-      snapshot: take?.snapshot ?? null,
-      liveSnapshot: take?.snapshot ?? null
-    }
+    return { checkpoint: 'unavailable', snapshot: take?.snapshot ?? null }
   }
 
   protected async buildDurableHistorySnapshot(
@@ -153,7 +149,7 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
     liveSnapshot: NonNullable<TakePendingOutputResult['snapshot']>,
     pendingRecords: TakePendingOutputResult['records'],
     opts: {
-      pendingRecordsAreComplete: boolean
+      isFirstTake: boolean
       requiredPreviousPendingOutputSeq?: number
     }
   ): Promise<NonNullable<TakePendingOutputResult['snapshot']>> {
@@ -166,7 +162,7 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
         wslDistro: this.wslDistrosBySessionId.get(sessionId)
       })
       if (
-        (!restoreInfo && !opts.pendingRecordsAreComplete) ||
+        (!restoreInfo && !opts.isFirstTake) ||
         (opts.requiredPreviousPendingOutputSeq !== undefined &&
           restoreInfo?.pendingOutputSeq !== opts.requiredPreviousPendingOutputSeq)
       ) {
@@ -177,7 +173,7 @@ export abstract class DaemonPtyCheckpointPersistence extends DaemonPtyCheckpoint
         liveSnapshot,
         restoreInfo,
         pendingRecords,
-        pendingRecordsAreComplete: opts.pendingRecordsAreComplete
+        isFirstTake: opts.isFirstTake
       })
     } catch (error) {
       console.warn('[history] durable history rebuild failed:', sessionId, error)

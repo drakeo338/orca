@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ColdRestoreReplayWriter } from './cold-restore-replay-writer'
-import { buildDurableCheckpointSnapshot } from './daemon-durable-history-snapshot'
+import { boundSnapshot, buildDurableCheckpointSnapshot } from './daemon-durable-history-snapshot'
 import { DAEMON_RESTORE_SCROLLBACK_ROWS } from './daemon-restore-scrollback-depth'
 import { DAEMON_SESSION_SCROLLBACK_ROWS } from './daemon-session-scrollback-window'
 import { HeadlessEmulator } from './headless-emulator'
@@ -236,45 +236,30 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     expectConsecutive(numberedRowIds(replayedRows(durable)), oldest, newest)
   })
 
-  it('bounds the rebased depth by the requested scrollback rows', async () => {
+  it('bounds a folded checkpoint to the rows a small-depth rebase of live would keep', async () => {
     const disk = emulator({ scrollback: DAEMON_RESTORE_SCROLLBACK_ROWS })
-    write(disk, numberedLines(1, 4_000))
+    write(disk, numberedLines(1, 3_700))
     const restoreInfo = restoreInfoFrom(disk.getSnapshot())
+    const pending = `${numberedLines(3_701, 4_000)}\x1b[=1;1u`
     const live = emulator({ scrollback: DAEMON_SESSION_SCROLLBACK_ROWS })
-    write(live, numberedLines(1, 4_000))
-
-    const durable = await buildDurableCheckpointSnapshot({
-      liveSnapshot: live.getSnapshot(),
-      restoreInfo,
-      scrollbackRows: 2_000
-    })
-
-    expect(durable.scrollbackLines).toBe(2_000)
-    expectConsecutive(numberedRowIds(replayedRows(durable)), 4_000 - (2_000 + 24 - 2), 4_000)
-  })
-
-  it('honors a requested depth shallower than a widened live window', async () => {
-    // Why: ORCA_DAEMON_SESSION_SCROLLBACK_ROWS can widen live past a bounded request.
-    const stream = numberedLines(1, 4_000)
-    const disk = emulator({ scrollback: DAEMON_RESTORE_SCROLLBACK_ROWS })
-    write(disk, stream)
-    const live = emulator({ scrollback: 3_000 })
-    write(live, stream)
+    write(live, numberedLines(1, 3_700) + pending)
     const liveSnapshot: TerminalSnapshot = { ...live.getSnapshot(), outputSequence: 6 }
-    expect(liveSnapshot.scrollbackLines).toBe(3_000)
-
-    const durable = await buildDurableCheckpointSnapshot({
+    expect(liveSnapshot.modes.kittyKeyboardFlags).toBe(1)
+    const committed = await buildDurableCheckpointSnapshot({
       liveSnapshot,
-      restoreInfo: restoreInfoFrom(disk.getSnapshot()),
-      scrollbackRows: 2_000
+      restoreInfo,
+      pendingRecords: [{ kind: 'output', data: pending }]
     })
 
-    expect(durable.scrollbackLines).toBe(2_000)
-    expect(durable.outputSequence).toBe(6)
-    expectConsecutive(numberedRowIds(replayedRows(durable)), 4_000 - (2_000 + 24 - 2), 4_000)
+    const bounded = await boundSnapshot(committed, 2_000)
+
+    expect(bounded.scrollbackLines).toBe(2_000)
+    expect(bounded.outputSequence).toBe(6)
+    expect(bounded.modes.kittyKeyboardFlags).toBe(1)
+    expectConsecutive(numberedRowIds(replayedRows(bounded)), 4_000 - (2_000 + 24 - 2), 4_000)
   })
 
-  it('keeps only kept-row OSC links when bounding a widened live window', async () => {
+  it('keeps only kept-row OSC links when bounding', async () => {
     const link = (uri: string, text: string): string =>
       `\x1b]8;;${uri}\x1b\\${text}\x1b]8;;\x1b\\\r\n`
     const stream = `${link('https://trimmed.example', 'TRIMMED')}${numberedLines(1, 1_500)}${link(
@@ -284,11 +269,7 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const live = emulator({ scrollback: 3_000 })
     write(live, stream)
 
-    const durable = await buildDurableCheckpointSnapshot({
-      liveSnapshot: live.getSnapshot(),
-      restoreInfo: null,
-      scrollbackRows: 2_000
-    })
+    const durable = await boundSnapshot(live.getSnapshot(), 2_000)
 
     const keptRow = replayedRows(durable).findIndex((row) => row.startsWith('KEPT_LINK'))
     expect(keptRow).toBeGreaterThan(0)
@@ -347,6 +328,37 @@ describe('durable checkpoint rebased on the live snapshot', () => {
       ])
     )
     expect(durable.oscLinks).toHaveLength(2)
+  })
+
+  it('keeps an older-row OSC link on its text across folds that evict rows', async () => {
+    const link = '\x1b]8;;https://old.example\x1b\\OLD_LINK\x1b]8;;\x1b\\\r\n'
+    let stream = `${numberedLines(1, 2_000)}${link}${numberedLines(2_001, 5_100)}`
+    const disk = emulator({ scrollback: DAEMON_RESTORE_SCROLLBACK_ROWS })
+    write(disk, stream)
+    let restoreInfo = restoreInfoFrom(disk.getSnapshot())
+    for (const [from, to] of [
+      [5_101, 6_050],
+      [6_051, 7_000]
+    ]) {
+      const pending = numberedLines(from, to)
+      stream += pending
+      const live = emulator({ scrollback: DAEMON_SESSION_SCROLLBACK_ROWS })
+      write(live, stream)
+
+      const durable = await buildDurableCheckpointSnapshot({
+        liveSnapshot: live.getSnapshot(),
+        restoreInfo,
+        pendingRecords: [{ kind: 'output', data: pending }]
+      })
+
+      expect(durable.snapshotAnsi).toContain('\x1b]8;;https://old.example')
+      const linkRow = replayedRows(durable).findIndex((row) => row.startsWith('OLD_LINK'))
+      expect(linkRow).toBeGreaterThan(0)
+      expect(durable.oscLinks).toEqual([
+        { row: linkRow, startCol: 0, endCol: 8, uri: 'https://old.example' }
+      ])
+      restoreInfo = restoreInfoFrom(durable)
+    }
   })
 
   it('keeps wrapped rows that straddle the live window top', async () => {
@@ -413,13 +425,3 @@ function joinedCells(snapshot: TerminalSnapshot): string {
     .map((row) => row.trimEnd())
     .join('')
 }
-
-describe('synchronous parse assumption', () => {
-  it('parses a write synchronously through xterm _core.writeSync', () => {
-    // Why: the rebase trusts that the live snapshot already holds every
-    // drained record; HeadlessEmulator.writeSync is false when xterm drops it.
-    const target = emulator({ scrollback: 10 })
-    expect(target.writeSync('SYNC_PARSED')).toBe(true)
-    expect(target.getBufferTailLines(24).join('\n')).toContain('SYNC_PARSED')
-  })
-})

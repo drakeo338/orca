@@ -231,17 +231,18 @@ export async function replayTerminalSnapshot(
     scrollback: Math.max(0, Math.min(50_000, scrollbackRows))
   })
   const replay = new ColdRestoreReplayWriter(emulator)
-  try {
-    for (const segment of [
-      snapshot.scrollbackAnsi,
-      snapshot.rehydrateSequences,
-      snapshot.snapshotAnsi,
-      snapshot.pendingEscapeTailAnsi ?? ''
-    ]) {
-      if (!(await replay.write(segment))) {
-        throw new Error('Terminal checkpoint replay is unavailable')
-      }
+  const write = async (data: string): Promise<void> => {
+    if (!(await replay.write(data))) {
+      throw new Error('Terminal checkpoint replay is unavailable')
     }
+  }
+  try {
+    await write(snapshot.scrollbackAnsi)
+    await write(snapshot.rehydrateSequences)
+    await write(snapshot.snapshotAnsi)
+    // Why: rehydrateSequences omits kitty flags, and the torn escape tail must stay last.
+    await emulator.applyKittyKeyboardFlags(snapshot.modes.kittyKeyboardFlags ?? 0)
+    await write(snapshot.pendingEscapeTailAnsi ?? '')
     emulator.setCwd(snapshot.cwd)
     if (snapshot.lastTitle) {
       emulator.setLastTitle(snapshot.lastTitle)
