@@ -152,8 +152,22 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
             payload: { ...rootContextPreservingPayload.payload, agentType: identity.agentType }
           }
     const attachedPayload = attachClaudePermissionToolUseId(previous, identityResolvedPayload)
-    if (previous && shouldKeepClaudePermissionVisible(previous, attachedPayload)) {
-      const held = withHeldChildWaitMainAgent(previous, attachedPayload)
+    // Why before the permission hold: that hold adopts the event's `mainAgent`, and a relay's
+    // restatement of a main agent the desktop cancelled must not replace the cancel.
+    const latch = resolveCancelVerdictLatch(previous, attachedPayload, Date.now())
+    if (latch.hold) {
+      if (
+        attachedPayload.payload.agentType === 'codex' &&
+        attachedPayload.payload.state === 'working'
+      ) {
+        markCodexLeadTurnInterrupted(this.state, attachedPayload.paneKey)
+      }
+      this.commitStatusRowMutation(rowBefore, previous)
+      return previous
+    }
+    const effectivePayload = latch.event
+    if (previous && shouldKeepClaudePermissionVisible(previous, effectivePayload)) {
+      const held = withHeldChildWaitMainAgent(previous, effectivePayload)
       // Why: a child's prompt leaves the main agent running, so the held row takes its `mainAgent` and
       // must take the same event's background evidence; a main agent's own prompt blocks it, so not there.
       if (previous.toolAgentId) {
@@ -172,18 +186,6 @@ export abstract class AgentHookServerStatusUpdate extends AgentHookServerStatusA
       }
       return held
     }
-    const latch = resolveCancelVerdictLatch(previous, attachedPayload, Date.now())
-    if (latch.hold) {
-      if (
-        attachedPayload.payload.agentType === 'codex' &&
-        attachedPayload.payload.state === 'working'
-      ) {
-        markCodexLeadTurnInterrupted(this.state, attachedPayload.paneKey)
-      }
-      this.commitStatusRowMutation(rowBefore, previous)
-      return previous
-    }
-    const effectivePayload = latch.event
     if (
       effectivePayload.payload.state !== 'done' ||
       effectivePayload.payload.lastAssistantMessage

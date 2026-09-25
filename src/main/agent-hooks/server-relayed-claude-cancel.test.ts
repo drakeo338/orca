@@ -159,6 +159,28 @@ describe('a relayed Claude cancel with a live subagent (captured)', () => {
     })
   })
 
+  it("keeps the cancel while a child's permission card stays up over its next tool", async () => {
+    const pane = await startSshPane(new AgentHookServer())
+    await postCaptured(pane, upToCancel)
+    expect(pressCtrlC(pane.desktop)).toBe(true)
+
+    const childTool = hookAt(records, 6).payload
+    await pane.post({ ...childTool, hook_event_name: 'PermissionRequest' })
+    // A denied request runs no tool; the child moves on to a different one, and the card stays up.
+    await pane.post({ ...childTool, tool_use_id: 'toolu_after_denial' })
+    expect(row(pane.desktop)).toMatchObject({
+      state: 'waiting',
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+
+    await pane.post(subagentStop(4))
+    expect(row(pane.desktop)).toMatchObject({
+      state: 'done',
+      interrupted: true,
+      mainAgent: { state: 'done', outcome: 'cancellation' }
+    })
+  })
+
   it('keeps the cancel through a reconnect replay of the relay cache', async () => {
     const pane = await startSshPane(new AgentHookServer())
     await postCaptured(pane, upToCancel)
