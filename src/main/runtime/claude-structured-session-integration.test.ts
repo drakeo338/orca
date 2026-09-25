@@ -557,6 +557,21 @@ describe('a structured Claude session over agentSession.*', () => {
     expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'released', handoffStage: null })
   })
 
+  it('reconciles a Claude crash whose descendants could not be verified at once', async () => {
+    await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    const connection = claude.live()
+    connection.exitVerdict = { root: 'exited', tree: 'unverifiable' }
+    connection.close = async () => {
+      connection.closed = true
+      return false
+    }
+    connection.handlers.onExit?.(new Error('claude stream-json exited (code 1): crashed'))
+
+    // Held back, sends failed with the crash until the idle clock stopped the chat.
+    await waitForStructuredAgentSessionRecovery()
+    expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'released', handoffStage: null })
+  })
+
   it('creates, sends, streams, approves, interrupts, and resumes from the chain head', async () => {
     shellEnv = { ...shellEnv, ANTHROPIC_API_KEY: 'sk-ant-SHELL-LEAK' }
     const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
