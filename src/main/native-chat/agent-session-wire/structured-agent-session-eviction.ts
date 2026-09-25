@@ -23,6 +23,7 @@ import {
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
+import { withTimeout } from '../../../shared/promise-timeout-fallback'
 
 export type StructuredAgentSessionEvictionContext = {
   sessionId: string
@@ -50,6 +51,9 @@ export type StructuredAgentSessionEvictionContext = {
   releaseLease: () => Promise<void>
 }
 
+/** The resume offer is advisory; a stalled sink must not hold the child's stop behind it. */
+const SNAPSHOT_DRAIN_TIMEOUT_MS = 1_000
+
 export type StructuredAgentSessionEvictionStep = {
   name: string
   run: (context: StructuredAgentSessionEvictionContext) => Promise<void> | void
@@ -65,7 +69,7 @@ export const STRUCTURED_AGENT_SESSION_EVICTION_STEPS: readonly StructuredAgentSe
           return
         }
         // Events the provider already delivered are part of what the sidebar showed at the stop.
-        await context.eventSink.drained()
+        await withTimeout<unknown>(context.eventSink.drained(), SNAPSHOT_DRAIN_TIMEOUT_MS, null)
         try {
           context.beforeProviderChildStop()
         } catch {
