@@ -10,7 +10,7 @@ def validate(results, network):
     require(len(cases) == len(results), "duplicate native cases")
 
     def expect(case, value):
-        require(cases.get(case) == value, case)
+        require(cases.get(case) is value if isinstance(value, bool) else cases.get(case) == value, case)
 
     def apis(case, route, storage=False):
         value = cases.get(case, {})
@@ -42,7 +42,8 @@ def validate(results, network):
         expect(case, "loaded")
     order = [row["case"] for row in results]
     lifecycle = ["lifecycle-ready", "lifecycle-background", "lifecycle-foreground", "apis-A-after-foreground"]
-    require(all(case in order for case in lifecycle), "lifecycle callbacks present")
+    for case in lifecycle[:-1]:
+        expect(case, True)
     require([order.index(case) for case in lifecycle] == sorted(order.index(case) for case in lifecycle),
             "lifecycle callback order")
     expect("content-blocker-compiled", True)
@@ -62,7 +63,8 @@ def validate(results, network):
         expect(loss + "-websocket", "error")
     require(str(cases.get("listener-down-navigation")).startswith("error:"), "listener loss navigation")
 
-    starts = [i for i, event in enumerate(network) if event.get("path") == "/?policy=1" and event.get("route") == "A"]
+    starts = [i for i, event in enumerate(network) if event.get("event") == "http"
+              and event.get("path") == "/?policy=1" and event.get("route") == "A"]
     controls = [i for i, event in enumerate(network) if event["event"] == "control"]
     require(len(starts) == 1 and len(controls) == 2 and starts[0] < controls[0], "policy/control interval")
     require([network[i]["path"] for i in controls] == ["/tunnel-down", "/listener-down"], "loss controls")
@@ -70,11 +72,32 @@ def validate(results, network):
     direct = [event for event in policy if event.get("route") == "DIRECT-BYPASS"]
     require(len(direct) == 4 and all(event.get("host", "").startswith("[::ffff:7f00:1]:") for event in direct),
             "only mapped IPv6 reaches direct trap during policy interval")
-    require(sorted(event.get("path", "websocket") for event in direct) ==
-            sorted(["/fetch?policy=1", "/image?policy=1", "/?policy=1", "websocket"]), "mapped bypass mechanisms")
+    require({(event.get("event"), event.get("path")) for event in direct} ==
+            {("http", "/fetch?policy=1"), ("http", "/image?policy=1"),
+             ("http", "/?policy=1"), ("websocket", None)}, "mapped bypass mechanisms")
     socks = [event for event in network if event["event"] == "socks-connect"]
     require(all(event["host"] in ("localhost", "orca-proof.invalid") for event in socks), "no literal SOCKS targets")
     require(all(any(event["host"] == host for event in socks) for host in ("localhost", "orca-proof.invalid")),
             "original hostnames reach SOCKS")
     require(not any(event.get("route") == "DIRECT-BYPASS" and event.get("host", "").startswith("localhost:")
                     for event in network[controls[0]:]), "no hostname direct fallback after loss")
+
+    def traffic(events, route, host, document=None):
+        observed = [event for event in events if event.get("route") == route
+                    and event.get("host", "").startswith(host + ":")]
+        require(any(event.get("event") == "http" and event.get("path", "").startswith("/fetch?nonce=")
+                    for event in observed), route + " " + host + " fetch traffic")
+        require(any(event.get("event") == "websocket" for event in observed),
+                route + " " + host + " WebSocket traffic")
+        if document is not None:
+            require(any(event.get("event") == "http" and event.get("path") == document for event in observed),
+                    route + " " + host + " document traffic")
+
+    traffic(network[:controls[0]], "B", "localhost", "/")
+    require(any(event.get("event") == "socks-connect" and event.get("route") == "A"
+                and event.get("host") == "localhost" and event.get("tunnelDown") is True
+                for event in network[controls[0] + 1:controls[1]]), "SOCKS attempt after tunnel loss")
+    after_loss = network[controls[1] + 1:]
+    for host in ("127.0.0.1", "[::1]"):
+        traffic(after_loss, "DIRECT-BYPASS", host, "/?loss=1")
+    traffic(after_loss, "B", "localhost")

@@ -92,6 +92,69 @@ class ObservationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate(self.results, network)
 
+    def test_truncated_loss_capture_fails(self):
+        cut = next(i for i, row in enumerate(self.network) if row.get("path") == "/listener-down")
+        with self.assertRaisesRegex(ValueError, "traffic"):
+            validate(self.results, self.network[:cut + 1])
+
+    def test_missing_route_b_network_evidence_fails(self):
+        with self.assertRaisesRegex(ValueError, "B localhost fetch traffic"):
+            validate(self.results, [row for row in self.network if row.get("route") != "B"])
+
+    def test_mapped_ipv6_garbage_event_types_fail(self):
+        network = copy.deepcopy(self.network)
+        for row in network:
+            if row.get("host", "").startswith("[::ffff:7f00:1]:"):
+                row["event"] = "garbage"
+        with self.assertRaisesRegex(ValueError, "mapped bypass mechanisms"):
+            validate(self.results, network)
+
+    def test_false_lifecycle_observations_fail(self):
+        results = copy.deepcopy(self.results)
+        for row in results:
+            if row["case"].startswith("lifecycle-"):
+                row["value"] = False
+        with self.assertRaisesRegex(ValueError, "lifecycle-ready"):
+            validate(results, self.network)
+
+    def test_boolean_observations_require_true(self):
+        for case in ("complete", "content-blocker-compiled", "lifecycle-ready",
+                     "lifecycle-background", "lifecycle-foreground"):
+            for value in (False, 1, "true", None):
+                with self.subTest(case=case, value=value):
+                    results = copy.deepcopy(self.results)
+                    next(row for row in results if row["case"] == case)["value"] = value
+                    with self.assertRaisesRegex(ValueError, case):
+                        validate(results, self.network)
+
+    def test_each_post_loss_mechanism_requires_network_evidence(self):
+        cut = next(i for i, row in enumerate(self.network) if row.get("path") == "/listener-down")
+        for index, row in enumerate(self.network[cut + 1:], cut + 1):
+            if row["event"] not in ("http", "websocket"):
+                continue
+            with self.subTest(event=row):
+                with self.assertRaisesRegex(ValueError, "traffic"):
+                    validate(self.results, self.network[:index] + self.network[index + 1:])
+        with self.assertRaisesRegex(ValueError, "SOCKS attempt after tunnel loss"):
+            validate(self.results, [row for row in self.network if not
+                     (row.get("route") == "A" and row.get("tunnelDown") is True)])
+
+    def test_route_b_before_loss_cannot_substitute_for_surviving_traffic(self):
+        cut = next(i for i, row in enumerate(self.network) if row.get("path") == "/listener-down")
+        network = self.network[:cut + 1] + [row for row in self.network[cut + 1:] if row.get("route") != "B"]
+        with self.assertRaisesRegex(ValueError, "B localhost fetch traffic"):
+            validate(self.results, network)
+
+    def test_each_mapped_ipv6_mechanism_requires_its_event_type(self):
+        for index, row in enumerate(self.network):
+            if not row.get("host", "").startswith("[::ffff:7f00:1]:"):
+                continue
+            with self.subTest(event=row):
+                network = copy.deepcopy(self.network)
+                network[index]["event"] = "garbage"
+                with self.assertRaisesRegex(ValueError, "mapped bypass mechanisms"):
+                    validate(self.results, network)
+
 
 if __name__ == "__main__":
     unittest.main()

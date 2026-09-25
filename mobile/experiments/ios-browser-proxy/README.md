@@ -69,13 +69,13 @@ Apple references: [ProxyConfiguration](https://developer.apple.com/documentation
 
 ## Validation and cleanup
 
-The corrected headless run recorded 65 native records and 97 network events in [evidence.jsonl](./evidence.jsonl). All five executable tests passed. Run them without a simulator or network service:
+The corrected headless run recorded 65 native records and 97 network events in [evidence.jsonl](./evidence.jsonl). All 13 executable tests passed. Run them without a simulator or network service:
 
 ```sh
 ORCA_BACKGROUND_LAUNCH=1 python3 -m unittest discover -s mobile/experiments/ios-browser-proxy -v
 ```
 
-The tests inject shutdown failure while preserving the original launch exception and prove delete, fixture termination, reap and receipt writing still happen. A second failure case covers delete failure, SIGTERM failure, bounded wait expiry, SIGKILL escalation and reap failure. Measurement tests reject false completion, broken hostname routing, failed policy compilation, missing lifecycle callbacks and missing or unexpected policy network events while accepting the expected bypass.
+The tests inject shutdown failure while preserving the original launch exception and prove delete, fixture termination, reap and receipt writing still happen. A second failure case covers delete failure, SIGTERM failure, bounded wait expiry, SIGKILL escalation and reap failure. Measurement tests require actual boolean completion, compilation and lifecycle observations, and reject broken hostname routing or missing callbacks. Network checks require HTTP/WebSocket event types for each mapped-IPv6 mechanism, route B traffic before loss, a rejected SOCKS attempt between loss controls, both literal-loopback navigation/fetch/WebSocket sequences after listener loss, and fresh B fetch/WebSocket traffic afterward. Negative tests remove or corrupt those witnesses, including truncating the capture at listener loss and removing every B event; retained evidence still passes with its expected bypasses. These witnesses support the bounded capture, not a platform-wide no-fallback guarantee.
 
 Cleanup attempts shutdown and delete independently with timeouts, then terminates the owned process group even if its launcher has already exited. Bounded waits escalate to SIGKILL and reap the launcher; group absence is checked separately from launcher exit. `cleanup.json` records actual outcomes and every cleanup error plus the original run error. Any cleanup error makes an otherwise successful run fail; when the run already failed, its original exception is retained and cleanup evidence is also printed to stderr. Receipt-write failures are reported to stderr. No unrelated simulator or process is targeted.
 
