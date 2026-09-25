@@ -135,6 +135,10 @@ export default function TerminalPaneHeaderOverlay({
                 'Close Pane'
               )
             : translate('auto.components.tab.bar.SortableTab.95db5f2f7d', 'Close tab')
+        // Why: a titled split pane keeps its X as remove-title, but a titled single
+        // pane (agent terminals get runtime titles) still needs a close control.
+        const showCloseButton =
+          showAlwaysOnHeaders && (paneCount > 1 ? !title : showSplitButton && !isTabPinned)
         if (!showHeader || !overlayRect) {
           return null
         }
@@ -377,8 +381,8 @@ export default function TerminalPaneHeaderOverlay({
                         )}
                       </TooltipContent>
                     </Tooltip>
-                  ) : showAlwaysOnHeaders &&
-                    (paneCount > 1 || (showSplitButton && !isTabPinned)) ? (
+                  ) : null}
+                  {showCloseButton ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button

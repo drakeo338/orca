@@ -148,21 +148,39 @@ afterEach(() => {
 })
 
 describe('TerminalPaneHeaderOverlay', () => {
-  it.each([1, 2])('keeps the titled-pane X as remove-title with %i pane(s)', (paneCount) => {
+  it('keeps the titled split-pane X as remove-title only', () => {
     const { container, onClosePane, onRemoveTitle } = renderOverlay({
-      paneTitles: { 1: 'server', 2: '' },
-      paneCount
+      paneTitles: { 1: 'server', 2: '' }
     })
 
     const removeTitle = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Remove pane title: server"]'
     )
     expect(removeTitle).not.toBeNull()
+    expect(
+      container.querySelector('.pane-title-bar[data-active-pane] button[aria-label="Close Pane"]')
+    ).toBeNull()
 
     act(() => removeTitle?.click())
 
     expect(onRemoveTitle).toHaveBeenCalledWith(1)
-    expect(onClosePane).not.toHaveBeenCalledWith(1)
+    expect(onClosePane).not.toHaveBeenCalled()
+  })
+
+  it('offers close tab beside remove-title for a titled single pane', () => {
+    const { container, onClosePane, onRemoveTitle } = renderOverlay({
+      paneTitles: { 1: 'server' },
+      paneCount: 1
+    })
+
+    expect(container.querySelector('button[aria-label="Remove pane title: server"]')).not.toBeNull()
+    const closeTab = container.querySelector<HTMLButtonElement>('button[aria-label="Close tab"]')
+    expect(closeTab).not.toBeNull()
+
+    act(() => closeTab?.click())
+
+    expect(onClosePane).toHaveBeenCalledWith(1)
+    expect(onRemoveTitle).not.toHaveBeenCalled()
   })
 
   it('keeps split and close-pane controls available for untitled split pane headers', () => {
