@@ -271,9 +271,10 @@ export async function openSkillTarGzip(archivePath: string): Promise<{
     reader: new TarByteReader(gunzip),
     archiveIdentity,
     abort: (error) => {
+      // Only the source carries the reason: once the pipeline settles, nothing listens for 'error' on the rest.
       source.destroy(error)
-      verifier.destroy(error)
-      gunzip.destroy(error)
+      verifier.destroy()
+      gunzip.destroy()
     }
   }
 }

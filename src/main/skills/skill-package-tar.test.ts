@@ -1,5 +1,13 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseSkillTarHeader, SKILL_TAR_BLOCK_BYTES } from './skill-package-tar'
+import {
+  openSkillTarGzip,
+  parseSkillTarHeader,
+  SKILL_TAR_BLOCK_BYTES,
+  writeSkillTarGzip
+} from './skill-package-tar'
 
 function writeOctal(header: Buffer, offset: number, length: number, value: number): void {
   header.write(`${value.toString(8).padStart(length - 1, '0')}\0`, offset, length, 'ascii')
@@ -59,6 +67,33 @@ describe('skill package tar envelope', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(Error)
       }
+    }
+  })
+
+  it('aborts an archive whose read pipeline already finished without an uncaught error', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'orca-skill-tar-abort-'))
+    const uncaught: unknown[] = []
+    const record = (error: unknown): void => {
+      uncaught.push(error)
+    }
+    process.on('uncaughtException', record)
+    try {
+      const archivePath = join(root, 'small.tar.gz')
+      const bytes = Buffer.from('# Small\n')
+      await writeSkillTarGzip(archivePath, [
+        { path: 'SKILL.md', size: bytes.length, executable: false, bytes }
+      ])
+      const archive = await openSkillTarGzip(archivePath)
+      // A small archive is fully read and inflated before a slow caller fails, e.g. a Windows mkdir.
+      await archive.archiveIdentity
+
+      archive.abort(new Error('caller-failed-after-read'))
+      await new Promise<void>((resolve) => setTimeout(resolve, 20))
+
+      expect(uncaught).toEqual([])
+    } finally {
+      process.off('uncaughtException', record)
+      await rm(root, { recursive: true, force: true })
     }
   })
 })
