@@ -118,4 +118,53 @@ describe('WSL CLI PowerShell boundary', () => {
       }
     }
   )
+
+  it.skipIf(process.platform !== 'win32')(
+    'pins a non-ASCII app identity and forwards hidden-child output through Windows PowerShell 5.1',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'orca-wsl-managed-bridge-'))
+      const userDataPath = join(root, "张三's Orca")
+      const cliEntryPath = join(root, 'cli entry.cjs')
+      const bridgePath = join(root, 'orca-wsl-bridge.ps1')
+      try {
+        await writeFile(bridgePath, buildWslBridgeScript({ userDataPath, cliEntryPath }), 'utf8')
+        await writeFile(
+          cliEntryPath,
+          'console.error("to stderr"); console.log(JSON.stringify({ argv: process.argv.slice(2), owner: process.env.ORCA_USER_DATA_PATH, app: process.env.ORCA_APP_EXECUTABLE }))\n',
+          'utf8'
+        )
+        const result = spawnSync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            bridgePath,
+            process.execPath,
+            '-WslCwd',
+            root,
+            ...FORWARDED_ARGS
+          ],
+          {
+            encoding: 'utf8',
+            windowsHide: true,
+            env: { ...process.env, ORCA_APP_EXECUTABLE: '' }
+          }
+        )
+
+        expect(result.error).toBeUndefined()
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stderr).toContain('to stderr')
+        expect(JSON.parse(result.stdout.trim())).toEqual({
+          argv: FORWARDED_ARGS,
+          owner: userDataPath,
+          app: process.execPath
+        })
+      } finally {
+        await removeTree(root)
+      }
+    }
+  )
 })

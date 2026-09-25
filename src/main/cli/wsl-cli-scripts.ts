@@ -66,10 +66,12 @@ export function buildWslBridgeScript(app?: {
   const setAppEnv = app
     ? [
         `$env:ORCA_USER_DATA_PATH = ${quotePowerShell(app.userDataPath)}`,
-        // Why: run the dev CLI directly; its .cmd launcher adds a cmd.exe quoting boundary.
+        // Why: run the dev CLI directly (its .cmd launcher adds a cmd.exe quoting boundary),
+        // with the same app-launch env as buildWindowsDevLauncher.
         ...(app.cliEntryPath
           ? [
               "$env:ELECTRON_RUN_AS_NODE = '1'",
+              "if (-not $env:ORCA_APP_EXECUTABLE) { $env:ORCA_APP_EXECUTABLE = $OrcaLauncher; $env:ORCA_APP_EXECUTABLE_NEEDS_APP_ROOT = '1' }",
               `$ForwardArgs = @(${quotePowerShell(app.cliEntryPath)}) + $ForwardArgs`
             ]
           : [])
@@ -92,7 +94,8 @@ export function buildWslBridgeScript(app?: {
   const finishOutputCopy = app
     ? ['[void]$stdoutCopy.GetAwaiter().GetResult()', '[void]$stderrCopy.GetAwaiter().GetResult()']
     : []
-  return `${BRIDGE_MANAGED_MARKER}
+  // Why the BOM: PowerShell 5.1 reads BOM-less scripts as ANSI, garbling non-ASCII embedded paths.
+  return `${app ? '\uFEFF' : ''}${BRIDGE_MANAGED_MARKER}
 function ConvertTo-NativeCommandLineArgument {
   param([AllowEmptyString()][string]$Value)
 

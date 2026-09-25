@@ -1,29 +1,33 @@
 # CLI access in Orca-managed WSL shells
 
-Every Windows PTY environment (`buildPtyHostEnv`) exports `ORCA_WSL_CLI_DIR`,
-a directory under `<userData>/wsl-managed-cli/<content hash>` holding an
-`orca-ide` (packaged) or `orca-dev` (development) launcher and its PowerShell
-bridge. `WSLENV` `/p` translates the path with the distro's own mount settings.
-Nothing is installed in the guest; `~/.local/bin`, shell profiles, and the
-Windows user PATH are untouched. External WSL shells still need Settings →
-General registration.
+A WSL terminal on a Windows host gets this app's CLI (`orca-ide` packaged,
+`orca-dev` in development) on its PATH with nothing installed in the guest:
+`~/.local/bin`, shell profiles, and the Windows user PATH are untouched. External
+WSL shells still need Settings → General registration.
 
-- **Scripts** reuse `wsl-cli-scripts.ts`. The colocated launcher finds its bridge
-  next to itself and PowerShell by its Windows path, so neither guest PATH nor
-  the automount root matters. The bridge pins this app's user-data directory
-  and, in development, runs Electron as Node on `out/cli/index.js` directly.
-- **Content addressing** follows `shell-wrapper-content-address.ts`: builds that
-  share user data never overwrite each other, and a present file is complete
-  because each one lands by rename. Old directories are not collected.
-- **PATH restore** (`WSL_MANAGED_CLI_PATH`) runs after user startup files: in the
-  bash rcfile, the local zsh first-prompt hook, and the renderer's WSL skill-setup
-  command. Other `buildWslLoginShellCommand` callers (git, Codex) do not get it.
-- **Failure never blocks a shell.** A missing runtime or unwritable directory
-  leaves the variable unset (logged on the host); an unreadable mount prints
-  one warning in the guest. Non-bash/zsh login shells simply lack the CLI.
+1. **Host.** `buildPtyHostEnv` calls `getManagedWslCliDir` for WSL panes only. It
+   writes a launcher and PowerShell bridge (reusing `wsl-cli-scripts.ts`) under
+   `<userData>/wsl-managed-cli/<content hash>` and exports `ORCA_WSL_CLI_DIR`.
+   Content addressing follows `shell-wrapper-content-address.ts`: builds sharing
+   user data never overwrite each other, and a present file is complete because
+   each one lands by rename. Old directories are not collected.
+2. **Crossing.** `addOrcaWslInteropEnv` adds `ORCA_WSL_CLI_DIR/p`, so both the
+   daemon and in-process spawn paths translate it with the distro's own mounts.
+3. **Guest.** `WSL_MANAGED_CLI_PATH_RESTORE` runs after user startup files in the
+   bash rcfile and the local zsh first-prompt hook. It leads PATH with the
+   directory once (nested shells do not duplicate it) when
+   `$ORCA_WSL_CLI_DIR/$ORCA_CLI_COMMAND` is executable, and otherwise prints one
+   warning. Other login shells get no CLI; nothing blocks a shell.
 
-The `terminal.managed-wsl-cli.v1` runtime capability lets clients skip the WSL
-registration prerequisite for skill setup on hosts that have this.
+The colocated launcher finds its bridge beside itself and PowerShell by Windows
+path, so neither guest PATH nor the automount root matters. The bridge pins this
+app's user-data directory, is written with a UTF-8 BOM so Windows PowerShell 5.1
+reads non-ASCII paths correctly, and forwards output from its hidden child. In
+development it runs Electron as Node on `out/cli/index.js` directly, with the same
+app-launch env as `buildWindowsDevLauncher`.
+
+A missing runtime or unwritable directory leaves `ORCA_WSL_CLI_DIR` unset and logs
+on the host.
 
 Run the opt-in end-to-end test on Windows with `ORCA_BACKGROUND_LAUNCH=1`,
 `ORCA_TEST_MANAGED_WSL=1`, and optionally `ORCA_TEST_WSL_DISTRO=<distro>`.

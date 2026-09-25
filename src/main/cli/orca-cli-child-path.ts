@@ -13,7 +13,7 @@
  * every branch behaves exactly as it did inside `buildPtyHostEnv`.
  */
 
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { readInheritedPath } from '../ipc/pty/host-env/path'
 import { resolvePathEnvKey } from '../pty/windows-environment-path'
 import { ensureLinuxTerminalOrcaCliShimDir } from './linux-terminal-orca-cli-shim'
@@ -34,7 +34,7 @@ export function prependOrcaCliDirToChildPath(
   const platform = opts.platform ?? process.platform
   // Why: matches node:path's `delimiter` for the running platform, but stays correct when a test
   // drives a foreign platform through the seam.
-  const pathDelimiter = platform === 'win32' ? ';' : ':'
+  const pathDelimiter = platform === 'win32' ? ';' : delimiter
   // Why: dev mode needs the launcher PATH override so `orca` resolves to the dev build instead of the production binary at /usr/local/bin/orca.
   if (!opts.isPackaged) {
     const devCliBin = join(opts.userDataPath, 'cli', 'bin')
@@ -45,9 +45,7 @@ export function prependOrcaCliDirToChildPath(
       : devCliBin
   } else if (platform === 'linux') {
     // Why: bare-`orca` shim scoped to Orca PTYs — Linux CLI installs as `orca-ide` to avoid shadowing GNOME's /usr/bin/orca screen reader (stablyai/orca#7904).
-    const shimDir = ensureLinuxTerminalOrcaCliShimDir({
-      userDataPath: opts.userDataPath
-    })
+    const shimDir = ensureLinuxTerminalOrcaCliShimDir({ userDataPath: opts.userDataPath })
     if (shimDir) {
       const inheritedEntries = readInheritedPath(env, platform)
         .split(pathDelimiter)

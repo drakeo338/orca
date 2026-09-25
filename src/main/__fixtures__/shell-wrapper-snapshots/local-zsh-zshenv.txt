@@ -61,10 +61,13 @@ __orca_deferred_init() {
     precmd_functions=(${precmd_functions:#__orca_deferred_init})
   fi
   if [ -n "${ORCA_WSL_CLI_DIR:-}" ]; then
-    if [ -d "$ORCA_WSL_CLI_DIR" ]; then
-      export PATH="$ORCA_WSL_CLI_DIR${PATH:+:$PATH}"
+    if [ -x "$ORCA_WSL_CLI_DIR/${ORCA_CLI_COMMAND:-}" ]; then
+      case "$PATH" in
+        "$ORCA_WSL_CLI_DIR"|"$ORCA_WSL_CLI_DIR:"*) ;;
+        *) export PATH="$ORCA_WSL_CLI_DIR${PATH:+:$PATH}" ;;
+      esac
     else
-      printf 'Orca CLI is unavailable: cannot read %s. Check WSL Windows-drive mounts.\n' "$ORCA_WSL_CLI_DIR" >&2
+      printf 'Orca CLI unavailable: cannot run %s. Check WSL Windows-drive mount options.\n' "$ORCA_WSL_CLI_DIR/${ORCA_CLI_COMMAND:-}" >&2
     fi
   fi
   if __orca_has_feature overlay; then
