@@ -50,6 +50,10 @@ export function applyCodexConfiguredLaunchDefaults(
   const configuredModel = configured?.model
     ? models.find((model) => model.id === configured.model)
     : undefined
+  if (configured?.model && !configuredModel) {
+    // Codex runs a configured model the listing omits, so no listed row is what a launch runs.
+    return models.map((model) => ({ ...model, isDefault: false }))
+  }
   const defaultModel = configuredModel ?? models.find((model) => model.isDefault)
   const effort = configured?.effort ?? null
   const defaultEffort =

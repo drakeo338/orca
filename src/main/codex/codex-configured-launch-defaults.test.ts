@@ -66,11 +66,21 @@ describe('Codex listing default follows the configured launch model', () => {
     ])
   })
 
-  it('ignores a configured model the listing does not offer and an unsupported effort', async () => {
+  it('names no default when the configured model is one the listing does not offer', async () => {
     const listing = await fetchCodexModelCatalogListing({
       connection: connection({
-        answer: { config: { model: 'gpt-retired', model_reasoning_effort: 'max' } }
+        answer: { config: { model: 'gpt-oss:20b', model_reasoning_effort: 'high' } }
       })
+    })
+    expect(defaults(listing.models)).toEqual([
+      { id: 'gpt-6-astra', isDefault: false, defaultEffort: 'medium' },
+      { id: 'gpt-5.5', isDefault: false, defaultEffort: 'medium' }
+    ])
+  })
+
+  it('ignores a configured effort the listed default cannot run', async () => {
+    const listing = await fetchCodexModelCatalogListing({
+      connection: connection({ answer: { config: { model: null, model_reasoning_effort: 'max' } } })
     })
     expect(defaults(listing.models)).toEqual([
       { id: 'gpt-6-astra', isDefault: true, defaultEffort: 'medium' },
