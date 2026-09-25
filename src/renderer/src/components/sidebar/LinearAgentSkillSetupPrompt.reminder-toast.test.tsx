@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LINEAR_AGENT_SKILL_NAMES } from '@/lib/agent-feature-install-commands'
+import { ORCA_CLI_INSTALL_STATE_EVENT } from '@/lib/orca-cli-install-state-event'
 import {
   LinearAgentSkillSetupPrompt,
   _linearAgentSkillSetupPromptInternalsForTests
@@ -204,6 +205,28 @@ describe('LinearAgentSkillSetupPrompt reminder toast', () => {
     window.localStorage.clear()
     _linearAgentSkillSetupPromptInternalsForTests.resetSessionReminders()
     Reflect.deleteProperty(window, 'api')
+  })
+
+  it('re-reads the CLI after a registration elsewhere without closing the setup modal or its toast', async () => {
+    await renderPrompt({ linked: true, remote: false, surface: 'modal' })
+    expect(document.body.textContent).toContain('Orca CLI and Linear agent skill are missing.')
+    mocks.toastDismiss.mockClear()
+    let resolveRead: (status: CliInstallStatus) => void = () => {}
+    mocks.getCliStatus.mockImplementationOnce(
+      () => new Promise<CliInstallStatus>((resolve) => (resolveRead = resolve))
+    )
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(ORCA_CLI_INSTALL_STATE_EVENT))
+    })
+
+    expect(mocks.getCliStatus).toHaveBeenCalledTimes(2)
+    // Why: a loading flip would hide the prompt, closing the modal and reminder toast mid-read.
+    expect(document.body.textContent).toContain('Mock install')
+    expect(mocks.toastDismiss).not.toHaveBeenCalled()
+    await act(async () => resolveRead(cliStatus({})))
+    expect(document.body.textContent).toContain('Linear agent skill is missing.')
+    expect(document.body.textContent).not.toContain('Orca CLI and Linear agent skill are missing.')
   })
 
   it('shows a warning toast on a later modal-only activation after a casual close', async () => {

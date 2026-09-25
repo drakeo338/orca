@@ -28,6 +28,7 @@ import {
   type OnboardingFeatureSetupSelection
 } from './onboarding-feature-setup'
 import { getOnboardingFeatureSetupAgentRuntime } from './onboarding-feature-setup-runtime'
+import { ORCA_CLI_INSTALL_STATE_EVENT } from '@/lib/orca-cli-install-state-event'
 
 const ALL_SKILL_INSTALL_COMMAND = buildAgentFeatureSkillInstallCommand([
   ORCA_CLI_SKILL_NAME,
@@ -97,6 +98,7 @@ function createDeps(
       storage.delete(key)
     }),
     notifyOrchestrationStateChanged: vi.fn(),
+    notifyCliInstallStateChanged: vi.fn(),
     ...overrides
   }
 }
@@ -161,8 +163,9 @@ describe('onboarding feature setup runner', () => {
     const install = vi.fn()
     const getWslInstallStatus = vi.fn(async () => INSTALLED_CLI_STATUS)
     const installWsl = vi.fn(async () => INSTALLED_CLI_STATUS)
+    const dispatchEvent = vi.fn()
     vi.stubGlobal('window', {
-      dispatchEvent: vi.fn(),
+      dispatchEvent,
       api: { cli: { getInstallStatus, install, getWslInstallStatus, installWsl } }
     })
     const deps = createOnboardingFeatureSetupDeps({
@@ -178,6 +181,12 @@ describe('onboarding feature setup runner', () => {
     expect(installWsl).toHaveBeenCalledWith({ distro: 'Ubuntu' })
     expect(getInstallStatus).not.toHaveBeenCalled()
     expect(install).not.toHaveBeenCalled()
+    // Why: the runner announces once after the whole CLI step, so the install itself stays quiet.
+    expect(dispatchEvent).not.toHaveBeenCalled()
+    deps.notifyCliInstallStateChanged()
+    expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: ORCA_CLI_INSTALL_STATE_EVENT })
+    )
   })
 
   it('keeps the runner on the host when the selected WSL runtime needs repair', async () => {
@@ -425,5 +434,57 @@ describe('onboarding feature setup runner', () => {
     expect(result.warnings).toContainEqual({ featureId: 'cli', message: unknownStatus.detail })
     expect(deps.showCliRegistrationPrompt).not.toHaveBeenCalled()
     expect(deps.installCli).not.toHaveBeenCalled()
+  })
+
+  it('tells CLI status readers to re-read after finding the CLI already registered', async () => {
+    const deps = createDeps()
+
+    await runOnboardingFeatureSetup(
+      { browserUse: true, computerUse: false, orchestration: false, linearTickets: false },
+      deps
+    )
+
+    expect(deps.installCli).not.toHaveBeenCalled()
+    expect(deps.notifyCliInstallStateChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells CLI status readers to re-read when the CLI check fails', async () => {
+    const deps = createDeps({
+      getCliStatus: vi.fn(async () => {
+        throw new Error('CLI status unavailable')
+      })
+    })
+
+    const result = await runOnboardingFeatureSetup(
+      { browserUse: true, computerUse: false, orchestration: false, linearTickets: false },
+      deps
+    )
+
+    expect(result.warnings).toContainEqual({ featureId: 'cli', message: 'CLI status unavailable' })
+    expect(deps.notifyCliInstallStateChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells CLI status readers to re-read once after registering the CLI', async () => {
+    const installCli = vi.fn(async () => INSTALLED_CLI_STATUS)
+    const notifyCliInstallStateChanged = vi.fn()
+    const deps = createDeps({
+      getCliStatus: vi.fn(async () => ({
+        ...INSTALLED_CLI_STATUS,
+        state: 'not_installed' as const
+      })),
+      installCli,
+      notifyCliInstallStateChanged
+    })
+
+    await runOnboardingFeatureSetup(
+      { browserUse: true, computerUse: false, orchestration: false, linearTickets: false },
+      deps
+    )
+
+    expect(installCli).toHaveBeenCalledTimes(1)
+    expect(notifyCliInstallStateChanged).toHaveBeenCalledTimes(1)
+    expect(installCli.mock.invocationCallOrder[0]).toBeLessThan(
+      notifyCliInstallStateChanged.mock.invocationCallOrder[0]
+    )
   })
 })

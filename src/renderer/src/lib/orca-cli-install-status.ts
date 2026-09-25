@@ -5,7 +5,6 @@ import {
   getWslCliDistroRequest
 } from '@/components/settings/CliSkillRuntimeSetup'
 import { ensureOrcaCliAvailableForAgentSkillTerminal } from './agent-skill-cli-prerequisite'
-import { notifyOrcaCliInstallStateChanged } from './orca-cli-install-state-event'
 
 export type OrcaCliSkillRuntime = {
   agentRuntime?: ProjectAgentSkillRuntime
@@ -21,15 +20,13 @@ export function readAgentRuntimeCliInstallStatus(
     : window.api.cli.getInstallStatus()
 }
 
-/** Registers `orca` where this runtime's agents run it, then tells every status reader to re-read. */
-export async function installAgentRuntimeCli(
+/** Registers `orca` where this runtime's agents run it; the caller announces once its whole check settles. */
+export function installAgentRuntimeCli(
   agentRuntime?: ProjectAgentSkillRuntime
 ): Promise<CliInstallStatus> {
-  const next = await (agentRuntime?.runtime === 'wsl'
+  return agentRuntime?.runtime === 'wsl'
     ? window.api.cli.installWsl(getWslCliDistroRequest(agentRuntime))
-    : window.api.cli.install())
-  notifyOrcaCliInstallStateChanged()
-  return next
+    : window.api.cli.install()
 }
 
 /** Registers `orca` where this runtime's agents run it if it is missing; readers re-read once it settles. */

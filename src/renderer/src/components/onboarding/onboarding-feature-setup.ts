@@ -26,6 +26,7 @@ import {
   installAgentRuntimeCli,
   readAgentRuntimeCliInstallStatus
 } from '@/lib/orca-cli-install-status'
+import { notifyOrcaCliInstallStateChanged } from '@/lib/orca-cli-install-state-event'
 
 export type OnboardingFeatureSetupId =
   | 'browserUse'
@@ -96,6 +97,7 @@ export type OnboardingFeatureSetupDeps = {
   setStorageItem: (key: string, value: string) => void
   removeStorageItem: (key: string) => void
   notifyOrchestrationStateChanged: () => void
+  notifyCliInstallStateChanged: () => void
 }
 
 export function hasSelectedOnboardingFeatureSetup(
@@ -188,7 +190,8 @@ export function createOnboardingFeatureSetupDeps(
     openComputerUsePermissionSetup: () => window.api.computerUsePermissions.openSetup(),
     setStorageItem: (key, value) => localStorage.setItem(key, value),
     removeStorageItem: (key) => localStorage.removeItem(key),
-    notifyOrchestrationStateChanged: notifyOrchestrationSetupStateChanged
+    notifyOrchestrationStateChanged: notifyOrchestrationSetupStateChanged,
+    notifyCliInstallStateChanged: notifyOrcaCliInstallStateChanged
   }
 }
 
@@ -264,6 +267,9 @@ export async function runOnboardingFeatureSetup(
     }
   } catch (error) {
     warnings.push({ featureId: 'cli', message: formatFeatureSetupError(error) })
+  } finally {
+    // Why: this fresh read can find a state no reader has seen, even when nothing was installed.
+    deps.notifyCliInstallStateChanged()
   }
 
   if (selection.computerUse) {

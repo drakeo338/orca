@@ -5,6 +5,7 @@ import {
   hasOrchestrationSetupMarker,
   isOrchestrationSetupDismissed
 } from '@/lib/orchestration-setup-state'
+import { ORCA_CLI_INSTALL_STATE_EVENT } from '@/lib/orca-cli-install-state-event'
 import type { FloatingTerminalPanelLocalState } from './use-floating-terminal-panel-local-state'
 
 type FloatingTerminalOrchestrationVisibilityInput = Pick<
@@ -49,8 +50,11 @@ export function useFloatingTerminalOrchestrationVisibility({
       void refreshOrchestrationSetupVisibility()
     }
     window.addEventListener(ORCHESTRATION_SETUP_STATE_EVENT, handleSetupStateChange)
+    // Why: registering the CLI elsewhere must drop the setup banner without reopening the panel.
+    window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleSetupStateChange)
     return () => {
       window.removeEventListener(ORCHESTRATION_SETUP_STATE_EVENT, handleSetupStateChange)
+      window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleSetupStateChange)
     }
   }, [refreshOrchestrationSetupVisibility])
 

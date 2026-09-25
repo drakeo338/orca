@@ -47,6 +47,7 @@ import {
 } from './linear-agent-skill-runtime'
 import { translate } from '@/i18n/i18n'
 import { readAgentRuntimeCliInstallStatus } from '@/lib/orca-cli-install-status'
+import { ORCA_CLI_INSTALL_STATE_EVENT } from '@/lib/orca-cli-install-state-event'
 
 const LinearAgentSkillSetupDialog = lazyWithRetry(() => import('./LinearAgentSkillSetupDialog'), {
   reloadKey: 'linear-agent-skill-setup-dialog'
@@ -156,32 +157,44 @@ export function LinearAgentSkillSetupPrompt({
     }
   }, [])
 
-  const refreshCliStatus = useCallback(async (): Promise<void> => {
-    const requestIdentity = setupCheckIdentity
-    const requestGeneration = ++cliRefreshGenerationRef.current
-    const writeIfCurrent = (write: () => void): void => {
-      writeCliStatusIfCurrent(requestIdentity, requestGeneration, write)
-    }
-    if (!linked) {
-      writeIfCurrent(() => {
-        setCliStatus(null)
-        setCliLoading(false)
-      })
-      return
-    }
-    setCliLoading(true)
-    try {
-      const nextStatus = await readAgentRuntimeCliInstallStatus(agentRuntime)
-      writeIfCurrent(() => setCliStatus(nextStatus))
-    } catch {
-      writeIfCurrent(() => setCliStatus(null))
-    } finally {
-      writeIfCurrent(() => setCliLoading(false))
-    }
-  }, [agentRuntime, linked, setupCheckIdentity, writeCliStatusIfCurrent])
+  const refreshCliStatus = useCallback(
+    async ({ keepShownStatus = false }: { keepShownStatus?: boolean } = {}): Promise<void> => {
+      const requestIdentity = setupCheckIdentity
+      const requestGeneration = ++cliRefreshGenerationRef.current
+      const writeIfCurrent = (write: () => void): void => {
+        writeCliStatusIfCurrent(requestIdentity, requestGeneration, write)
+      }
+      if (!linked) {
+        writeIfCurrent(() => {
+          setCliStatus(null)
+          setCliLoading(false)
+        })
+        return
+      }
+      // Why: a loading flip hides the prompt, closing its open dialog and reminder toast mid-setup.
+      if (!keepShownStatus) {
+        setCliLoading(true)
+      }
+      try {
+        const nextStatus = await readAgentRuntimeCliInstallStatus(agentRuntime)
+        writeIfCurrent(() => setCliStatus(nextStatus))
+      } catch {
+        writeIfCurrent(() => setCliStatus(null))
+      } finally {
+        writeIfCurrent(() => setCliLoading(false))
+      }
+    },
+    [agentRuntime, linked, setupCheckIdentity, writeCliStatusIfCurrent]
+  )
 
   useEffect(() => {
     void refreshCliStatus()
+    // Why: registering from another surface must clear the missing-CLI prompt without a re-check.
+    const handleCliStateChange = (): void => {
+      void refreshCliStatus({ keepShownStatus: true })
+    }
+    window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
+    return () => window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
   }, [refreshCliStatus])
   const prerequisiteRuntime = useMemo(
     () => ({ agentRuntime, installDisabledReason: null }),
