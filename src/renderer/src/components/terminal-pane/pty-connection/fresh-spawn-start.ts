@@ -82,6 +82,8 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
       })
     }
 
+    const replacesPtyId: string | null = session.pendingReplacedPtyId
+    session.pendingReplacedPtyId = null
     session.transportConnectInFlightSince = Date.now()
     const effectiveStartup = startupOverride === undefined ? session.paneStartup : startupOverride
     const outputCallbacks = session.captureTransportOutputCallbacks(
@@ -111,6 +113,7 @@ export function bindStartFreshSpawn(session: ConnectPanePtySession): void {
       ...(coldRestoreOverride ? { launchToken: coldRestoreOverride.launchToken } : {}),
       ...(coldRestoreOverride ? { launchAgent: coldRestoreOverride.agent } : {}),
       ...(session.shouldDeclareHiddenAtSpawn() ? { initiallyHidden: true } : {}),
+      ...(replacesPtyId ? { replacesPtyId } : {}),
       shouldContinue: () =>
         !session.disposed &&
         (findTerminalTabForPane(useAppStore.getState(), session.deps.worktreeId, session.deps.tabId)

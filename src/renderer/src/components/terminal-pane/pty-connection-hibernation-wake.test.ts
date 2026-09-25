@@ -271,6 +271,55 @@ describe('connectPanePty', () => {
     expect(transport.connect.mock.calls.length).toBe(connectCallsAfterWake)
   })
 
+  it('names the replaced PTY on the restart spawn only, never on a later wake of the same pane', async () => {
+    const { connectPanePty } = await import('./pty-connection')
+    const transport = createMockTransport('pty-restarted')
+    transportFactoryQueue.push(transport)
+    const deps = createDeps({
+      tabId: 'tab-restart-wake',
+      startup: { command: 'claude', launchAgent: 'claude' },
+      replacesPtyId: 'pty-replaced',
+      consumeSuppressedPtyExit: vi.fn(() => true),
+      isVisibleRef: { current: false }
+    })
+    const pane = createPane(2)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixtures implement the pane, manager and deps members connectPanePty reads.
+    const args = [pane, createManager(1), deps] as unknown as Parameters<typeof connectPanePty>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the pane binding exposes the wake hook this test drives.
+    const binding = connectPanePty(...args) as unknown as {
+      wakeHibernatedAgentIfArmed: (claimedProviderSessions?: Set<string>) => string | null
+    }
+    await flushAsyncTicks()
+
+    expect(transport.connect).toHaveBeenCalledTimes(1)
+    expect(transport.connect.mock.calls[0]?.[0]).toMatchObject({ replacesPtyId: 'pty-replaced' })
+    // Why: transport options outlive the first spawn, so the field must not ride them.
+    expect(createdTransportOptions[0]).not.toHaveProperty('replacesPtyId')
+
+    const paneKey = `tab-restart-wake:${leafIdForPane(2)}`
+    mockStoreState.sleepingAgentSessionsByPaneKey[paneKey] = {
+      paneKey,
+      tabId: 'tab-restart-wake',
+      worktreeId: 'wt-1',
+      agent: 'claude',
+      providerSession: { key: 'session_id', id: 'sess-restart-wake' },
+      prompt: 'test prompt',
+      state: 'done',
+      capturedAt: 1,
+      updatedAt: 1,
+      origin: 'worktree-sleep'
+    }
+    mockStoreState.suppressedPtyExitIds['pty-restarted'] = true
+    const onPtyExit = createdTransportOptions[0]?.onPtyExit as ((ptyId: string) => void) | undefined
+    onPtyExit?.('pty-restarted')
+    await flushAsyncTicks()
+    expect(binding.wakeHibernatedAgentIfArmed(new Set())).not.toBeNull()
+    await flushAsyncTicks()
+
+    expect(transport.connect).toHaveBeenCalledTimes(2)
+    expect(transport.connect.mock.calls[1]?.[0]).not.toHaveProperty('replacesPtyId')
+  })
+
   it('latches a navigation-free wake that lands before the hibernation kill arms the pane', async () => {
     // Race (#7906): the edge-triggered wake can land after the sleeping record but before the kill sets hibernatedWakePtyId; without a latch it'd be dropped, leaving a frozen terminal.
     const { connectPanePty } = await import('./pty-connection')

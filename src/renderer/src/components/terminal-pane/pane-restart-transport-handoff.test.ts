@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installIpcPtyWindow, restorePtySpecWindow } from './pty-transport-test-harness'
 
-const RESTART_STARTUP = {
-  command: 'codex',
-  startupCommandDelivery: 'shell-ready',
-  launchAgent: 'codex'
-} as const
-
 describe('releasePaneTransportForRestart', () => {
   const originalWindow = (globalThis as { window?: typeof window }).window
 
@@ -30,14 +24,15 @@ describe('releasePaneTransportForRestart', () => {
     const { releasePaneTransportForRestart } = await import('./pane-restart-transport-handoff')
     const transport = await attachedTransport('wt1@@old')
 
-    const startup = releasePaneTransportForRestart(transport, RESTART_STARTUP)
+    const replacesPtyId = releasePaneTransportForRestart(transport)
 
     expect(window.api.pty.kill).not.toHaveBeenCalled()
-    expect(startup).toEqual({ ...RESTART_STARTUP, replacesPtyId: 'wt1@@old' })
+    expect(replacesPtyId).toBe('wt1@@old')
 
     const { createIpcPtyTransport } = await import('./pty-transport')
-    await createIpcPtyTransport({ ...startup, worktreeId: 'wt1' }).connect({
+    await createIpcPtyTransport({ command: 'codex', worktreeId: 'wt1' }).connect({
       url: '',
+      replacesPtyId: 'wt1@@old',
       callbacks: {}
     })
     expect(window.api.pty.spawn).toHaveBeenCalledWith(
@@ -49,9 +44,7 @@ describe('releasePaneTransportForRestart', () => {
     const { releasePaneTransportForRestart } = await import('./pane-restart-transport-handoff')
     const transport = await attachedTransport('remote:env-1@@term-1')
 
-    const startup = releasePaneTransportForRestart(transport, RESTART_STARTUP)
-
-    expect(startup).toEqual(RESTART_STARTUP)
+    expect(releasePaneTransportForRestart(transport)).toBeNull()
     expect(window.api.pty.kill).toHaveBeenCalledWith('remote:env-1@@term-1')
   })
 
@@ -59,9 +52,10 @@ describe('releasePaneTransportForRestart', () => {
     const { createIpcPtyTransport } = await import('./pty-transport')
     vi.mocked(window.api.pty.spawn).mockResolvedValue({ id: 'wt1@@live', isReattach: true })
 
-    await createIpcPtyTransport({ replacesPtyId: 'wt1@@old' }).connect({
+    await createIpcPtyTransport({}).connect({
       url: '',
       sessionId: 'wt1@@live',
+      replacesPtyId: 'wt1@@old',
       callbacks: {}
     })
 

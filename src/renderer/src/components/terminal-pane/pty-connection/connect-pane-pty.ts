@@ -150,6 +150,10 @@ export function connectPanePty(
   // mutation does not propagate back.
   session.paneStartup = session.deps.startup ?? null
   session.deps.startup = undefined
+  // Why one-shot: a later spawn from this connection (e.g. hibernation wake) must not re-stop an
+  // id that may since belong to another pane's PTY.
+  session.pendingReplacedPtyId = session.deps.replacesPtyId ?? null
+  session.deps.replacesPtyId = undefined
 
   // Why: paneKey crosses PTY env, hook IPC, retained rows, and reload/replay.
   // Use the stable layout leaf UUID, not the renderer-local numeric pane id.

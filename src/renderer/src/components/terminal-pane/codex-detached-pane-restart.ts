@@ -228,15 +228,12 @@ async function executeDetachedCodexPaneRestart(
     initiallyHidden: true
   })
 
+  // Why adopt rather than stand down: main stopped `ptyId` before replying, so the replacement is
+  // the pane's only process — even if that exit already cleared the old binding or a pane mounted.
   const store = useAppStore.getState()
-  if (!isLocatedCodexPaneCurrent(store, located, ptyId)) {
+  if (!isLocatedCodexPaneLeafAdoptable(store, located, ptyId, spawned.id)) {
     reopenCurrentCodexRestartPrompt(located, ptyId)
     reapUnboundCodexPty(spawned.id, 'stale detached spawn')
-    return
-  }
-  if (hasRegisteredRuntimeTerminalTab(tab.id, worktreeId) || ptyDataHandlers.has(ptyId)) {
-    store.queueCodexPaneRestarts([ptyId])
-    reapUnboundCodexPty(spawned.id, 'mounted-owner handoff spawn')
     return
   }
   store.updateTabPtyId(tab.id, spawned.id, ptyId)
@@ -275,6 +272,22 @@ function isLocatedCodexPaneCurrent(
     located.leafId === null ||
     state.terminalLayoutsByTabId[located.tab.id]?.ptyIdsByLeafId?.[located.leafId] === ptyId
   )
+}
+
+function isLocatedCodexPaneLeafAdoptable(
+  state: AppState,
+  located: LocatedCodexPane,
+  replacedPtyId: string,
+  replacementPtyId: string
+): boolean {
+  const currentTab = state.tabsByWorktree[located.worktreeId]?.find(
+    (candidate) => candidate.id === located.tab.id
+  )
+  if (!currentTab || (currentTab.generation ?? 0) !== located.generation || !located.leafId) {
+    return false
+  }
+  const boundPtyId = state.terminalLayoutsByTabId[located.tab.id]?.ptyIdsByLeafId?.[located.leafId]
+  return boundPtyId === replacedPtyId || boundPtyId === replacementPtyId
 }
 
 function reopenCurrentCodexRestartPrompt(located: LocatedCodexPane, replacedPtyId: string): void {

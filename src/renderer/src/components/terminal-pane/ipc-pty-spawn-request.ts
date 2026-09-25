@@ -31,7 +31,6 @@ export async function spawnIpcPty(
     worktreeId,
     tabId,
     leafId,
-    replacesPtyId,
     shellOverride,
     projectRuntime,
     terminalColorQueryReplies,
@@ -77,7 +76,9 @@ export async function spawnIpcPty(
     ...(tabId ? { tabId } : {}),
     ...(leafId ? { leafId } : {}),
     // Why: a reattach under an admitted session id must never stop the PTY it is reattaching.
-    ...(replacesPtyId && !admittedSessionId ? { replacesPtyId } : {}),
+    ...(connectOptions.replacesPtyId && !admittedSessionId
+      ? { replacesPtyId: connectOptions.replacesPtyId }
+      : {}),
     ...(shellOverride ? { shellOverride } : {}),
     ...(projectRuntime ? { projectRuntime } : {}),
     ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),

@@ -44,8 +44,6 @@ export type PtyPaneStartup = {
   showSessionRestoredBanner?: boolean
   /** Initial startup may be paired with a setup split that changes its grid. */
   waitForSetupSplitDirection?: SetupSplitDirection
-  /** The pane's current PTY, which main stops before this launch so it cannot be reattached. */
-  replacesPtyId?: string
 } | null
 
 export type PaneProcessExit = {
@@ -68,6 +66,8 @@ export type PtyConnectionDeps = {
   /** Releases a deferred split's detach fence when its initial spawn yields no PTY. */
   onDeferredCwdSpawnFailed?: () => void
   startup?: PtyPaneStartup
+  /** The pane's previous PTY; main stops it before this connection's first fresh spawn. */
+  replacesPtyId?: string
   restoredLeafId?: string | null
   restoredPtyIdByLeafId?: Record<string, string>
   /** Park intent sampled at render time, before the host disposes the tab's

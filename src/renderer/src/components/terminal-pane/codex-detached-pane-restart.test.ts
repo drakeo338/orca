@@ -140,6 +140,24 @@ describe('codex detached pane restart executor', () => {
     expect(blocksCodexPaneInput(state.codexRestartNoticeByPtyId[NEW_PTY])).toBe(false)
   })
 
+  it('adopts the replacement when the replaced PTY exit clears the tab binding mid-spawn', async () => {
+    seedQueuedRestart()
+    // Main stops the replaced PTY before replying, so its exit reaches the renderer first; a
+    // background-launch exit sidecar answers that exit by clearing the tab's binding.
+    vi.mocked(window.api.pty.spawn).mockImplementation(async () => {
+      useAppStore.getState().clearTabPtyId('tab-1', OLD_PTY)
+      return { id: NEW_PTY }
+    })
+
+    await sweepUnclaimedCodexPaneRestarts()
+
+    const state = useAppStore.getState()
+    expect(window.api.pty.kill).not.toHaveBeenCalled()
+    expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
+    expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({ [LEAF_ID]: NEW_PTY })
+    expect(blocksCodexPaneInput(state.codexRestartNoticeByPtyId[NEW_PTY])).toBe(false)
+  })
+
   it('executes via the store subscription without a lifecycle timeout', async () => {
     const uninstall = installCodexDetachedPaneRestartExecutor()
     try {
@@ -321,12 +339,10 @@ describe('codex detached pane restart executor', () => {
     }
   })
 
-  it('reaps a detached spawn and requeues when a pane mounts during the spawn', async () => {
+  it('keeps the replacement when a pane mounts during the spawn, since main already stopped the old PTY', async () => {
     seedQueuedRestart()
     const pendingSpawn = deferred<{ id: string }>()
-    const pendingKill = deferred<void>()
     vi.mocked(window.api.pty.spawn).mockReturnValue(pendingSpawn.promise)
-    vi.mocked(window.api.pty.kill).mockReturnValue(pendingKill.promise)
 
     const restart = sweepUnclaimedCodexPaneRestarts()
     await vi.waitFor(() => expect(window.api.pty.spawn).toHaveBeenCalledTimes(1))
@@ -340,12 +356,13 @@ describe('codex detached pane restart executor', () => {
     })
     try {
       pendingSpawn.resolve({ id: NEW_PTY })
-      await vi.waitFor(() => expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith(NEW_PTY))
-
-      expect(useAppStore.getState().ptyIdsByTabId['tab-1']).toEqual([OLD_PTY])
-      expect(useAppStore.getState().pendingCodexPaneRestartIds).toEqual({ [OLD_PTY]: true })
       await restart
-      pendingKill.resolve()
+
+      expect(window.api.pty.kill).not.toHaveBeenCalled()
+      const state = useAppStore.getState()
+      expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
+      expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId?.[LEAF_ID]).toBe(NEW_PTY)
+      expect(state.pendingCodexPaneRestartIds).toEqual({})
     } finally {
       unregister()
     }

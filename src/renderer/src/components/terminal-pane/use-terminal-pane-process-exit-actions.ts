@@ -79,7 +79,7 @@ export function useTerminalPaneProcessExitActions(controller: TerminalPaneCloseC
       panePtyBinding?.dispose()
       panePtyBindingsRef.current.delete(paneId)
       syncPanePtyLayoutBinding(paneId, null)
-      const startup = releasePaneTransportForRestart(transport, restartStartup)
+      const replacesPtyId = releasePaneTransportForRestart(transport)
       paneTransportsRef.current.delete(paneId)
       setCacheTimerStartedAt(makePaneKey(tabId, pane.leafId), null)
       setTerminalError(null)
@@ -88,7 +88,8 @@ export function useTerminalPaneProcessExitActions(controller: TerminalPaneCloseC
         tabId,
         worktreeId,
         cwd,
-        startup,
+        startup: restartStartup,
+        ...(replacesPtyId ? { replacesPtyId } : {}),
         mountFollowsTerminalPark: false,
         paneTransportsRef,
         paneMode2031Ref,

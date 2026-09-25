@@ -165,6 +165,8 @@ export type PtyTransport = {
     launchToken?: string
     launchAgent?: TuiAgent
     startupCommandDelivery?: StartupCommandDelivery
+    /** Stopped by main before this spawn resolves the pane's owner. Ignored on session reattach. */
+    replacesPtyId?: string
     /** Reject a stale restored identity before this transport can publish global PTY handlers. */
     admitPtyId?: (ptyId: string) => boolean
     /** Reject a stale pane after any pre-spawn test gate but before creating a PTY. */
@@ -266,7 +268,6 @@ export type IpcPtyTransportOptions = {
   worktreeId?: string
   tabId?: string
   leafId?: string
-  replacesPtyId?: string
   activate?: boolean
   shellOverride?: string
   projectRuntime?: ProjectExecutionRuntimeResolution
