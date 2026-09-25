@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { resolvePinnedCodexRolloutProof } from './codex-tui-rollout-proof'
+import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 
 const THREAD = '019fd900-77aa-7c19-8bd0-2b3c4d5e6f70'
 const OTHER_THREAD = '019fd900-77aa-7c19-8bd0-2b3c4d5e6f71'

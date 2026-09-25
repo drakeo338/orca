@@ -3,7 +3,7 @@ import { relativePathInsideRoot } from '../../shared/cross-platform-path'
 import { readCodexRolloutSessionMetaId } from './codex-rollout-session-meta'
 import { listCodexSessionJsonlFilesIncrementally } from './codex-session-file-listing'
 
-export type CodexTuiRolloutProofOptions = {
+export type CodexPinnedRolloutProofOptions = {
   listFiles?: (sessionsRoot: string) => AsyncIterable<string>
   readSessionMetaId?: (filePath: string) => Promise<string | null>
 }
@@ -11,7 +11,7 @@ export type CodexTuiRolloutProofOptions = {
 export async function resolvePinnedCodexRolloutProof(
   codexHome: string,
   threadId: string,
-  options: CodexTuiRolloutProofOptions = {}
+  options: CodexPinnedRolloutProofOptions = {}
 ): Promise<string | null> {
   const sessionsRoot = join(codexHome, 'sessions')
   const listFiles =
