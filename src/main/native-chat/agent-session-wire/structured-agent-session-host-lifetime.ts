@@ -196,8 +196,14 @@ async function openJournalBeforeAttach(
 export function createStructuredAgentSessionHolds(
   attachContext: () => StructuredAgentSessionAttachContext,
   input: {
-    /** For a caller already inside the session's serialize. */
-    makeReadable: (sessionId: string) => Promise<StructuredAgentSessionReadability>
+    /** Read lazily: the host builds its restore after its holds. */
+    readable: () => {
+      ensureReadable: (sessionId: string) => Promise<StructuredAgentSessionReadability>
+      /** For a caller already inside the session's serialize. */
+      ensureReadableUnderSerialize: (
+        sessionId: string
+      ) => Promise<StructuredAgentSessionReadability>
+    }
     close: (sessionId: string) => Promise<void>
   }
 ): StructuredAgentSessionHolds {
@@ -211,13 +217,19 @@ export function createStructuredAgentSessionHolds(
           ? 'trusted-local:provider-exit-recovery'
           : 'trusted-local:surface-hold',
         ...(attachOptions ? { attachOptions } : {}),
-        openJournal: (id) => openJournalBeforeAttach(context, input.makeReadable, id)
+        openJournal: (id) =>
+          openJournalBeforeAttach(context, input.readable().ensureReadableUnderSerialize, id)
       }),
     // Tracked from enqueue: a quit drains a queued resume before it evicts, so no child is
-    // spawned behind the eviction and orphaned.
+    // spawned behind the eviction and orphaned. The journal opens in a turn of its own first, so
+    // a read queued while the hold arrives waits on that open, not on the provider start.
     serialize: (sessionId, task) => {
       const current = attachContext()
-      return current.tasks.trackAttach(current.serialize(sessionId, task))
+      return current.tasks.trackAttach(
+        openJournalBeforeAttach(context, input.readable().ensureReadable, sessionId).then(() =>
+          current.serialize(sessionId, task)
+        )
+      )
     },
     evict: input.close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),

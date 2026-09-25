@@ -119,7 +119,7 @@ export class StructuredAgentSessionHost {
       now: this.now
     })
     this.holds = createStructuredAgentSessionHolds(() => this.attachContext(), {
-      makeReadable: (sessionId) => this.restore.ensureReadableUnderSerialize(sessionId),
+      readable: () => this.restore,
       close: (sessionId) => this.close(sessionId)
     })
     this.restore = createStructuredAgentSessionHostRestore(deps, this.sessions, () => this.now(), {

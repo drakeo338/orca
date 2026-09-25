@@ -288,6 +288,39 @@ describe('reading a restored chat before the startup sweep', () => {
     await hold
   })
 
+  it('answers a read sent right behind the pane hold, before its provider is up', async () => {
+    // The pane takes its hold as it mounts, just ahead of its first read. The hold's provider
+    // start keeps the session's queue; the read must wait on the journal open alone.
+    await quitWithChat(true)
+    const dispatcher = await restart()
+    const acquired = Promise.withResolvers<void>()
+    const acquireProvider = acquire.getMockImplementation()!
+    acquire.mockImplementation(async (input) => {
+      await acquired.promise
+      return acquireProvider(input)
+    })
+
+    const hold = call(dispatcher, 'agentSession.hold', { sessionId: SESSION, holderId: 'pane' })
+    const history = call(dispatcher, 'agentSession.history', {
+      sessionId: SESSION,
+      direction: 'tail'
+    })
+
+    let read: RpcResponse | undefined
+    void history.then((reply) => {
+      read = reply
+    })
+    try {
+      await vi.waitFor(() => expect(read).toBeDefined())
+      expect(read).toMatchObject({ ok: true })
+    } finally {
+      acquired.resolve()
+    }
+    await hold
+    // The hold still started the provider, after the read.
+    expect(acquire).toHaveBeenCalledOnce()
+  })
+
   it('opens nothing while structured chat is off', async () => {
     await quitWithChat(true)
     structuredNativeChatEnabled = false
