@@ -46,7 +46,7 @@ describe('AgentSessionSubscribers', () => {
       },
       journalDir: join(root, 'activity-churn-journal')
     })
-    const subscribers = new AgentSessionSubscribers()
+    const subscribers = new AgentSessionSubscribers({ readFence: () => 1 })
 
     for (let index = 0; index < MAX_RETAINED_SESSION_ACTIVITIES + 4; index += 1) {
       subscribers.publish(`session-${index}`, journal, { turnId: `turn-${index}`, text: 'working' })
@@ -68,11 +68,10 @@ describe('AgentSessionSubscribers', () => {
     })
     const events: AgentSessionSubscribeEvent[] = []
 
-    new AgentSessionSubscribers().open({
+    new AgentSessionSubscribers({ readFence: () => 7 }).open({
       id: 'subscriber-1',
       sessionId: SESSION,
       journal,
-      fence: 7,
       cursor: journal.cursor(),
       emit: (event) => events.push(event)
     })
@@ -107,20 +106,20 @@ describe('AgentSessionSubscribers', () => {
     })
     let now = 1_000
     const events: AgentSessionSubscribeEvent[] = []
-    const subscribers = new AgentSessionSubscribers({ now: () => (now += 1) })
+    const subscribers = new AgentSessionSubscribers({ readFence: () => 1, now: () => (now += 1) })
     const emit = (event: AgentSessionSubscribeEvent): void => {
       events.push(event)
     }
-    subscribers.open({ id: 'one', sessionId: SESSION, journal, fence: 1, emit })
-    subscribers.open({ id: 'two', sessionId: SESSION, journal, fence: 1, emit })
+    subscribers.open({ id: 'one', sessionId: SESSION, journal, emit })
+    subscribers.open({ id: 'two', sessionId: SESSION, journal, emit })
     await journal.appendItem(
       { provider: 'orca', clientMessageId: 'clocked' },
       { kind: 'status', text: 'Clocked' },
       { fence: 1 }
     )
     subscribers.publish(SESSION, journal)
-    subscribers.backgroundTasks(SESSION, null, 1)
-    subscribers.reset(SESSION, journal, 'epoch_changed', 1)
+    subscribers.backgroundTasks(SESSION, null)
+    subscribers.reset(SESSION, journal, 'epoch_changed')
 
     expect(events.map((event) => ('hostNow' in event ? event.hostNow : null))).toEqual([
       1_001, 1_002,
@@ -152,12 +151,14 @@ describe('AgentSessionSubscribers', () => {
     })
     let commands = [{ name: 'first', kind: 'skill' as const }]
     const events: AgentSessionSubscribeEvent[] = []
-    const subscribers = new AgentSessionSubscribers({ readCommands: () => commands })
+    const subscribers = new AgentSessionSubscribers({
+      readFence: () => 7,
+      readCommands: () => commands
+    })
     subscribers.open({
       id: 'one',
       sessionId: SESSION,
       journal,
-      fence: 7,
       emit: (event) => events.push(event)
     })
     expect(events[0]).toMatchObject({ type: 'snapshot', commands })
@@ -176,7 +177,6 @@ describe('AgentSessionSubscribers', () => {
       sessionId: SESSION,
       journal,
       cursor: journal.cursor(),
-      fence: 7,
       emit: (event) => events.push(event)
     })
     expect(events[2]).toMatchObject({ type: 'batch', commands })
@@ -195,6 +195,7 @@ describe('AgentSessionSubscribers', () => {
     })
     const published: string[] = []
     const subscribers = new AgentSessionSubscribers({
+      readFence: () => 1,
       onJournalPublished: (sessionId, published_journal) => {
         expect(published_journal).toBe(journal)
         published.push(sessionId)
@@ -202,8 +203,8 @@ describe('AgentSessionSubscribers', () => {
     })
 
     subscribers.publish(SESSION, journal)
-    subscribers.reset(SESSION, journal, 'epoch_changed', 1)
-    subscribers.snapshot(SESSION, journal, 1)
+    subscribers.reset(SESSION, journal, 'epoch_changed')
+    subscribers.snapshot(SESSION, journal)
 
     expect(published).toEqual([SESSION, SESSION, SESSION])
   })
@@ -244,6 +245,7 @@ describe('AgentSessionSubscribers', () => {
       now: () => 1_000
     })
     const subscribers = new AgentSessionSubscribers({
+      readFence: () => 1,
       onJournalPublished: (sessionId, published) => statusFeed.publish(sessionId, published)
     })
     const statuses: AgentSessionStatusEvent[] = []
@@ -276,7 +278,7 @@ describe('AgentSessionSubscribers', () => {
     })
   })
 
-  it('publishes background lifecycle without advancing the journal and carries its fence forward', async () => {
+  it('publishes background lifecycle without advancing the journal', async () => {
     const journal = await journals.open({
       identity: {
         sessionId: SESSION,
@@ -287,13 +289,12 @@ describe('AgentSessionSubscribers', () => {
       },
       journalDir: join(root, 'background-journal')
     })
-    const subscribers = new AgentSessionSubscribers()
+    const subscribers = new AgentSessionSubscribers({ readFence: () => 1 })
     const events: AgentSessionSubscribeEvent[] = []
     subscribers.open({
       id: 'subscriber-1',
       sessionId: SESSION,
       journal,
-      fence: 1,
       backgroundTasks: null,
       emit: (event) => events.push(event)
     })
@@ -303,26 +304,51 @@ describe('AgentSessionSubscribers', () => {
       state: 'monitoring' as const,
       tasks: [{ id: 'task-1', kind: 'command' as const, description: 'run the build' }]
     }
-    subscribers.backgroundTasks(SESSION, backgroundTasks, 2)
+    subscribers.backgroundTasks(SESSION, backgroundTasks)
 
     expect(journal.cursor()).toEqual(cursor)
     expect(events.at(-1)).toEqual({
       type: 'batch',
       sessionId: SESSION,
       batch: { cursor, items: [], removedItemIds: [], submissions: [] },
-      fence: 2,
+      fence: 1,
       hostNow: expect.any(Number),
       backgroundTasks
     })
+  })
 
+  it('stamps a fence that moved without a replay on the next frame', async () => {
+    const journal = await journals.open({
+      identity: {
+        sessionId: SESSION,
+        workspaceId: 'workspace-1',
+        hostId: 'local',
+        agent: 'codex',
+        providerHandle: { kind: 'codex', threadId: 'thread-1' }
+      },
+      journalDir: join(root, 'moved-fence-journal')
+    })
+    let fence = 1
+    const subscribers = new AgentSessionSubscribers({ readFence: () => fence })
+    const events: AgentSessionSubscribeEvent[] = []
+    subscribers.open({
+      id: 'subscriber-1',
+      sessionId: SESSION,
+      journal,
+      emit: (event) => events.push(event)
+    })
+    expect(events.at(-1)).toMatchObject({ type: 'snapshot', fence: 1 })
+
+    // An idle release and the resume after it move the lease with no snapshot in between.
+    fence = 3
     await journal.appendItem(
-      { provider: 'orca', clientMessageId: 'after-background-fence' },
-      { kind: 'status', text: 'After background state' },
-      { fence: 2 }
+      { provider: 'orca', clientMessageId: 'after-release' },
+      { kind: 'status', text: 'After the release' },
+      { fence: 3 }
     )
     subscribers.publish(SESSION, journal)
 
-    expect(events.at(-1)).toMatchObject({ type: 'batch', fence: 2 })
+    expect(events.at(-1)).toMatchObject({ type: 'batch', fence: 3 })
   })
 
   it('publishes latest turn activity without advancing or adding journal rows', async () => {
@@ -336,13 +362,12 @@ describe('AgentSessionSubscribers', () => {
       },
       journalDir: join(root, 'activity-journal')
     })
-    const subscribers = new AgentSessionSubscribers()
+    const subscribers = new AgentSessionSubscribers({ readFence: () => 1 })
     const events: AgentSessionSubscribeEvent[] = []
     subscribers.open({
       id: 'subscriber-1',
       sessionId: SESSION,
       journal,
-      fence: 1,
       emit: (event) => events.push(event)
     })
     const cursor = journal.cursor()
@@ -368,7 +393,6 @@ describe('AgentSessionSubscribers', () => {
       id: 'reconnected',
       sessionId: SESSION,
       journal,
-      fence: 1,
       cursor,
       emit: (event) => events.push(event)
     })
@@ -440,13 +464,12 @@ describe('AgentSessionSubscribers', () => {
       journalDir
     })
 
-    const subscribers = new AgentSessionSubscribers()
+    const subscribers = new AgentSessionSubscribers({ readFence: () => 1 })
     const events: AgentSessionSubscribeEvent[] = []
     subscribers.open({
       id: 'subscriber-1',
       sessionId: SESSION,
       journal,
-      fence: 1,
       cursor: resumeCursor,
       emit: (event) => events.push(event)
     })

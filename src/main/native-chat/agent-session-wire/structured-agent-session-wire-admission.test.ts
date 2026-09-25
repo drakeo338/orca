@@ -54,21 +54,22 @@ describe('structured agent-session outbound admission', () => {
       REMOTE_RUNTIME_MAX_OUTBOUND_JSON_BYTES
     )
 
-    const subscribers = new AgentSessionSubscribers()
+    let fence = 1
+    const subscribers = new AgentSessionSubscribers({ readFence: () => fence })
     const initial: AgentSessionSubscribeEvent[] = []
     const dispose = subscribers.open({
       id: 'initial',
       sessionId: SESSION,
       journal,
-      fence: 1,
       emit: (event) => initial.push(event)
     })
     expect(initial).toHaveLength(1)
     expect(initial[0]).toMatchObject({ type: 'snapshot', page: { hasOlder: true } })
     expectAdmitted(initial[0])
 
-    subscribers.backgroundTasks(SESSION, null, 2)
-    subscribers.snapshot(SESSION, journal, 2)
+    fence = 2
+    subscribers.backgroundTasks(SESSION, null)
+    subscribers.snapshot(SESSION, journal)
     expect(initial.slice(1)).toHaveLength(2)
     initial.slice(1).forEach(expectAdmitted)
 
@@ -77,7 +78,6 @@ describe('structured agent-session outbound admission', () => {
       id: 'old-epoch',
       sessionId: SESSION,
       journal,
-      fence: 2,
       cursor: { epoch: 'retired-epoch', sequence: 1 },
       emit: (event) => epochReset.push(event)
     })
@@ -109,7 +109,7 @@ describe('structured agent-session outbound admission', () => {
   })
 
   it('splits valid-cursor catch-up into admitted batch frames', () => {
-    const subscribers = new AgentSessionSubscribers()
+    const subscribers = new AgentSessionSubscribers({ readFence: () => 2 })
     const catchup: AgentSessionSubscribeEvent[] = []
     const firstItemSequence = journal.snapshot().items[0]!.sequence
 
@@ -117,7 +117,6 @@ describe('structured agent-session outbound admission', () => {
       id: 'catchup',
       sessionId: SESSION,
       journal,
-      fence: 2,
       cursor: { epoch: journal.epoch, sequence: firstItemSequence },
       emit: (event) => catchup.push(event)
     })

@@ -48,7 +48,6 @@ export class StructuredAgentSessionBackgroundTaskChannel {
     return this.subscribers.open({
       ...input,
       journal: session.journal,
-      fence: this.deps.store.getRecord(input.sessionId)?.lease.runtimeFence ?? 0,
       ...(backgroundTasks !== undefined ? { backgroundTasks } : {})
     })
   }
@@ -57,7 +56,7 @@ export class StructuredAgentSessionBackgroundTaskChannel {
     const session = this.sessions.get(sessionId)
     const state = publishedState !== undefined ? publishedState : this.state(sessionId)
     if (session && state !== undefined) {
-      this.subscribers.backgroundTasks(sessionId, state, session.fence)
+      this.subscribers.backgroundTasks(sessionId, state)
       this.onPublished(sessionId)
     }
   }

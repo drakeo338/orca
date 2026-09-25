@@ -21,13 +21,8 @@ export type StructuredAgentSessionAttachContext = {
   runtimeState: StructuredAgentSessionHostRuntimeState
   sessions: Map<string, StructuredAgentSessionHostSession>
   subscribers: {
-    reset: (
-      sessionId: string,
-      journal: AgentSessionJournal,
-      reset: AgentJournalResetReason,
-      fence: number
-    ) => void
-    snapshot: (sessionId: string, journal: AgentSessionJournal, fence: number) => void
+    reset: (sessionId: string, journal: AgentSessionJournal, reset: AgentJournalResetReason) => void
+    snapshot: (sessionId: string, journal: AgentSessionJournal) => void
     publish: (
       sessionId: string,
       journal: AgentSessionJournal,
