@@ -10,16 +10,23 @@ import {
 } from '../structured-worker-identity'
 import { OrchestrationDb } from './db'
 import { SCHEMA_VERSION } from './db/contract-constants'
+import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
 import { RUN_PANE_KEY_MATCH_SUFFIX_SQL } from './db/pane-key-match'
 import {
-  currentRunCoordinatorActor,
-  currentRunCoordinatorActorSql
-} from './db/runs/run-coordinator-actor'
+  currentRunCoordinatorOrcaSessionId,
+  currentRunCoordinatorOrcaSessionIdSql
+} from './db/runs/run-coordinator-orca-session'
 import { resolveOrchestrationMigrationStartVersion } from './orchestration-schema-version-skew'
 
 const SESSION_ID = '5f0c1d9e-2b7a-4c3e-8f61-0a9d2e7b4c11'
-const SESSION_ACTOR = `session:${SESSION_ID}`
-const CHAT_SESSION_ACTOR = 'session:9a4e7c1b-3d2f-4b6a-8e5c-7f1d0b2a6c93'
+const CHAT_SESSION_ID = '9a4e7c1b-3d2f-4b6a-8e5c-7f1d0b2a6c93'
+const CHAT_SESSION_ADDRESS = formatOrcaSessionAddress(CHAT_SESSION_ID)
+const ORCA_SESSION_ID_COLUMNS = [
+  'assignee_orca_session_id',
+  'coordinator_orca_session_id',
+  'coordinator_orca_session_id_generation',
+  'creator_orca_session_id'
+]
 const COORDINATOR_PANE = 'tab_coord:11111111-1111-4111-8111-111111111111'
 const PTY_WORKER_PANE = 'tab_pty:22222222-2222-4222-8222-222222222222'
 const NESTED_PANE = 'tab_nested:33333333-3333-4333-8333-333333333333'
@@ -103,34 +110,34 @@ function seedStructuredAndPtyRows(db: OrchestrationDb): SeededRows {
 }
 
 /** Strips a current database back to the shape main stamps at v41 and stamps `version`. */
-function stripActorSchema(path: string, version: number): void {
+function stripOrcaSessionSchema(path: string, version: number): void {
   const raw = new Database(path)
   raw.exec(`
-    DROP INDEX idx_runs_coordinator_actor;
-    DROP INDEX idx_dispatch_assignee_actor;
+    DROP INDEX idx_runs_coordinator_orca_session_id;
+    DROP INDEX idx_dispatch_assignee_orca_session_id;
     DROP TRIGGER trg_runs_remember_coordinator_insert;
     DROP TRIGGER trg_runs_remember_coordinator_update;
-    ALTER TABLE runs DROP COLUMN coordinator_actor;
-    ALTER TABLE runs DROP COLUMN coordinator_actor_generation;
-    ALTER TABLE dispatch_contexts DROP COLUMN assignee_actor;
-    ALTER TABLE dispatch_contexts DROP COLUMN creator_actor;
+    ALTER TABLE runs DROP COLUMN coordinator_orca_session_id;
+    ALTER TABLE runs DROP COLUMN coordinator_orca_session_id_generation;
+    ALTER TABLE dispatch_contexts DROP COLUMN assignee_orca_session_id;
+    ALTER TABLE dispatch_contexts DROP COLUMN creator_orca_session_id;
     ${HANDLE_ONLY_COORDINATOR_TRIGGERS_SQL}
   `)
   raw.pragma(`user_version = ${version}`)
   raw.close()
 }
 
-/** The plan for finding a caller's Runs by pane leaf or by coordinator actor in one statement. */
+/** The plan for finding a caller's Runs by pane leaf or by coordinator Orca session id in one statement. */
 function coordinatorLookupPlan(db: Database.Database): string {
   return db
     .prepare(
       `EXPLAIN QUERY PLAN SELECT id FROM runs
        WHERE legacy = 0 AND (
          (coordinator_pane_key IS NOT NULL AND ${RUN_PANE_KEY_MATCH_SUFFIX_SQL} = ?)
-         OR coordinator_actor = ?
+         OR coordinator_orca_session_id = ?
        )`
     )
-    .all('leaf', CHAT_SESSION_ACTOR)
+    .all('leaf', CHAT_SESSION_ID)
     .map((row) => String(row.detail))
     .join(' | ')
 }
@@ -146,7 +153,7 @@ function coordinatorTriggerSql(db: Database.Database): string[] {
     .map((row) => String(row.sql))
 }
 
-function actorColumns(db: Database.Database): string[] {
+function orcaSessionColumns(db: Database.Database): string[] {
   return db
     .prepare(
       `SELECT name FROM pragma_table_info('runs')
@@ -154,7 +161,7 @@ function actorColumns(db: Database.Database): string[] {
     )
     .all()
     .map((column) => String(column.name))
-    .filter((name) => name.endsWith('_actor'))
+    .filter((name) => name.includes('_orca_session_id'))
     .sort()
 }
 
@@ -169,7 +176,7 @@ function coordinatorAddresses(db: Database.Database, runIds: string[]): string[]
     .sort()
 }
 
-describe('orchestration actor column migration', () => {
+describe('orchestration Orca session id column migration', () => {
   const tempRoots: string[] = []
 
   afterEach(() => {
@@ -179,17 +186,17 @@ describe('orchestration actor column migration', () => {
   })
 
   function tempDbPath(): string {
-    const root = mkdtempSync(join(tmpdir(), 'orca-actor-column-migration-'))
+    const root = mkdtempSync(join(tmpdir(), 'orca-session-column-migration-'))
     tempRoots.push(root)
     return join(root, 'orchestration.db')
   }
 
-  it('starts a v41 database at v41 and gives exactly its structured-worker rows an actor', () => {
+  it('starts a v41 database at v41 and gives exactly its structured-worker rows an Orca session id', () => {
     const path = tempDbPath()
     const seed = new OrchestrationDb(path)
     const rows = seedStructuredAndPtyRows(seed)
     seed.close()
-    stripActorSchema(path, 41)
+    stripOrcaSessionSchema(path, 41)
 
     const probe = new Database(path)
     try {
@@ -203,29 +210,33 @@ describe('orchestration actor column migration', () => {
     try {
       expect(db.db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
       expect(db.getDispatchContextById(rows.structuredDispatchId)).toMatchObject({
-        assignee_actor: SESSION_ACTOR,
-        creator_actor: null
+        assignee_orca_session_id: SESSION_ID,
+        creator_orca_session_id: null
       })
       expect(db.getDispatchContextById(rows.ptyDispatchId)).toMatchObject({
-        assignee_actor: null,
-        creator_actor: null
+        assignee_orca_session_id: null,
+        creator_orca_session_id: null
       })
       expect(db.getDispatchContextById(rows.nestedDispatchId)).toMatchObject({
-        assignee_actor: null,
-        creator_actor: SESSION_ACTOR
+        assignee_orca_session_id: null,
+        creator_orca_session_id: SESSION_ID
       })
       expect(
-        db.db.prepare('SELECT id FROM dispatch_contexts WHERE assignee_actor IS NOT NULL').all()
+        db.db
+          .prepare('SELECT id FROM dispatch_contexts WHERE assignee_orca_session_id IS NOT NULL')
+          .all()
       ).toEqual([{ id: rows.structuredDispatchId }])
-      expect(db.getRunRaw(rows.ptyRunId)?.coordinator_actor).toBeNull()
-      expect(db.getRunRaw(rows.structuredRunId)?.coordinator_actor).toBe(SESSION_ACTOR)
+      expect(db.getRunRaw(rows.ptyRunId)?.coordinator_orca_session_id).toBeNull()
+      expect(db.getRunRaw(rows.structuredRunId)?.coordinator_orca_session_id).toBe(SESSION_ID)
       // A handle-bearing coordinator stays remembered by its handle alone, as before v42.
       expect(coordinatorAddresses(db.db, [rows.ptyRunId, rows.structuredRunId])).toEqual(
         [`${rows.ptyRunId} term_coord`, `${rows.structuredRunId} ${rows.workerHandle}`].sort()
       )
       // CREATE TRIGGER IF NOT EXISTS alone would have kept the handle-only form here.
       for (const sql of coordinatorTriggerSql(db.db)) {
-        expect(sql).toContain('NEW.coordinator_actor_generation = NEW.consumer_generation')
+        expect(sql).toContain(
+          'NEW.coordinator_orca_session_id_generation = NEW.consumer_generation'
+        )
       }
     } finally {
       db.close()
@@ -237,7 +248,7 @@ describe('orchestration actor column migration', () => {
     const seed = new OrchestrationDb(path)
     const rows = seedStructuredAndPtyRows(seed)
     seed.close()
-    stripActorSchema(path, 40)
+    stripOrcaSessionSchema(path, 40)
     const raw = new Database(path)
     // The v40 shape of the one object v41 changed: a unique outstanding-delivery index.
     raw.exec(`
@@ -256,15 +267,15 @@ describe('orchestration actor column migration', () => {
     const db = new OrchestrationDb(path)
     try {
       expect(db.db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
-      expect(actorColumns(db.db)).toEqual(['assignee_actor', 'coordinator_actor', 'creator_actor'])
+      expect(orcaSessionColumns(db.db)).toEqual(ORCA_SESSION_ID_COLUMNS)
       const index = db.db
         .prepare("SELECT sql FROM sqlite_master WHERE name = 'idx_deliveries_one_outstanding'")
         .get()
       expect(String(index?.sql)).not.toContain('UNIQUE')
-      expect(db.getDispatchContextById(rows.structuredDispatchId)?.assignee_actor).toBe(
-        SESSION_ACTOR
+      expect(db.getDispatchContextById(rows.structuredDispatchId)?.assignee_orca_session_id).toBe(
+        SESSION_ID
       )
-      expect(db.getDispatchContextById(rows.ptyDispatchId)?.assignee_actor).toBeNull()
+      expect(db.getDispatchContextById(rows.ptyDispatchId)?.assignee_orca_session_id).toBeNull()
     } finally {
       db.close()
     }
@@ -275,7 +286,7 @@ describe('orchestration actor column migration', () => {
     const seed = new OrchestrationDb(path)
     const rows = seedStructuredAndPtyRows(seed)
     seed.close()
-    stripActorSchema(path, 27)
+    stripOrcaSessionSchema(path, 27)
     const raw = new Database(path)
     raw.exec(`
       DROP TRIGGER trg_runs_remember_coordinator_insert;
@@ -285,34 +296,36 @@ describe('orchestration actor column migration', () => {
     raw.close()
 
     // createTables installs its static triggers before this chain's v40 step inserts into runs, so
-    // a static form naming coordinator_actor would fail to prepare here.
+    // a static form naming coordinator_orca_session_id would fail to prepare here.
     const db = new OrchestrationDb(path)
     try {
       expect(db.db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
       for (const sql of coordinatorTriggerSql(db.db)) {
-        expect(sql).toContain('NEW.coordinator_actor_generation = NEW.consumer_generation')
+        expect(sql).toContain(
+          'NEW.coordinator_orca_session_id_generation = NEW.consumer_generation'
+        )
       }
-      expect(db.getRunRaw(rows.structuredRunId)?.coordinator_actor).toBe(SESSION_ACTOR)
+      expect(db.getRunRaw(rows.structuredRunId)?.coordinator_orca_session_id).toBe(SESSION_ID)
       expect(coordinatorAddresses(db.db, [rows.ptyRunId])).toEqual([`${rows.ptyRunId} term_coord`])
     } finally {
       db.close()
     }
   })
 
-  it('lets a v41 binary read and write a v42 database with actors in it', () => {
+  it('lets a v41 binary read and write a v42 database with Orca session ids in it', () => {
     const path = tempDbPath()
     const seed = new OrchestrationDb(path)
     const rows = seedStructuredAndPtyRows(seed)
     seed.close()
     const upgraded = new OrchestrationDb(path)
-    expect(upgraded.getRunRaw(rows.structuredRunId)?.coordinator_actor).toBe(SESSION_ACTOR)
+    expect(upgraded.getRunRaw(rows.structuredRunId)?.coordinator_orca_session_id).toBe(SESSION_ID)
     upgraded.db
       .prepare(
         `INSERT INTO runs (
-           id, objective, coordinator_actor, coordinator_actor_generation, consumer_generation, legacy
+           id, objective, coordinator_orca_session_id, coordinator_orca_session_id_generation, consumer_generation, legacy
          ) VALUES ('run_session', 'session coordinator', ?, 1, 1, 0)`
       )
-      .run(CHAT_SESSION_ACTOR)
+      .run(CHAT_SESSION_ID)
     upgraded.close()
 
     // A raw connection stands in for the v41 binary; each statement below is v41's own SQL.
@@ -347,7 +360,7 @@ describe('orchestration actor column migration', () => {
            VALUES ('run_v41', 'written by v41', 'term_v41', 'tab_v41:44444444-4444-4444-8444-444444444444', 1, 0)`
         )
         .run()
-      // An older binary rebinding a structured-coordinated Run cannot clear an actor it cannot see.
+      // An older binary rebinding a structured-coordinated Run cannot clear an id it cannot see.
       v41
         .prepare(
           `UPDATE runs SET coordinator_handle = ?, coordinator_pane_key = ?,
@@ -358,14 +371,13 @@ describe('orchestration actor column migration', () => {
       v41.exec(`INSERT OR IGNORE INTO run_coordinator_handles (run_id, terminal_handle)
         SELECT id, coordinator_handle FROM runs WHERE legacy = 0 AND coordinator_handle IS NOT NULL`)
 
-      expect(v41.prepare('SELECT coordinator_actor FROM runs WHERE id = ?').get('run_v41')).toEqual(
-        {
-          coordinator_actor: null
-        }
+      const readOrcaSessionId = v41.prepare(
+        'SELECT coordinator_orca_session_id FROM runs WHERE id = ?'
       )
-      expect(
-        v41.prepare('SELECT coordinator_actor FROM runs WHERE id = ?').get(rows.structuredRunId)
-      ).toEqual({ coordinator_actor: SESSION_ACTOR })
+      expect(readOrcaSessionId.get('run_v41')).toEqual({ coordinator_orca_session_id: null })
+      expect(readOrcaSessionId.get(rows.structuredRunId)).toEqual({
+        coordinator_orca_session_id: SESSION_ID
+      })
       expect(coordinatorAddresses(v41, ['run_v41', rows.structuredRunId])).toEqual(
         [
           `${rows.structuredRunId} ${rows.workerHandle}`,
@@ -375,7 +387,7 @@ describe('orchestration actor column migration', () => {
       )
       // The v42 trigger form survives v41's IF NOT EXISTS create.
       for (const sql of coordinatorTriggerSql(v41)) {
-        expect(sql).toContain('coordinator_actor')
+        expect(sql).toContain('coordinator_orca_session_id')
       }
     } finally {
       v41.close()
@@ -385,13 +397,13 @@ describe('orchestration actor column migration', () => {
     try {
       expect(rolledForward.db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
       expect(rolledForward.getRun('run_v41')?.coordinator_handle).toBe('term_v41')
-      expect(rolledForward.getRunMailboxOwnerIdsForHandle(CHAT_SESSION_ACTOR)).toEqual([
+      expect(rolledForward.getRunMailboxOwnerIdsForHandle(CHAT_SESSION_ADDRESS)).toEqual([
         'run_session'
       ])
-      // v41's rebind bumped the generation, so the actor it could not clear no longer counts.
+      // v41's rebind bumped the generation, so the id it could not clear no longer counts.
       const rebound = rolledForward.getRunRaw(rows.structuredRunId)
-      expect(rebound?.coordinator_actor).toBe(SESSION_ACTOR)
-      expect(rebound && currentRunCoordinatorActor(rebound)).toBeNull()
+      expect(rebound?.coordinator_orca_session_id).toBe(SESSION_ID)
+      expect(rebound && currentRunCoordinatorOrcaSessionId(rebound)).toBeNull()
     } finally {
       rolledForward.close()
     }
@@ -400,32 +412,36 @@ describe('orchestration actor column migration', () => {
   it('fills structured-worker rows written after the stamp reached v42 on the next open', () => {
     const path = tempDbPath()
     const first = new OrchestrationDb(path)
-    // No writer records an actor yet, which is also the shape a binary rolled back past v42 writes.
+    // No writer records an Orca session id yet, which is also the shape a binary rolled back past v42 writes.
     const rows = seedStructuredAndPtyRows(first)
-    expect(first.getDispatchContextById(rows.structuredDispatchId)?.assignee_actor).toBeNull()
+    expect(
+      first.getDispatchContextById(rows.structuredDispatchId)?.assignee_orca_session_id
+    ).toBeNull()
     first.close()
 
     const reopened = new OrchestrationDb(path)
     try {
-      expect(reopened.getDispatchContextById(rows.structuredDispatchId)?.assignee_actor).toBe(
-        SESSION_ACTOR
+      expect(
+        reopened.getDispatchContextById(rows.structuredDispatchId)?.assignee_orca_session_id
+      ).toBe(SESSION_ID)
+      expect(reopened.getDispatchContextById(rows.nestedDispatchId)?.creator_orca_session_id).toBe(
+        SESSION_ID
       )
-      expect(reopened.getDispatchContextById(rows.nestedDispatchId)?.creator_actor).toBe(
-        SESSION_ACTOR
-      )
-      expect(reopened.getRunRaw(rows.structuredRunId)?.coordinator_actor).toBe(SESSION_ACTOR)
-      expect(reopened.getDispatchContextById(rows.ptyDispatchId)?.assignee_actor).toBeNull()
+      expect(reopened.getRunRaw(rows.structuredRunId)?.coordinator_orca_session_id).toBe(SESSION_ID)
+      expect(
+        reopened.getDispatchContextById(rows.ptyDispatchId)?.assignee_orca_session_id
+      ).toBeNull()
     } finally {
       reopened.close()
     }
   })
 
-  it('drives a dev database stamped v42 with prototype principal columns to add the actors', () => {
+  it('drives a dev database stamped v42 with prototype principal columns to add the Orca session ids', () => {
     const path = tempDbPath()
     const seed = new OrchestrationDb(path)
     const rows = seedStructuredAndPtyRows(seed)
     seed.close()
-    stripActorSchema(path, 41)
+    stripOrcaSessionSchema(path, 41)
     const raw = new Database(path)
     // An unmerged prototype stamped v42 with differently named columns and triggers over them.
     raw.exec(`
@@ -460,10 +476,10 @@ describe('orchestration actor column migration', () => {
     const db = new OrchestrationDb(path)
     try {
       expect(db.db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
-      expect(actorColumns(db.db)).toEqual(['assignee_actor', 'coordinator_actor', 'creator_actor'])
+      expect(orcaSessionColumns(db.db)).toEqual(ORCA_SESSION_ID_COLUMNS)
       expect(coordinatorTriggerSql(db.db).join('\n')).not.toContain('principal')
-      expect(db.getDispatchContextById(rows.structuredDispatchId)?.assignee_actor).toBe(
-        SESSION_ACTOR
+      expect(db.getDispatchContextById(rows.structuredDispatchId)?.assignee_orca_session_id).toBe(
+        SESSION_ID
       )
       expect(() =>
         db.createRun({
@@ -477,16 +493,16 @@ describe('orchestration actor column migration', () => {
     }
   })
 
-  it('stops counting a chat coordinator actor once a v41 binary rebinds and then unbinds the Run', () => {
+  it("stops counting a chat coordinator's Orca session id once a v41 binary rebinds and then unbinds the Run", () => {
     const path = tempDbPath()
     const seeded = new OrchestrationDb(path)
     seeded.db
       .prepare(
         `INSERT INTO runs (
-           id, objective, coordinator_actor, coordinator_actor_generation, consumer_generation, legacy
+           id, objective, coordinator_orca_session_id, coordinator_orca_session_id_generation, consumer_generation, legacy
          ) VALUES ('run_chat', 'chat coordinated', ?, 1, 1, 0)`
       )
-      .run(CHAT_SESSION_ACTOR)
+      .run(CHAT_SESSION_ID)
     // The cache row this binding wrote; a later open must not be able to write it back.
     seeded.db.prepare('DELETE FROM run_coordinator_handles WHERE run_id = ?').run('run_chat')
     seeded.close()
@@ -513,14 +529,15 @@ describe('orchestration actor column migration', () => {
     expect(
       v41
         .prepare(
-          `SELECT coordinator_handle, coordinator_pane_key, coordinator_actor, consumer_generation
+          `SELECT coordinator_handle, coordinator_pane_key, coordinator_orca_session_id,
+             consumer_generation
            FROM runs WHERE id = ?`
         )
         .get('run_chat')
     ).toEqual({
       coordinator_handle: null,
       coordinator_pane_key: null,
-      coordinator_actor: CHAT_SESSION_ACTOR,
+      coordinator_orca_session_id: CHAT_SESSION_ID,
       consumer_generation: 3
     })
     v41.close()
@@ -528,11 +545,11 @@ describe('orchestration actor column migration', () => {
     const reopened = new OrchestrationDb(path)
     try {
       const run = reopened.getRunRaw('run_chat')
-      expect(run && currentRunCoordinatorActor(run)).toBeNull()
+      expect(run && currentRunCoordinatorOrcaSessionId(run)).toBeNull()
       expect(
         reopened.db
-          .prepare(`SELECT id FROM runs WHERE ${currentRunCoordinatorActorSql('runs')} = ?`)
-          .all(CHAT_SESSION_ACTOR)
+          .prepare(`SELECT id FROM runs WHERE ${currentRunCoordinatorOrcaSessionIdSql('runs')} = ?`)
+          .all(CHAT_SESSION_ID)
       ).toEqual([])
       expect(coordinatorAddresses(reopened.db, ['run_chat'])).toEqual(['run_chat term_taker'])
     } finally {
@@ -540,12 +557,12 @@ describe('orchestration actor column migration', () => {
     }
   })
 
-  it('finds Runs by coordinator actor through an index on fresh and upgraded databases', () => {
+  it('finds Runs by coordinator Orca session id through an index on fresh and upgraded databases', () => {
     const expectIndexedLookup = (path: string): void => {
       const db = new OrchestrationDb(path)
       try {
         const plan = coordinatorLookupPlan(db.db)
-        expect(plan).toContain('USING INDEX idx_runs_coordinator_actor')
+        expect(plan).toContain('USING INDEX idx_runs_coordinator_orca_session_id')
         expect(plan).not.toContain('SCAN runs')
       } finally {
         db.close()
@@ -557,22 +574,56 @@ describe('orchestration actor column migration', () => {
     const seed = new OrchestrationDb(upgradedPath)
     seedStructuredAndPtyRows(seed)
     seed.close()
-    stripActorSchema(upgradedPath, 41)
+    stripOrcaSessionSchema(upgradedPath, 41)
     expectIndexedLookup(upgradedPath)
   })
 
-  it('replays a database stamped v42 before the coordinator actor carried its generation', () => {
+  it('replays a dev database stamped v42 with the earlier *_actor columns to add the Orca session ids', () => {
     const path = tempDbPath()
     const seed = new OrchestrationDb(path)
     const rows = seedStructuredAndPtyRows(seed)
     seed.close()
+    stripOrcaSessionSchema(path, 41)
     const raw = new Database(path)
+    // An earlier build of this step stamped v42 with `session:<id>` values in differently named
+    // columns, their indexes, and address triggers over them.
+    const earlierAddress = `COALESCE(NEW.coordinator_handle, (CASE WHEN
+      NEW.coordinator_actor_generation = NEW.consumer_generation THEN NEW.coordinator_actor END))`
     raw.exec(`
+      ALTER TABLE runs ADD COLUMN coordinator_actor TEXT;
+      ALTER TABLE runs ADD COLUMN coordinator_actor_generation INTEGER;
+      ALTER TABLE dispatch_contexts ADD COLUMN assignee_actor TEXT;
+      ALTER TABLE dispatch_contexts ADD COLUMN creator_actor TEXT;
+      CREATE INDEX idx_runs_coordinator_actor
+        ON runs(coordinator_actor) WHERE coordinator_actor IS NOT NULL;
+      CREATE INDEX idx_dispatch_assignee_actor
+        ON dispatch_contexts(assignee_actor) WHERE assignee_actor IS NOT NULL;
       DROP TRIGGER trg_runs_remember_coordinator_insert;
       DROP TRIGGER trg_runs_remember_coordinator_update;
-      ALTER TABLE runs DROP COLUMN coordinator_actor_generation;
-      ${HANDLE_ONLY_COORDINATOR_TRIGGERS_SQL}
+      CREATE TRIGGER trg_runs_remember_coordinator_insert
+      AFTER INSERT ON runs
+      WHEN NEW.legacy = 0 AND ${earlierAddress} IS NOT NULL
+      BEGIN
+        INSERT OR IGNORE INTO run_coordinator_handles (run_id, terminal_handle)
+        VALUES (NEW.id, ${earlierAddress});
+      END;
+      CREATE TRIGGER trg_runs_remember_coordinator_update
+      AFTER UPDATE OF coordinator_handle, coordinator_actor, coordinator_actor_generation ON runs
+      WHEN NEW.legacy = 0 AND ${earlierAddress} IS NOT NULL
+      BEGIN
+        INSERT OR IGNORE INTO run_coordinator_handles (run_id, terminal_handle)
+        VALUES (NEW.id, ${earlierAddress});
+      END;
     `)
+    raw
+      .prepare(
+        `INSERT INTO runs (
+           id, objective, coordinator_actor, coordinator_actor_generation, consumer_generation, legacy
+         ) VALUES ('run_earlier_chat', 'chat coordinated', ?, 1, 1, 0)`
+      )
+      .run(CHAT_SESSION_ADDRESS)
+    // The cache row the earlier trigger wrote; only the stale column could write it back.
+    raw.prepare('DELETE FROM run_coordinator_handles WHERE run_id = ?').run('run_earlier_chat')
     raw.pragma('user_version = 42')
     try {
       expect(resolveOrchestrationMigrationStartVersion(raw, 42, SCHEMA_VERSION)).toBe(6)
@@ -583,11 +634,32 @@ describe('orchestration actor column migration', () => {
     const db = new OrchestrationDb(path)
     try {
       expect(db.db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION)
+      expect(orcaSessionColumns(db.db)).toEqual(ORCA_SESSION_ID_COLUMNS)
       for (const sql of coordinatorTriggerSql(db.db)) {
-        expect(sql).toContain('NEW.coordinator_actor_generation = NEW.consumer_generation')
+        expect(sql).toContain(
+          'NEW.coordinator_orca_session_id_generation = NEW.consumer_generation'
+        )
+        expect(sql).not.toContain('coordinator_actor')
       }
+      expect(db.getDispatchContextById(rows.structuredDispatchId)?.assignee_orca_session_id).toBe(
+        SESSION_ID
+      )
       const run = db.getRunRaw(rows.structuredRunId)
-      expect(run && currentRunCoordinatorActor(run)).toBe(SESSION_ACTOR)
+      expect(run && currentRunCoordinatorOrcaSessionId(run)).toBe(SESSION_ID)
+      // The stale column stays where it was and nothing reads it.
+      expect(
+        db.db
+          .prepare('SELECT coordinator_actor, coordinator_orca_session_id FROM runs WHERE id = ?')
+          .get('run_earlier_chat')
+      ).toEqual({ coordinator_actor: CHAT_SESSION_ADDRESS, coordinator_orca_session_id: null })
+      expect(coordinatorAddresses(db.db, ['run_earlier_chat'])).toEqual([])
+      expect(() =>
+        db.createRun({
+          objective: 'after the replay',
+          coordinatorHandle: 'term_after',
+          coordinatorPaneKey: 'tab_after:55555555-5555-4555-8555-555555555555'
+        })
+      ).not.toThrow()
     } finally {
       db.close()
     }

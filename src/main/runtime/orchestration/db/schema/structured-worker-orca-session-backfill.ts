@@ -1,17 +1,14 @@
 import type Database from '../../../../sqlite/sync-database'
-import {
-  formatOrchestrationActor,
-  sessionOrchestrationActor
-} from '../../../../../shared/orchestration-actor'
+import { isOrcaSessionId } from '../../../../../shared/orca-session-address'
 import {
   STRUCTURED_WORKER_HANDLE_PREFIX,
   STRUCTURED_WORKER_INCARNATION_PREFIX,
   isStructuredWorkerHandle,
   sessionIdFromStructuredWorkerIncarnation
 } from '../../../structured-worker-identity'
-import { currentRunCoordinatorActorSql } from '../runs/run-coordinator-actor'
+import { currentRunCoordinatorOrcaSessionIdSql } from '../runs/run-coordinator-orca-session'
 
-const CURRENT_COORDINATOR_ACTOR_SQL = currentRunCoordinatorActorSql('runs')
+const CURRENT_COORDINATOR_ORCA_SESSION_ID_SQL = currentRunCoordinatorOrcaSessionIdSql('runs')
 
 // GLOB is a case-sensitive prefix filter; the canonical predicates still decide every row.
 const HANDLE_GLOB = `${STRUCTURED_WORKER_HANDLE_PREFIX}*`
@@ -25,21 +22,21 @@ const RECORDED_WORKER_SESSIONS_SQL = `
   WHERE terminal_handle GLOB ? AND process_incarnation GLOB ?`
 
 /**
- * Fills the actor on rows that provably belong to a structured worker session and have none: a
- * `structured:<sessionId>` process incarnation, or a `structworker_` handle this host recorded
- * against such an incarnation. Every other row stays NULL, PTY rows included, and evidence naming
- * more than one session proves none. Pane keys are never read: a pane outlives the agent in it.
+ * Fills the Orca session id on rows that provably belong to a structured worker session and have
+ * none: a `structured:<sessionId>` process incarnation, or a `structworker_` handle this host
+ * recorded against such an incarnation. Every other row stays NULL, PTY rows included, and evidence
+ * naming more than one session proves none. Pane keys are never read: a pane outlives the agent in it.
  *
  * Both markers are minted only for a local, non-WSL session (`structuredWorkerHostScope`), so the
  * rows carrying them were written by this host.
  *
  * Runs after migrate on every open, not only once at v42: a binary rolled back past v42 keeps
- * writing structured-worker rows without an actor after user_version is already 42. It fills only
- * rows with no actor that counts, so an actor a writer recorded is never rewritten.
+ * writing structured-worker rows without an Orca session id after user_version is already 42. It
+ * fills only rows with no id that counts, so an id a writer recorded is never rewritten.
  */
-export function backfillStructuredWorkerActors(db: Database.Database): void {
+export function backfillStructuredWorkerOrcaSessionIds(db: Database.Database): void {
   let recordedSessions: Map<string, Set<string>> | undefined
-  const actorFor = (handle: unknown, incarnation: unknown): string | null => {
+  const orcaSessionIdFor = (handle: unknown, incarnation: unknown): string | null => {
     if (incarnation != null && typeof incarnation !== 'string') {
       return null
     }
@@ -59,57 +56,60 @@ export function backfillStructuredWorkerActors(db: Database.Database): void {
       }
     }
     const [sessionId, ...others] = sessions
-    const actor = sessionId && others.length === 0 ? sessionOrchestrationActor(sessionId) : null
-    return actor ? formatOrchestrationActor(actor) : null
+    return sessionId && others.length === 0 && isOrcaSessionId(sessionId) ? sessionId : null
   }
 
   const assignees = db
     .prepare(
       `SELECT id, assignee_handle, process_incarnation FROM dispatch_contexts
-       WHERE assignee_actor IS NULL AND (process_incarnation GLOB ? OR assignee_handle GLOB ?)`
+       WHERE assignee_orca_session_id IS NULL
+         AND (process_incarnation GLOB ? OR assignee_handle GLOB ?)`
     )
     .all(INCARNATION_GLOB, HANDLE_GLOB)
   const setAssignee = db.prepare(
-    'UPDATE dispatch_contexts SET assignee_actor = ? WHERE id = ? AND assignee_actor IS NULL'
+    `UPDATE dispatch_contexts SET assignee_orca_session_id = ?
+     WHERE id = ? AND assignee_orca_session_id IS NULL`
   )
   for (const row of assignees) {
-    const actor = actorFor(row.assignee_handle, row.process_incarnation)
-    if (actor && typeof row.id === 'string') {
-      setAssignee.run(actor, row.id)
+    const orcaSessionId = orcaSessionIdFor(row.assignee_handle, row.process_incarnation)
+    if (orcaSessionId && typeof row.id === 'string') {
+      setAssignee.run(orcaSessionId, row.id)
     }
   }
 
   const creators = db
     .prepare(
       `SELECT id, creator_handle FROM dispatch_contexts
-       WHERE creator_actor IS NULL AND creator_handle GLOB ?`
+       WHERE creator_orca_session_id IS NULL AND creator_handle GLOB ?`
     )
     .all(HANDLE_GLOB)
   const setCreator = db.prepare(
-    'UPDATE dispatch_contexts SET creator_actor = ? WHERE id = ? AND creator_actor IS NULL'
+    `UPDATE dispatch_contexts SET creator_orca_session_id = ?
+     WHERE id = ? AND creator_orca_session_id IS NULL`
   )
   for (const row of creators) {
-    const actor = actorFor(row.creator_handle, null)
-    if (actor && typeof row.id === 'string') {
-      setCreator.run(actor, row.id)
+    const orcaSessionId = orcaSessionIdFor(row.creator_handle, null)
+    if (orcaSessionId && typeof row.id === 'string') {
+      setCreator.run(orcaSessionId, row.id)
     }
   }
 
-  // A coordinator actor left at an older generation counts as none, so the handle's session fills it.
+  // A coordinator id left at an older generation counts as none, so the handle's session fills it.
   const coordinators = db
     .prepare(
       `SELECT id, coordinator_handle FROM runs
-       WHERE ${CURRENT_COORDINATOR_ACTOR_SQL} IS NULL AND coordinator_handle GLOB ?`
+       WHERE ${CURRENT_COORDINATOR_ORCA_SESSION_ID_SQL} IS NULL AND coordinator_handle GLOB ?`
     )
     .all(HANDLE_GLOB)
   const setCoordinator = db.prepare(
-    `UPDATE runs SET coordinator_actor = ?, coordinator_actor_generation = consumer_generation
-     WHERE id = ? AND ${CURRENT_COORDINATOR_ACTOR_SQL} IS NULL`
+    `UPDATE runs SET coordinator_orca_session_id = ?,
+       coordinator_orca_session_id_generation = consumer_generation
+     WHERE id = ? AND ${CURRENT_COORDINATOR_ORCA_SESSION_ID_SQL} IS NULL`
   )
   for (const row of coordinators) {
-    const actor = actorFor(row.coordinator_handle, null)
-    if (actor && typeof row.id === 'string') {
-      setCoordinator.run(actor, row.id)
+    const orcaSessionId = orcaSessionIdFor(row.coordinator_handle, null)
+    if (orcaSessionId && typeof row.id === 'string') {
+      setCoordinator.run(orcaSessionId, row.id)
     }
   }
 }

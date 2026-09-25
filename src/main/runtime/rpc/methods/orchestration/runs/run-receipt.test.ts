@@ -9,8 +9,8 @@ const RUN_ROW: RunRow = {
   home_database: '/tmp/orca/orchestration.db',
   coordinator_handle: 'term_coord',
   coordinator_pane_key: 'tab_coord:11111111-1111-4111-8111-111111111111',
-  coordinator_actor: 'session:22222222-2222-4222-8222-222222222222',
-  coordinator_actor_generation: 3,
+  coordinator_orca_session_id: '22222222-2222-4222-8222-222222222222',
+  coordinator_orca_session_id_generation: 3,
   consumer_generation: 3,
   legacy: 0,
   created_at: '2026-09-04T18:53:07Z',
@@ -32,8 +32,8 @@ describe('exposeRun', () => {
     ])
     expect(exposed).not.toHaveProperty('home_database')
     expect(exposed).not.toHaveProperty('coordinator_pane_key')
-    expect(exposed).not.toHaveProperty('coordinator_actor')
-    expect(exposed).not.toHaveProperty('coordinator_actor_generation')
+    expect(exposed).not.toHaveProperty('coordinator_orca_session_id')
+    expect(exposed).not.toHaveProperty('coordinator_orca_session_id_generation')
   })
 
   it('preserves every published column by value', () => {
@@ -61,12 +61,12 @@ describe('exposeRun', () => {
     const exposed = exposeRun({
       ...RUN_ROW,
       coordinator_pane_key: null,
-      coordinator_actor: null,
-      coordinator_actor_generation: null
+      coordinator_orca_session_id: null,
+      coordinator_orca_session_id_generation: null
     })
 
     expect(exposed).not.toHaveProperty('coordinator_pane_key')
-    expect(exposed).not.toHaveProperty('coordinator_actor')
-    expect(exposed).not.toHaveProperty('coordinator_actor_generation')
+    expect(exposed).not.toHaveProperty('coordinator_orca_session_id')
+    expect(exposed).not.toHaveProperty('coordinator_orca_session_id_generation')
   })
 })

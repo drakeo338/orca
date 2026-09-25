@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { sessionOrchestrationActor } from '../../../../../shared/orchestration-actor'
+import { isOrcaSessionId } from '../../../../../shared/orca-session-address'
 import { mintStructuredWorkerHandle } from '../../../structured-worker-identity'
 import { OrchestrationDb } from '../orchestration-db'
 
-const EARLIER_ACTOR = 'session:7d9f1b3e-5a2c-4e6b-8f0a-1c3e5a7b9d42'
+const EARLIER_ORCA_SESSION_ID = '7d9f1b3e-5a2c-4e6b-8f0a-1c3e5a7b9d42'
 const WORKER_PANE = 'tab_worker:88888888-8888-4888-8888-888888888888'
 
 describe('assignee identity writers', () => {
@@ -14,8 +14,8 @@ describe('assignee identity writers', () => {
     db = undefined
   })
 
-  /** A starting Dispatch whose row already names an actor, standing in for any earlier writer. */
-  function startingDispatchWithActor(target: OrchestrationDb): string {
+  /** A starting Dispatch whose row already names an Orca session id, standing in for any earlier writer. */
+  function startingDispatchWithOrcaSessionId(target: OrchestrationDb): string {
     const task = target.createTask({ runId: 'run_legacy_local', spec: 'worker' })
     const started = target.createStartingWorkerDispatch({
       creator: { kind: 'system' },
@@ -24,14 +24,14 @@ describe('assignee identity writers', () => {
       startOptions: {}
     })
     target.db
-      .prepare('UPDATE dispatch_contexts SET assignee_actor = ? WHERE id = ?')
-      .run(EARLIER_ACTOR, started.dispatch.id)
+      .prepare('UPDATE dispatch_contexts SET assignee_orca_session_id = ? WHERE id = ?')
+      .run(EARLIER_ORCA_SESSION_ID, started.dispatch.id)
     return started.dispatch.id
   }
 
-  it('clears the actor when worker authority names the assignee', () => {
+  it('clears the Orca session id when worker authority names the assignee', () => {
     db = new OrchestrationDb(':memory:')
-    const dispatchId = startingDispatchWithActor(db)
+    const dispatchId = startingDispatchWithOrcaSessionId(db)
 
     db.prepareStartingWorkerAuthority({
       dispatchId,
@@ -45,13 +45,13 @@ describe('assignee identity writers', () => {
 
     expect(db.getDispatchContextById(dispatchId)).toMatchObject({
       assignee_handle: 'term_worker',
-      assignee_actor: null
+      assignee_orca_session_id: null
     })
   })
 
-  it('clears the actor when a failed start records the terminal it owned', () => {
+  it('clears the Orca session id when a failed start records the terminal it owned', () => {
     db = new OrchestrationDb(':memory:')
-    const dispatchId = startingDispatchWithActor(db)
+    const dispatchId = startingDispatchWithOrcaSessionId(db)
     db.recordCreatedWorkerTerminalCustody({
       dispatchId,
       handle: 'term_worker',
@@ -65,12 +65,12 @@ describe('assignee identity writers', () => {
 
     expect(db.getDispatchContextById(dispatchId)).toMatchObject({
       assignee_handle: 'term_worker',
-      assignee_actor: null
+      assignee_orca_session_id: null
     })
   })
 
-  it('refuses a minted structured-worker handle as a session id', () => {
-    // Ties the codec's handle-prefix refusal to the handle this runtime actually mints.
-    expect(sessionOrchestrationActor(mintStructuredWorkerHandle())).toBeNull()
+  it('refuses a minted structured-worker handle as an Orca session id', () => {
+    // Ties the handle-prefix refusal to the handle this runtime actually mints.
+    expect(isOrcaSessionId(mintStructuredWorkerHandle())).toBe(false)
   })
 })

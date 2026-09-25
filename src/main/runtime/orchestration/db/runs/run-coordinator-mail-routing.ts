@@ -1,5 +1,5 @@
 import type { OrchestrationDb } from '../orchestration-db'
-import { currentRunCoordinatorActorSql } from './run-coordinator-actor'
+import { currentRunCoordinatorAddressSql } from './run-coordinator-orca-session'
 
 export function rememberRunCoordinatorHandle(
   this: OrchestrationDb,
@@ -13,9 +13,9 @@ export function rememberRunCoordinatorHandle(
     .run(runId, terminalHandle)
 }
 
-const CURRENT_COORDINATOR_ADDRESS_SQL = `COALESCE(runs.coordinator_handle, ${currentRunCoordinatorActorSql('runs')})`
+const CURRENT_COORDINATOR_ADDRESS_SQL = currentRunCoordinatorAddressSql('runs')
 
-// A handle-less structured-session coordinator is remembered by its current actor (migrate-v42).
+// A handle-less structured-session coordinator is remembered by its session address (migrate-v42).
 export function rememberCurrentRunCoordinatorHandles(this: OrchestrationDb): void {
   this.db.exec(`
     INSERT OR IGNORE INTO run_coordinator_handles (run_id, terminal_handle)

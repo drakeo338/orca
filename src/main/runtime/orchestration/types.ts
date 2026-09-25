@@ -46,10 +46,10 @@ export type RunRow = {
   home_database: string
   coordinator_handle: string | null
   coordinator_pane_key: string | null
-  /** `session:<id>` for a structured-session coordinator; NULL for a PTY one. See orchestration-actor. */
-  coordinator_actor: string | null
-  /** The consumer_generation the actor was written at; see currentRunCoordinatorActor. */
-  coordinator_actor_generation: number | null
+  /** Bare Orca session id the coordinator is addressed by (a `/clear`ed chat's lineage root); NULL for a PTY. */
+  coordinator_orca_session_id: string | null
+  /** The consumer_generation the id was written at; see currentRunCoordinatorOrcaSessionId. */
+  coordinator_orca_session_id_generation: number | null
   consumer_generation: number
   legacy: number
   created_at: string
@@ -282,8 +282,8 @@ export type DispatchContextRow = {
   launch_token_hash: string | null
   assignee_handle: string | null
   assignee_pane_key: string | null
-  /** `session:<id>` when the assignee is a structured session; NULL for a PTY. */
-  assignee_actor: string | null
+  /** Bare Orca session id the assignee is addressed by (a `/clear`ed chat's lineage root); NULL for a PTY. */
+  assignee_orca_session_id: string | null
   capability_hash: string | null
   process_incarnation: string | null
   capability_revoked_at: string | null
@@ -293,8 +293,8 @@ export type DispatchContextRow = {
   /** Creator identity; equal to the assignee means a self-dispatch, which adds no nesting depth. */
   creator_handle: string | null
   creator_pane_key: string | null
-  /** `session:<id>` when the creator is a structured session; NULL for a PTY or Orca's loop. */
-  creator_actor: string | null
+  /** Bare Orca session id the creator is addressed by (a `/clear`ed chat's lineage root); NULL for a PTY or Orca's loop. */
+  creator_orca_session_id: string | null
   host_scope: string | null
   status: DispatchStatus
   failure_count: number

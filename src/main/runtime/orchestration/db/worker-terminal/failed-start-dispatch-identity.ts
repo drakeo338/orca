@@ -22,7 +22,7 @@ export function recordFailedStartDispatchIdentity(
     .prepare(
       `UPDATE dispatch_contexts
          SET assignee_handle = ?, assignee_pane_key = ?, process_incarnation = ?, host_scope = ?,
-             assignee_actor = NULL
+             assignee_orca_session_id = NULL
        WHERE id = ? AND status = 'failed' AND capability_hash IS NULL`
     )
     .run(

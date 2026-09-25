@@ -1,12 +1,12 @@
 import type { RunRow } from '../../../../orchestration/types'
 
 // Why: home_database and coordinator_pane_key are runtime routing state; no caller reads them.
-// The coordinator actor stays off the wire until a reader needs it; publishing it is a wire change.
+// The coordinator's Orca session id stays off the wire until a reader needs it; publishing it is a wire change.
 const INTERNAL_RUN_COLUMNS = [
   'home_database',
   'coordinator_pane_key',
-  'coordinator_actor',
-  'coordinator_actor_generation'
+  'coordinator_orca_session_id',
+  'coordinator_orca_session_id_generation'
 ] as const
 
 export type RunReceipt = Omit<RunRow, (typeof INTERNAL_RUN_COLUMNS)[number]>

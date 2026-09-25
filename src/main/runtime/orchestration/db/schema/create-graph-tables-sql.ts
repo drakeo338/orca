@@ -145,8 +145,9 @@ CREATE TABLE IF NOT EXISTS dispatch_contexts (
   launch_token_hash   TEXT,
   assignee_handle     TEXT,
   assignee_pane_key   TEXT,
-  -- session:<id> when the party is a structured session (orchestration-actor); NULL for a PTY.
-  assignee_actor      TEXT,
+  -- Bare Orca session id a structured-session party is addressed by (for a /clear'd chat, its
+  -- lineage root's), not its session:<id> address; NULL for a PTY.
+  assignee_orca_session_id TEXT,
   capability_hash     TEXT,
   process_incarnation TEXT,
   capability_revoked_at TEXT,
@@ -157,7 +158,8 @@ CREATE TABLE IF NOT EXISTS dispatch_contexts (
   -- so it must not count as a nesting parent. Null on rows written before v37 and for Orca's loop.
   creator_handle      TEXT,
   creator_pane_key    TEXT,
-  creator_actor       TEXT,
+  -- Same form as assignee_orca_session_id: the id the creator is addressed by (a lineage root's).
+  creator_orca_session_id TEXT,
   host_scope          TEXT,
   status              TEXT NOT NULL DEFAULT 'pending'
     CHECK(status IN ('pending', 'dispatched', 'completed', 'failed', 'circuit_broken')),
