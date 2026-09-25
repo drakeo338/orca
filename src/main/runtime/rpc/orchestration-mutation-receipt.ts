@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { isTerminalPromptMutation } from '../../../shared/orchestration-rpc-contract'
 import { parsePaneKey } from '../../../shared/stable-pane-id'
 import type { OrcaRuntimeService } from '../orca-runtime'
+import type { OrcaSessionId } from '../../../shared/orca-session-address'
 
 export const EFFECT_FREE_WORKER_DONE_CHECKPOINT = JSON.stringify({
   pending: { effectFree: 'worker_done' }
@@ -13,20 +14,20 @@ export type MutationReplayNudge =
   | { kind: 'messages'; targets: { to: string; type: string }[] }
   | { kind: 'federation'; runId?: string }
 
-const CALLER_ACTOR_KEY = '__orcaCallerActor'
+const CALLER_ORCA_SESSION_ID_KEY = '__orcaCallerOrcaSessionId'
 
 export function replayStableCallerParams(
   runtime: OrcaRuntimeService,
   params: unknown,
-  callerActor?: string
+  callerOrcaSessionId?: OrcaSessionId
 ): unknown {
   if (!params || typeof params !== 'object' || Array.isArray(params)) {
     return params
   }
   const source = params as Record<string, unknown>
   // Absent for terminal callers, so their payload hashes are unchanged.
-  const result: Record<string, unknown> = callerActor
-    ? { ...source, [CALLER_ACTOR_KEY]: callerActor }
+  const result: Record<string, unknown> = callerOrcaSessionId
+    ? { ...source, [CALLER_ORCA_SESSION_ID_KEY]: callerOrcaSessionId }
     : { ...source }
   delete result.waitSubmitMs
   for (const property of ['from', 'callerTerminalHandle', 'terminal'] as const) {

@@ -11,6 +11,7 @@ import {
 import { OrchestrationDb } from './db'
 import { SCHEMA_VERSION } from './db/contract-constants'
 import { formatOrcaSessionAddress } from '../../../shared/orca-session-address'
+import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fixture'
 import { RUN_PANE_KEY_MATCH_SUFFIX_SQL } from './db/pane-key-match'
 import {
   currentRunCoordinatorOrcaSessionId,
@@ -18,8 +19,8 @@ import {
 } from './db/runs/run-coordinator-orca-session'
 import { resolveOrchestrationMigrationStartVersion } from './orchestration-schema-version-skew'
 
-const SESSION_ID = '5f0c1d9e-2b7a-4c3e-8f61-0a9d2e7b4c11'
-const CHAT_SESSION_ID = '9a4e7c1b-3d2f-4b6a-8e5c-7f1d0b2a6c93'
+const SESSION_ID = testOrcaSessionId('5f0c1d9e-2b7a-4c3e-8f61-0a9d2e7b4c11')
+const CHAT_SESSION_ID = testOrcaSessionId('9a4e7c1b-3d2f-4b6a-8e5c-7f1d0b2a6c93')
 const CHAT_SESSION_ADDRESS = formatOrcaSessionAddress(CHAT_SESSION_ID)
 const ORCA_SESSION_ID_COLUMNS = [
   'assignee_orca_session_id',

@@ -154,7 +154,7 @@ export class RpcStreamingDispatcher {
           effectiveParams,
           invoke,
           legacyCoordinator?.mutationCallerFingerprint ?? authenticatedCallerFingerprint,
-          orchestrationCaller?.actor
+          orchestrationCaller?.orcaSessionId
         )
         recordRuntimeFeatureInteraction(runtime, request.method, result, undefined, request.params)
         reply(JSON.stringify(successResponse(request.id, envelopeMeta, result)))

@@ -1,6 +1,6 @@
 import type { WorkerDispatchRow } from '../../types'
 import type { OrchestrationDb } from '../orchestration-db'
-import { structuredWorkerActorForIncarnation } from '../../../structured-worker-identity'
+import { structuredWorkerOrcaSessionIdForIncarnation } from '../../../structured-worker-identity'
 
 /**
  * A start that dies before `prepareStartingWorkerAuthority` never filled the Dispatch context in,
@@ -29,7 +29,7 @@ export function recordFailedStartDispatchIdentity(
     .run(
       resource.terminal_handle,
       resource.pane_key,
-      structuredWorkerActorForIncarnation(resource.process_incarnation),
+      structuredWorkerOrcaSessionIdForIncarnation(resource.process_incarnation),
       resource.process_incarnation,
       resource.host_scope,
       worker.dispatch_id

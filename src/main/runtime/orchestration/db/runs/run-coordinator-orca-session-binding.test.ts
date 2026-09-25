@@ -5,33 +5,40 @@ import {
   structuredWorkerProcessIncarnation
 } from '../../../structured-worker-identity'
 import { OrchestrationDb } from '../../db'
+import {
+  formatOrcaSessionAddress,
+  type OrcaSessionId
+} from '../../../../../shared/orca-session-address'
+import { testOrcaSessionId } from '../../../../../shared/orca-session-address-test-fixture'
 
-const CHAT_X = 'session:1b6f0c3a-7d2e-4a91-8c55-2e9d4b7a0f13'
-const CHAT_Y = 'session:6d2a9e41-0c7b-4f38-9a15-b3e8c1d57f20'
-const WORKER_SESSION = '9c3e5a17-4b2d-4f60-8e91-0d7a6c2b5e48'
-const WORKER_ACTOR = `session:${WORKER_SESSION}`
-const OTHER_WORKER_SESSION = '2e8b4d61-5a3c-4e97-b0f2-7c1d9a6e3b54'
+const CHAT_X_ID = testOrcaSessionId('1b6f0c3a-7d2e-4a91-8c55-2e9d4b7a0f13')
+const CHAT_X = formatOrcaSessionAddress(CHAT_X_ID)
+const CHAT_Y_ID = testOrcaSessionId('6d2a9e41-0c7b-4f38-9a15-b3e8c1d57f20')
+const CHAT_Y = formatOrcaSessionAddress(CHAT_Y_ID)
+const WORKER_SESSION = testOrcaSessionId('9c3e5a17-4b2d-4f60-8e91-0d7a6c2b5e48')
+const WORKER_ADDRESS = formatOrcaSessionAddress(WORKER_SESSION)
+const OTHER_WORKER_SESSION = testOrcaSessionId('2e8b4d61-5a3c-4e97-b0f2-7c1d9a6e3b54')
 const PTY_PANE = 'tab_pty:11111111-1111-4111-8111-111111111111'
 const OTHER_PANE = 'tab_other:22222222-2222-4222-8222-222222222222'
 const UNCAPPED = Number.MAX_SAFE_INTEGER
 
-function chat(actor: string) {
-  return { terminalHandle: null, paneKey: null, actor }
+function chat(orcaSessionId: OrcaSessionId) {
+  return { terminalHandle: null, paneKey: null, orcaSessionId }
 }
 
-describe('Run binding by orchestration actor', () => {
+describe('Run binding by Orca session id', () => {
   let db: OrchestrationDb
 
   afterEach(() => {
     db?.close()
   })
 
-  function createChatRun(actor: string, objective = 'chat run') {
+  function createChatRun(orcaSessionId: OrcaSessionId, objective = 'chat run') {
     return db.createRun({
       objective,
       coordinatorHandle: null,
       coordinatorPaneKey: null,
-      coordinatorActor: actor
+      coordinatorOrcaSessionId: orcaSessionId
     })
   }
 
@@ -43,11 +50,12 @@ describe('Run binding by orchestration actor', () => {
     return {
       terminalHandle: mintStructuredWorkerHandle(),
       paneKey: mintStructuredWorkerPaneKey(sessionId),
-      actor: `session:${sessionId}`
+      orcaSessionId: sessionId,
+      address: formatOrcaSessionAddress(sessionId)
     }
   }
 
-  // A binary without the actor column: its bindRun and unbindOtherRunsForPane statements.
+  // A binary without the Orca session id column: its bindRun and unbindOtherRunsForPane statements.
   function olderBinaryRebind(runId: string, handle: string, paneKey: string) {
     db.db
       .prepare(
@@ -75,16 +83,16 @@ describe('Run binding by orchestration actor', () => {
     return message.id
   }
 
-  it('binds a handle-less session by its actor and remembers the actor as its address', () => {
+  it('binds a handle-less session by its Orca session id and remembers its session address', () => {
     db = new OrchestrationDb(':memory:')
-    const run = createChatRun(CHAT_X)
+    const run = createChatRun(CHAT_X_ID)
 
     expect(db.getRunRaw(run.id)).toMatchObject({
       coordinator_handle: null,
       coordinator_pane_key: null,
-      coordinator_actor: CHAT_X
+      coordinator_orca_session_id: CHAT_X_ID
     })
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_X))?.id).toBe(run.id)
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_X_ID))?.id).toBe(run.id)
     expect(db.getRunMailboxOwnerIdsForHandle(CHAT_X)).toEqual([run.id])
     // Mail to the session's address reaches the Run mailbox, as mail to a coordinator handle does.
     expect(directMail(run.id, CHAT_X).to_handle).toBe(`run:${run.id}`)
@@ -97,8 +105,8 @@ describe('Run binding by orchestration actor', () => {
       coordinatorHandle: 'term_pty',
       coordinatorPaneKey: PTY_PANE
     })
-    const yRun = createChatRun(CHAT_Y, 'y')
-    const xFirst = createChatRun(CHAT_X, 'x first')
+    const yRun = createChatRun(CHAT_Y_ID, 'y')
+    const xFirst = createChatRun(CHAT_X_ID, 'x first')
     const pending = db.insertMessage({
       from: 'term_sender',
       to: 'term_late',
@@ -110,68 +118,68 @@ describe('Run binding by orchestration actor', () => {
     db.db.prepare('UPDATE messages SET to_handle = ? WHERE id = ?').run(CHAT_X, pending.id)
     const generation = db.getRunRaw(xFirst.id)?.consumer_generation ?? 0
 
-    const xSecond = createChatRun(CHAT_X, 'x second')
+    const xSecond = createChatRun(CHAT_X_ID, 'x second')
 
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_X))?.id).toBe(xSecond.id)
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_Y))?.id).toBe(yRun.id)
-    expect(db.getRunRaw(yRun.id)?.coordinator_actor).toBe(CHAT_Y)
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_X_ID))?.id).toBe(xSecond.id)
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_Y_ID))?.id).toBe(yRun.id)
+    expect(db.getRunRaw(yRun.id)?.coordinator_orca_session_id).toBe(CHAT_Y_ID)
     expect(db.getRunRaw(ptyRun.id)?.coordinator_pane_key).toBe(PTY_PANE)
     expect(db.getRunRaw(xFirst.id)).toMatchObject({
       coordinator_handle: null,
-      coordinator_actor: null,
+      coordinator_orca_session_id: null,
       consumer_generation: generation + 1
     })
     // Pending coordinator mail follows the Run, as it does when a pane is unbound.
     expect(db.getMessageById(pending.id)?.to_handle).toBe(`run:${xFirst.id}`)
   })
 
-  it('stops counting an actor once a binary without the column rebinds the Run to a terminal', () => {
+  it('stops counting an Orca session id once a binary without the column rebinds the Run to a terminal', () => {
     db = new OrchestrationDb(':memory:')
-    const run = createChatRun(CHAT_X)
+    const run = createChatRun(CHAT_X_ID)
     olderBinaryRebind(run.id, 'term_taker', PTY_PANE)
 
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_X))).toBeUndefined()
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_X_ID))).toBeUndefined()
     expect(
       db.getCurrentRunForCoordinator({
         terminalHandle: 'term_taker',
         paneKey: PTY_PANE,
-        actor: null
+        orcaSessionId: null
       })?.id
     ).toBe(run.id)
-    createChatRun(CHAT_X, 'next')
+    createChatRun(CHAT_X_ID, 'next')
     expect(db.getRunRaw(run.id)?.coordinator_handle).toBe('term_taker')
   })
 
   it('does not hand a chat back a Run an older binary rebound and then unbound', () => {
     db = new OrchestrationDb(':memory:')
-    const run = createChatRun(CHAT_X)
+    const run = createChatRun(CHAT_X_ID)
     olderBinaryRebind(run.id, 'term_taker', PTY_PANE)
     olderBinaryUnbind(run.id)
 
-    // Handle and pane are gone and the actor is still there: the shape of a live chat binding.
+    // Handle and pane are gone and the id is still there: the shape of a live chat binding.
     expect(db.getRunRaw(run.id)).toMatchObject({
       coordinator_handle: null,
       coordinator_pane_key: null,
-      coordinator_actor: CHAT_X
+      coordinator_orca_session_id: CHAT_X_ID
     })
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_X))).toBeUndefined()
-    const next = createChatRun(CHAT_X, 'next')
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_X))?.id).toBe(next.id)
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_X_ID))).toBeUndefined()
+    const next = createChatRun(CHAT_X_ID, 'next')
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_X_ID))?.id).toBe(next.id)
   })
 
-  it("stops counting a structured worker's actor once an older binary unbinds its Run", () => {
+  it("stops counting a structured worker's Orca session id once an older binary unbinds its Run", () => {
     db = new OrchestrationDb(':memory:')
     const worker = structuredWorker()
     const run = db.createRun({
       objective: 'worker coordinates',
       coordinatorHandle: worker.terminalHandle,
       coordinatorPaneKey: worker.paneKey,
-      coordinatorActor: worker.actor
+      coordinatorOrcaSessionId: worker.orcaSessionId
     })
     expect(db.getCurrentRunForCoordinator(worker)?.id).toBe(run.id)
     olderBinaryUnbind(run.id)
     expect(db.getCurrentRunForCoordinator(worker)).toBeUndefined()
-    expect(db.getCurrentRunForCoordinator(chat(worker.actor))).toBeUndefined()
+    expect(db.getCurrentRunForCoordinator(chat(worker.orcaSessionId))).toBeUndefined()
   })
 
   it('remembers a coordinating structured worker at its handle and its session address', () => {
@@ -181,17 +189,17 @@ describe('Run binding by orchestration actor', () => {
       objective: 'worker coordinates',
       coordinatorHandle: worker.terminalHandle,
       coordinatorPaneKey: worker.paneKey,
-      coordinatorActor: worker.actor
+      coordinatorOrcaSessionId: worker.orcaSessionId
     })
 
     expect(db.getRunMailboxOwnerIdsForHandle(worker.terminalHandle)).toEqual([run.id])
-    expect(db.getRunMailboxOwnerIdsForHandle(WORKER_ACTOR)).toEqual([run.id])
-    expect(directMail(run.id, WORKER_ACTOR).to_handle).toBe(`run:${run.id}`)
+    expect(db.getRunMailboxOwnerIdsForHandle(WORKER_ADDRESS)).toEqual([run.id])
+    expect(directMail(run.id, WORKER_ADDRESS).to_handle).toBe(`run:${run.id}`)
   })
 
   it('hands a Run to a different session like a terminal takeover: fenced, rerouted, remembered', () => {
     db = new OrchestrationDb(':memory:')
-    const run = createChatRun(CHAT_X)
+    const run = createChatRun(CHAT_X_ID)
     const pending = directMail(run.id, 'term_late')
     db.db.prepare('UPDATE messages SET to_handle = ? WHERE id = ?').run(CHAT_X, pending.id)
     const before = db.getRunRaw(run.id)?.consumer_generation ?? 0
@@ -200,20 +208,20 @@ describe('Run binding by orchestration actor', () => {
       runId: run.id,
       coordinatorHandle: null,
       coordinatorPaneKey: null,
-      coordinatorActor: CHAT_Y
+      coordinatorOrcaSessionId: CHAT_Y_ID
     })
 
     expect(db.getRunRaw(run.id)).toMatchObject({
-      coordinator_actor: CHAT_Y,
+      coordinator_orca_session_id: CHAT_Y_ID,
       consumer_generation: before + 1
     })
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_X))).toBeUndefined()
-    expect(db.getCurrentRunForCoordinator(chat(CHAT_Y))?.id).toBe(run.id)
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_X_ID))).toBeUndefined()
+    expect(db.getCurrentRunForCoordinator(chat(CHAT_Y_ID))?.id).toBe(run.id)
     expect(db.getMessageById(pending.id)?.to_handle).toBe(`run:${run.id}`)
     expect(db.getRunMailboxOwnerIdsForHandle(CHAT_Y)).toEqual([run.id])
   })
 
-  it('rebinding the same session is not a new consumer, and fills a missing actor in place', () => {
+  it('rebinding the same session is not a new consumer, and fills a missing Orca session id in place', () => {
     db = new OrchestrationDb(':memory:')
     const worker = structuredWorker()
     const run = db.createRun({
@@ -221,23 +229,25 @@ describe('Run binding by orchestration actor', () => {
       coordinatorHandle: worker.terminalHandle,
       coordinatorPaneKey: worker.paneKey
     })
-    // As an older binary writes the row: no actor, and no generation for one.
-    db.db.prepare('UPDATE runs SET coordinator_actor_generation = NULL WHERE id = ?').run(run.id)
+    // As an older binary writes the row: no Orca session id, and no generation for one.
+    db.db
+      .prepare('UPDATE runs SET coordinator_orca_session_id_generation = NULL WHERE id = ?')
+      .run(run.id)
     const before = db.getRunRaw(run.id)?.consumer_generation
 
     db.bindRun({
       runId: run.id,
       coordinatorHandle: worker.terminalHandle,
       coordinatorPaneKey: worker.paneKey,
-      coordinatorActor: worker.actor
+      coordinatorOrcaSessionId: worker.orcaSessionId
     })
 
     expect(db.getRunRaw(run.id)).toMatchObject({
-      coordinator_actor: WORKER_ACTOR,
+      coordinator_orca_session_id: WORKER_SESSION,
       consumer_generation: before
     })
-    // Written at the current generation, so the filled actor counts on its own.
-    expect(db.getCurrentRunForCoordinator(chat(WORKER_ACTOR))?.id).toBe(run.id)
+    // Written at the current generation, so the filled id counts on its own.
+    expect(db.getCurrentRunForCoordinator(chat(WORKER_SESSION))?.id).toBe(run.id)
   })
 
   it("reroutes and remembers both of each worker's addresses when one takes a Run from another", () => {
@@ -248,16 +258,16 @@ describe('Run binding by orchestration actor', () => {
       objective: 'first worker coordinates',
       coordinatorHandle: first.terminalHandle,
       coordinatorPaneKey: first.paneKey,
-      coordinatorActor: first.actor
+      coordinatorOrcaSessionId: first.orcaSessionId
     })
-    const addresses = [first.terminalHandle, first.actor, second.terminalHandle, second.actor]
+    const addresses = [first.terminalHandle, first.address, second.terminalHandle, second.address]
     const stray = addresses.map((address) => strayMail(run.id, address))
 
     db.bindRun({
       runId: run.id,
       coordinatorHandle: second.terminalHandle,
       coordinatorPaneKey: second.paneKey,
-      coordinatorActor: second.actor
+      coordinatorOrcaSessionId: second.orcaSessionId
     })
 
     for (const id of stray) {
@@ -274,10 +284,10 @@ describe('Run binding by orchestration actor', () => {
     const bind = {
       coordinatorHandle: worker.terminalHandle,
       coordinatorPaneKey: worker.paneKey,
-      coordinatorActor: worker.actor
+      coordinatorOrcaSessionId: worker.orcaSessionId
     }
     const last = db.createRun({ objective: 'last', ...bind })
-    const stray = [worker.terminalHandle, worker.actor].map((address) =>
+    const stray = [worker.terminalHandle, worker.address].map((address) =>
       strayMail(last.id, address)
     )
 
@@ -289,7 +299,7 @@ describe('Run binding by orchestration actor', () => {
   })
 })
 
-describe('mail owned by an active Dispatch assignee addressed by its actor', () => {
+describe('mail owned by an active Dispatch assignee addressed by its session address', () => {
   let db: OrchestrationDb
 
   afterEach(() => {
@@ -304,7 +314,7 @@ describe('mail owned by an active Dispatch assignee addressed by its actor', () 
       objective: 'nested',
       coordinatorHandle: handle,
       coordinatorPaneKey: paneKey,
-      coordinatorActor: WORKER_ACTOR
+      coordinatorOrcaSessionId: WORKER_SESSION
     })
     const dispatch = db.createDispatchContext({
       taskId: db.createTask({ runId: run.id, spec: 'own work' }).id,
@@ -322,9 +332,14 @@ describe('mail owned by an active Dispatch assignee addressed by its actor', () 
     const { run } = workerCoordinatingItsOwnDispatch()
 
     expect(
-      db.insertMessage({ from: 'term_x', to: WORKER_ACTOR, subject: 's', body: '', runId: run.id })
-        .to_handle
-    ).toBe(WORKER_ACTOR)
+      db.insertMessage({
+        from: 'term_x',
+        to: WORKER_ADDRESS,
+        subject: 's',
+        body: '',
+        runId: run.id
+      }).to_handle
+    ).toBe(WORKER_ADDRESS)
   })
 
   it('leaves that mail in place when the Run is rebound', () => {
@@ -332,15 +347,15 @@ describe('mail owned by an active Dispatch assignee addressed by its actor', () 
     const { run } = workerCoordinatingItsOwnDispatch()
     const mail = db.insertMessage({
       from: 'term_x',
-      to: WORKER_ACTOR,
+      to: WORKER_ADDRESS,
       subject: 's',
       body: '',
       runId: run.id
     })
 
-    db.routeAllUnreadDirectMessagesToRunMailbox(run.id, WORKER_ACTOR)
+    db.routeAllUnreadDirectMessagesToRunMailbox(run.id, WORKER_ADDRESS)
 
-    expect(db.getMessageById(mail.id)?.to_handle).toBe(WORKER_ACTOR)
+    expect(db.getMessageById(mail.id)?.to_handle).toBe(WORKER_ADDRESS)
   })
 
   it("sweeps the session's stray mail from another Run into its Dispatch mailbox", () => {
@@ -353,13 +368,13 @@ describe('mail owned by an active Dispatch assignee addressed by its actor', () 
     })
     const stray = db.insertMessage({
       from: 'term_x',
-      to: WORKER_ACTOR,
+      to: WORKER_ADDRESS,
       subject: 's',
       body: '',
       runId: run.id
     })
 
-    const routed = db.routeForeignDirectMessagesToOwnedMailboxes(WORKER_ACTOR)
+    const routed = db.routeForeignDirectMessagesToOwnedMailboxes(WORKER_ADDRESS)
 
     expect(routed.routedCount).toBe(1)
     expect(db.getMessageById(stray.id)?.to_handle).toBe(`dispatch:${dispatch.id}`)
@@ -391,32 +406,32 @@ describe('stray mail to a session address that is only an assignee', () => {
     // The worker coordinates nothing, so no address cache entry can claim this mail.
     const stray = db.insertMessage({
       from: 'term_c',
-      to: WORKER_ACTOR,
+      to: WORKER_ADDRESS,
       subject: 's',
       body: '',
       runId: run.id
     })
-    expect(db.getMessageById(stray.id)?.to_handle).toBe(WORKER_ACTOR)
+    expect(db.getMessageById(stray.id)?.to_handle).toBe(WORKER_ADDRESS)
 
-    expect(db.routeForeignDirectMessagesToOwnedMailboxes(WORKER_ACTOR).routedCount).toBe(1)
+    expect(db.routeForeignDirectMessagesToOwnedMailboxes(WORKER_ADDRESS).routedCount).toBe(1)
     expect(db.getMessageById(stray.id)?.to_handle).toBe(`dispatch:${dispatch.id}`)
   })
 })
 
-describe('Dispatch actors recorded by every writer', () => {
+describe('Dispatch Orca session ids recorded by every writer', () => {
   let db: OrchestrationDb
 
   afterEach(() => {
     db?.close()
   })
 
-  it('records the assignee actor from a structured incarnation and a creator actor', () => {
+  it('records the assignee Orca session id from a structured incarnation and a creator one', () => {
     db = new OrchestrationDb(':memory:')
     const run = db.createRun({
       objective: 'r',
       coordinatorHandle: null,
       coordinatorPaneKey: null,
-      coordinatorActor: CHAT_X
+      coordinatorOrcaSessionId: CHAT_X_ID
     })
     const handle = mintStructuredWorkerHandle()
     const assigned = db.createDispatchContext({
@@ -424,7 +439,7 @@ describe('Dispatch actors recorded by every writer', () => {
       assigneeHandle: handle,
       assigneePaneKey: mintStructuredWorkerPaneKey(WORKER_SESSION),
       processIncarnation: structuredWorkerProcessIncarnation(WORKER_SESSION),
-      creator: { kind: 'actor', actor: CHAT_X },
+      creator: { kind: 'session', orcaSessionId: CHAT_X_ID },
       maxDepth: UNCAPPED
     })
     const pty = db.createDispatchContext({
@@ -437,12 +452,40 @@ describe('Dispatch actors recorded by every writer', () => {
     })
 
     expect(assigned).toMatchObject({
-      assignee_actor: WORKER_ACTOR,
+      assignee_orca_session_id: WORKER_SESSION,
       creator_handle: null,
       creator_pane_key: null,
-      creator_actor: CHAT_X
+      creator_orca_session_id: CHAT_X_ID
     })
-    expect(pty).toMatchObject({ assignee_actor: null, creator_actor: null })
+    expect(pty).toMatchObject({ assignee_orca_session_id: null, creator_orca_session_id: null })
+  })
+
+  it('nests under the Dispatch a handle-less creator is assigned by its Orca session id', () => {
+    db = new OrchestrationDb(':memory:')
+    const run = db.createRun({
+      objective: 'r',
+      coordinatorHandle: 'term_c',
+      coordinatorPaneKey: OTHER_PANE
+    })
+    const parent = db.createDispatchContext({
+      taskId: db.createTask({ runId: run.id, spec: 'parent' }).id,
+      assigneeHandle: mintStructuredWorkerHandle(),
+      assigneePaneKey: mintStructuredWorkerPaneKey(WORKER_SESSION),
+      processIncarnation: structuredWorkerProcessIncarnation(WORKER_SESSION),
+      creator: { kind: 'system' },
+      maxDepth: UNCAPPED
+    })
+
+    const child = db.createDispatchContext({
+      taskId: db.createTask({ runId: run.id, spec: 'child' }).id,
+      assigneeHandle: 'term_child',
+      assigneePaneKey: PTY_PANE,
+      processIncarnation: 'pty_proc:2',
+      creator: { kind: 'session', orcaSessionId: WORKER_SESSION },
+      maxDepth: UNCAPPED
+    })
+
+    expect(child).toMatchObject({ creator_dispatch_id: parent.id, depth: parent.depth + 1 })
   })
 
   it('records the starting creator and the attached assignee of a worker-start', () => {
@@ -451,16 +494,19 @@ describe('Dispatch actors recorded by every writer', () => {
       objective: 'r',
       coordinatorHandle: null,
       coordinatorPaneKey: null,
-      coordinatorActor: CHAT_X
+      coordinatorOrcaSessionId: CHAT_X_ID
     })
     const started = db.createStartingWorkerDispatch({
-      creator: { kind: 'actor', actor: CHAT_X },
+      creator: { kind: 'session', orcaSessionId: CHAT_X_ID },
       maxDepth: UNCAPPED,
       taskSpec: 'work',
       taskRunId: run.id,
       startOptions: {}
     })
-    expect(started.dispatch).toMatchObject({ creator_actor: CHAT_X, assignee_actor: null })
+    expect(started.dispatch).toMatchObject({
+      creator_orca_session_id: CHAT_X_ID,
+      assignee_orca_session_id: null
+    })
 
     const handle = mintStructuredWorkerHandle()
     db.prepareStartingWorkerAuthority({
@@ -473,6 +519,8 @@ describe('Dispatch actors recorded by every writer', () => {
       setupState: 'not_applicable'
     })
 
-    expect(db.getDispatchContextById(started.dispatch.id)?.assignee_actor).toBe(WORKER_ACTOR)
+    expect(db.getDispatchContextById(started.dispatch.id)?.assignee_orca_session_id).toBe(
+      WORKER_SESSION
+    )
   })
 })

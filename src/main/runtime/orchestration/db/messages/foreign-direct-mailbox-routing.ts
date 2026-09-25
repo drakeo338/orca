@@ -1,5 +1,5 @@
 import { parsePaneKey } from '../../../../../shared/stable-pane-id'
-import { parseOrchestrationActor } from '../../../../../shared/orchestration-actor'
+import { parseOrcaSessionAddress } from '../../../../../shared/orca-session-address'
 import type { DispatchContextRow, MessageType } from '../../types'
 import { DISPATCH_PANE_KEY_MATCH_SUFFIX_SQL, paneKeyMatchSuffix } from '../pane-key-match'
 import type { OrchestrationDb } from '../orchestration-db'
@@ -25,17 +25,18 @@ export function findActiveDispatchForDirectMessageOwner(
     return exact
   }
   // A session address owns the Dispatch its session is assigned, as a handle owns its own.
-  if (parseOrchestrationActor(directHandle)) {
-    const byActor = this.db
+  const directOrcaSessionId = parseOrcaSessionAddress(directHandle)
+  if (directOrcaSessionId) {
+    const bySession = this.db
       .prepare(
         `SELECT * FROM dispatch_contexts
-         WHERE run_id = ? AND assignee_actor = ? AND status IN ('pending', 'dispatched')
+         WHERE run_id = ? AND assignee_orca_session_id = ? AND status IN ('pending', 'dispatched')
          ORDER BY rowid DESC LIMIT 1`
       )
-      .get(runId, directHandle)
-    if (byActor) {
+      .get(runId, directOrcaSessionId)
+    if (bySession) {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: SELECT * over this table returns the row shape its schema and row type define, like every row cast in db/.
-      return byActor as DispatchContextRow
+      return bySession as DispatchContextRow
     }
   }
   if (!paneKey || !parsePaneKey(paneKey)) {
@@ -94,26 +95,28 @@ export function routeForeignDirectMessagesToOwnedMailboxes(
       [directHandle, ...exclusionParams, ORCHESTRATION_DELIVERY_BATCH_LIMIT + 1],
       [directHandle, directHandle, ...exclusionParams, ORCHESTRATION_DELIVERY_BATCH_LIMIT + 1]
     ]
-    if (parseOrchestrationActor(directHandle)) {
+    const directOrcaSessionId = parseOrcaSessionAddress(directHandle)
+    if (directOrcaSessionId) {
       branches.push(
         `SELECT candidate.id, candidate.run_id, candidate.type, candidate.sequence
          FROM (
-           SELECT actor_dispatch.run_id
-           FROM dispatch_contexts AS actor_dispatch INDEXED BY idx_dispatch_assignee_actor
+           SELECT session_dispatch.run_id
+           FROM dispatch_contexts AS session_dispatch
+             INDEXED BY idx_dispatch_assignee_orca_session_id
            JOIN runs AS owner_run
-             ON owner_run.id = actor_dispatch.run_id AND owner_run.legacy = 0
-           WHERE actor_dispatch.assignee_actor = ?
-             AND actor_dispatch.status IN ('pending', 'dispatched')
-           GROUP BY actor_dispatch.run_id
-         ) AS actor_owner
+             ON owner_run.id = session_dispatch.run_id AND owner_run.legacy = 0
+           WHERE session_dispatch.assignee_orca_session_id = ?
+             AND session_dispatch.status IN ('pending', 'dispatched')
+           GROUP BY session_dispatch.run_id
+         ) AS session_owner
          JOIN messages AS candidate INDEXED BY idx_messages_undelivered_direct_run
-           ON candidate.run_id = actor_owner.run_id AND candidate.to_handle = ?
+           ON candidate.run_id = session_owner.run_id AND candidate.to_handle = ?
          WHERE 1 = 1${runExclusion}
            AND candidate.read = 0 AND candidate.delivered_at IS NULL
            AND candidate.delivery_contract = 'current_delivery'`
       )
       branchParams.push([
-        directHandle,
+        directOrcaSessionId,
         directHandle,
         ...exclusionParams,
         ORCHESTRATION_DELIVERY_BATCH_LIMIT + 1

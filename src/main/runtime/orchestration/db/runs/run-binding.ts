@@ -3,6 +3,7 @@ import { OrchestrationError } from '../../orchestration-error'
 import { LEGACY_CONTRACT_VERSION } from '../contract-constants'
 import { isEquivalentPaneKey } from '../pane-key-match'
 import type { OrchestrationDb } from '../orchestration-db'
+import type { OrcaSessionId } from '../../../../../shared/orca-session-address'
 import {
   addressSpellingsOf,
   runBoundToCoordinator,
@@ -15,8 +16,8 @@ export function bindRun(
     runId: string
     coordinatorHandle: string | null
     coordinatorPaneKey: string | null
-    /** `session:<id>` when the coordinator is a structured session; see orchestration-actor. */
-    coordinatorActor?: string | null
+    /** The coordinator's bare Orca session id when it is a structured session; see orca-session-address. */
+    coordinatorOrcaSessionId?: OrcaSessionId | null
     takeoverLegacy?: boolean
     legacyCoordinatorAuthority?: {
       runId: string
@@ -30,7 +31,7 @@ export function bindRun(
   const coordinator = {
     terminalHandle: params.coordinatorHandle,
     paneKey: params.coordinatorPaneKey,
-    actor: params.coordinatorActor ?? null
+    orcaSessionId: params.coordinatorOrcaSessionId ?? null
   }
   this.db.exec('BEGIN IMMEDIATE')
   try {
@@ -154,19 +155,25 @@ export function bindRun(
                updated_at = datetime('now')
            WHERE id = ?`
         )
-        .run(coordinator.terminalHandle, coordinator.paneKey, coordinator.actor, params.runId)
+        .run(
+          coordinator.terminalHandle,
+          coordinator.paneKey,
+          coordinator.orcaSessionId,
+          params.runId
+        )
       this.fenceUnacknowledgedMailboxDeliveries(`run:${params.runId}`)
       if (params.takeoverLegacy || replacesLegacyCoordinator) {
         this.promoteLegacyCoordinatorMailForTakeover(params.runId, retainedCoordinatorHandle)
       }
-    } else if (runCoordinatorKey(run).actor !== coordinator.actor) {
-      // Same coordinator, so no new consumer: correct an actor a writer without the column left.
+    } else if (runCoordinatorKey(run).orcaSessionId !== coordinator.orcaSessionId) {
+      // Same coordinator, so no new consumer: correct an Orca session id a writer without the column left.
       this.db
         .prepare(
-          `UPDATE runs SET coordinator_actor = ?, coordinator_actor_generation = consumer_generation
+          `UPDATE runs SET coordinator_orca_session_id = ?,
+             coordinator_orca_session_id_generation = consumer_generation
            WHERE id = ?`
         )
-        .run(coordinator.actor, params.runId)
+        .run(coordinator.orcaSessionId, params.runId)
     }
     this.db.exec('COMMIT')
   } catch (error) {

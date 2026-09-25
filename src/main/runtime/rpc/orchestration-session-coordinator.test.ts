@@ -6,8 +6,8 @@ import {
   structuredWorkerProcessIncarnation
 } from '../structured-worker-identity'
 import {
-  ACTOR_X,
-  ACTOR_Y,
+  ADDRESS_X,
+  ADDRESS_Y,
   createSessionCallerHarness,
   orchestrationRequest,
   idOf,
@@ -54,7 +54,7 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
     expect(h.db.getRunRaw(runId)).toMatchObject({
       coordinator_handle: null,
       coordinator_pane_key: null,
-      coordinator_actor: ACTOR_X
+      coordinator_orca_session_id: SESSION_X
     })
     expect(await as(SESSION_X, 'orchestration.runCurrent', {})).toMatchObject({
       run: { id: runId }
@@ -73,14 +73,14 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
       assignee_handle: WORKER_HANDLE,
       creator_handle: null,
       creator_pane_key: null,
-      creator_actor: ACTOR_X,
+      creator_orca_session_id: SESSION_X,
       depth: 1
     })
 
     // The worker writes to its coordinator's public address.
     const { message: inbound } = await as(undefined, 'orchestration.send', {
       from: WORKER_HANDLE,
-      to: ACTOR_X,
+      to: ADDRESS_X,
       subject: 'progress'
     })
     expect(inbound).toMatchObject({ to_handle: `run:${runId}`, run_id: runId })
@@ -92,13 +92,13 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
       to: WORKER_HANDLE,
       subject: 'more'
     })
-    expect(outbound).toMatchObject({ from_handle: ACTOR_X, run_id: runId })
+    expect(outbound).toMatchObject({ from_handle: ADDRESS_X, run_id: runId })
 
     const replied = await as(SESSION_X, 'orchestration.reply', {
       id: idOf(inbound),
       body: 'ack'
     })
-    expect(replied).toMatchObject({ message: { from_handle: ACTOR_X, to_handle: WORKER_HANDLE } })
+    expect(replied).toMatchObject({ message: { from_handle: ADDRESS_X, to_handle: WORKER_HANDLE } })
 
     const { gate } = await as(SESSION_X, 'orchestration.gateCreate', {
       task: taskId,
@@ -123,7 +123,11 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
       to: WORKER_HANDLE,
       subject: 'no dispatch here'
     })
-    expect(message).toMatchObject({ from_handle: ACTOR_X, to_handle: WORKER_HANDLE, run_id: runId })
+    expect(message).toMatchObject({
+      from_handle: ADDRESS_X,
+      to_handle: WORKER_HANDLE,
+      run_id: runId
+    })
   })
 
   it("addresses a group to the session's own Run", async () => {
@@ -191,14 +195,14 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
     expect(await as(SESSION_X, 'orchestration.runCurrent', {})).toMatchObject({
       run: { id: xSecond }
     })
-    expect(h.db.getRunRaw(xFirst)?.coordinator_actor).toBeNull()
+    expect(h.db.getRunRaw(xFirst)?.coordinator_orca_session_id).toBeNull()
   })
 
   it('takes over a bound Run like a terminal does, and fences the previous coordinator', async () => {
     const runId = await runCreate(SESSION_X)
     await as(undefined, 'orchestration.send', {
       from: WORKER_HANDLE,
-      to: ACTOR_X,
+      to: ADDRESS_X,
       subject: 'before takeover',
       run: runId
     })
@@ -249,7 +253,7 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
     })
   })
 
-  it('keeps the same actor across a native to terminal-view to native handoff', async () => {
+  it('keeps the same Orca session id across a native to terminal-view to native handoff', async () => {
     const runId = await runCreate(SESSION_X)
     // The terminal view is a PTY: its CLI also carries that terminal's own evidence.
     const tuiEvidence = {
@@ -258,7 +262,11 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
       launchToken: 'tui-token'
     }
     h.records.set(SESSION_X, sessionRecord(SESSION_X, { lease: { runtimeKind: 'tui' } }))
-    await as(undefined, 'orchestration.send', { from: WORKER_HANDLE, to: ACTOR_X, subject: 'tui' })
+    await as(undefined, 'orchestration.send', {
+      from: WORKER_HANDLE,
+      to: ADDRESS_X,
+      subject: 'tui'
+    })
 
     const inTui = resultOf(
       await h.dispatch(
@@ -280,9 +288,9 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
     })
   })
 
-  it('stops counting a coordinator actor once an older binary rebinds the Run to a terminal', async () => {
+  it('stops counting a coordinator Orca session id once an older binary rebinds the Run to a terminal', async () => {
     const runId = await runCreate(SESSION_X)
-    // An older binary's bindRun rewrites handle and pane and bumps the generation, never the actor.
+    // An older binary's bindRun rewrites handle and pane and bumps the generation, never the Orca session id.
     h.db.db
       .prepare(
         `UPDATE runs SET coordinator_handle = ?, coordinator_pane_key = ?,
@@ -349,13 +357,13 @@ describe('a session with no Run, and receipts that carry no caller param', () =>
   })
 
   it('reads its direct mailbox on a consuming check, as a terminal with a live pane does', async () => {
-    h.db.insertMessage({ from: WORKER_HANDLE, to: ACTOR_X, subject: 'direct', body: '' })
+    h.db.insertMessage({ from: WORKER_HANDLE, to: ADDRESS_X, subject: 'direct', body: '' })
 
     const checked = resultOf(
       await h.dispatch(orchestrationRequest('orchestration.check', {}, { sessionId: SESSION_X }))
     )
 
-    expect(checked).toMatchObject({ messages: [{ subject: 'direct', to_handle: ACTOR_X }] })
+    expect(checked).toMatchObject({ messages: [{ subject: 'direct', to_handle: ADDRESS_X }] })
   })
 
   it('binds a receipt to the session even when the method names no caller', async () => {
@@ -433,7 +441,7 @@ describe('a structured worker that names itself by session id', () => {
 
   it("reads its own Dispatch mailbox: the session id wins and maps to the worker's handle", async () => {
     const { dispatchId } = dispatchToWorker()
-    expect(h.db.getDispatchContextById(dispatchId)?.assignee_actor).toBe(ACTOR_Y)
+    expect(h.db.getDispatchContextById(dispatchId)?.assignee_orca_session_id).toBe(SESSION_Y)
 
     const bySession = resultOf(
       await h.dispatch(
@@ -458,7 +466,7 @@ describe('a structured worker that names itself by session id', () => {
 
   it.each([
     ['its handle', handle],
-    ['its session address', ACTOR_Y],
+    ['its session address', ADDRESS_Y],
     ['its bare session id', workerSession]
   ])('accepts itself declared as %s and binds by its handle', async (_label, declared) => {
     const { run } = resultOf(
@@ -472,11 +480,53 @@ describe('a structured worker that names itself by session id', () => {
     )
     expect(h.db.getRunRaw(idOf(run))).toMatchObject({
       coordinator_handle: handle,
-      coordinator_actor: ACTOR_Y
+      coordinator_orca_session_id: SESSION_Y
     })
   })
 
-  it('coordinates with its handle, pane and actor, reachable at both addresses', async () => {
+  it('keeps mail to its session address direct once assigned in a Run it coordinated before', async () => {
+    const { run } = resultOf(
+      await h.dispatch(
+        orchestrationRequest(
+          'orchestration.runCreate',
+          { objective: 'o' },
+          { sessionId: workerSession }
+        )
+      )
+    )
+    const runId = idOf(run)
+    // A chat takes the Run over; the worker's addresses stay remembered as a former coordinator's.
+    resultOf(
+      await h.dispatch(
+        orchestrationRequest('orchestration.runUse', { id: runId }, { sessionId: SESSION_X })
+      )
+    )
+    expect(h.db.getRunMailboxOwnerIdsForHandle(ADDRESS_Y)).toEqual([runId])
+    h.db.createDispatchContext({
+      taskId: h.db.createTask({ runId, spec: 'work' }).id,
+      assigneeHandle: handle,
+      assigneePaneKey: paneKey,
+      processIncarnation: structuredWorkerProcessIncarnation(workerSession),
+      creator: { kind: 'session', orcaSessionId: SESSION_X },
+      maxDepth: Number.MAX_SAFE_INTEGER
+    })
+
+    // Direct mail to the session address, as the mail layer writes it after recipient resolution.
+    const mail = h.db.insertMessage({
+      from: ADDRESS_X,
+      to: ADDRESS_Y,
+      subject: 'to the assigned worker',
+      body: '',
+      runId
+    })
+
+    // The assignee owns mail to its session address, so the Run mailbox must not take it.
+    expect(mail.to_handle).toBe(ADDRESS_Y)
+    h.db.routeAllUnreadDirectMessagesToRunMailbox(runId, ADDRESS_Y)
+    expect(h.db.getMessageById(mail.id)?.to_handle).toBe(ADDRESS_Y)
+  })
+
+  it('coordinates with its handle, pane and Orca session id, reachable at both addresses', async () => {
     const { run } = resultOf(
       await h.dispatch(
         orchestrationRequest(
@@ -493,9 +543,9 @@ describe('a structured worker that names itself by session id', () => {
     expect(h.db.getRunRaw(runId)).toMatchObject({
       coordinator_handle: handle,
       coordinator_pane_key: paneKey,
-      coordinator_actor: ACTOR_Y
+      coordinator_orca_session_id: SESSION_Y
     })
     expect(h.db.getRunMailboxOwnerIdsForHandle(handle)).toEqual([runId])
-    expect(h.db.getRunMailboxOwnerIdsForHandle(ACTOR_Y)).toEqual([runId])
+    expect(h.db.getRunMailboxOwnerIdsForHandle(ADDRESS_Y)).toEqual([runId])
   })
 })

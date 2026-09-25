@@ -15,7 +15,7 @@ import {
   structuredWorkerProcessIncarnation
 } from '../structured-worker-identity'
 import {
-  ACTOR_X,
+  ADDRESS_X,
   createSessionCallerHarness,
   orchestrationRequest,
   PROVIDER_ID_X,
@@ -38,7 +38,7 @@ vi.mock('../../native-chat/agent-session-wire/structured-agent-session-registry'
 
 // Fields that name a party. They name the caller only in the methods ORCHESTRATION_CALLER_PARAM lists.
 const PARTY_NAMING_FIELDS = ['from', 'terminal', 'callerTerminalHandle'] as const
-// Methods with such a field that never reads it as the caller's identity, for any actor.
+// Methods with such a field that never reads it as the caller's identity, for any caller.
 const NAMES_A_PARTY_BUT_NOT_THE_CALLER: Readonly<Record<string, string>> = {
   'orchestration.run': 'retired; refused before any handler',
   'orchestration.runShow': 'reads a Run by id; `from` is unused',
@@ -189,8 +189,12 @@ describe('orchestration session callers at the dispatch entry', () => {
     )
     expect(local).toMatchObject({ ok: true, result: { run: { objective: 'o' } } })
     expect(
-      h.db.getCurrentRunForCoordinator({ terminalHandle: null, paneKey: null, actor: ACTOR_X })
-    ).toMatchObject({ objective: 'o', coordinator_actor: ACTOR_X })
+      h.db.getCurrentRunForCoordinator({
+        terminalHandle: null,
+        paneKey: null,
+        orcaSessionId: SESSION_X
+      })
+    ).toMatchObject({ objective: 'o', coordinator_orca_session_id: SESSION_X })
   })
 
   describe('refuses a session that cannot act, before any destructive or consuming lookup', () => {
@@ -199,11 +203,11 @@ describe('orchestration session callers at the dispatch entry', () => {
         objective: 'x',
         coordinatorHandle: null,
         coordinatorPaneKey: null,
-        coordinatorActor: ACTOR_X
+        coordinatorOrcaSessionId: SESSION_X
       })
       const message = h.db.insertMessage({
         from: 'term_worker',
-        to: ACTOR_X,
+        to: ADDRESS_X,
         subject: 'pending',
         body: '',
         runId: run.id
@@ -323,7 +327,9 @@ describe('orchestration session callers at the dispatch entry', () => {
         ok: false,
         error: { code: CODES.notLive, message: expect.stringContaining('no longer has') }
       })
-      expect(h.db.listRuns().runs.filter((row) => row.coordinator_actor !== null)).toEqual([])
+      expect(
+        h.db.listRuns().runs.filter((row) => row.coordinator_orca_session_id !== null)
+      ).toEqual([])
     })
 
     it('an agent-session host that cannot be brought up to verify it', async () => {
@@ -362,7 +368,7 @@ describe('orchestration session callers at the dispatch entry', () => {
       expect(response).toMatchObject({ ok: false, error: { code: 'consumer_fenced' } })
     })
 
-    it.each([ACTOR_X, SESSION_X])('accepts the session named as %s', async (declared) => {
+    it.each([ADDRESS_X, SESSION_X])('accepts the session named as %s', async (declared) => {
       const run = resultOf(
         await h.dispatch(
           orchestrationRequest(
@@ -385,6 +391,6 @@ describe('orchestration session callers at the dispatch entry', () => {
 
     const run = resultOf(await h.dispatch(request)).run
     expect(run).toMatchObject({ coordinator_handle: 'term_worker' })
-    expect(h.db.getRunRaw(idOf(run))?.coordinator_actor).toBeNull()
+    expect(h.db.getRunRaw(idOf(run))?.coordinator_orca_session_id).toBeNull()
   })
 })

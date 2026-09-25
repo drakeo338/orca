@@ -9,16 +9,13 @@
  * - Same host only. A paired client, an SSH environment or a WSL shell is another host, where
  *   "same machine, same user" does not hold, so a session claim from one is refused.
  * - The Orca id, never the provider's: that one rotates on `/clear`.
- * - A live lease under either owner (native chat or terminal view), so a handoff keeps the actor.
+ * - A live lease under either owner (native chat or terminal view), so a handoff keeps the identity.
  * - The session wins over any declared caller: a declared handle must name this same session, and
  *   a structured worker's session id maps to the handle and pane it was minted.
  */
 import { agentSessionLeaseAdmitsWriter } from '../../../shared/agent-session-lease-adjudication'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import {
-  formatOrchestrationActor,
-  sessionOrchestrationActor
-} from '../../../shared/orchestration-actor'
+import { formatOrcaSessionAddress, isOrcaSessionId } from '../../../shared/orca-session-address'
 import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../shared/orchestration-session-caller-codes'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrcaRuntimeService } from '../orca-runtime'
@@ -39,7 +36,7 @@ type CallerParam = 'from' | 'terminal' | 'callerTerminalHandle'
 /**
  * Every method that consults caller identity, and the param it names its caller in. This list is
  * the contract: a method that starts reading caller identity is added here with its own test.
- * Methods not listed carry no caller identity for any actor; a session claim on them is still
+ * Methods not listed carry no caller identity for any caller; a session claim on them is still
  * validated, then they run exactly as they do for a terminal caller.
  */
 export const ORCHESTRATION_CALLER_PARAM: Readonly<Record<string, CallerParam>> = {
@@ -102,15 +99,14 @@ export async function resolveOrchestrationSessionCaller(
       `This command ran in ${evidence.host.kind === 'ssh' ? 'an SSH' : 'a WSL'} environment, and an agent session id identifies a caller only on the host that runs that session.`
     )
   }
-  const actor = sessionOrchestrationActor(typeof claimed === 'string' ? claimed : '')
-  if (!actor) {
+  if (typeof claimed !== 'string' || !isOrcaSessionId(claimed)) {
     throw new OrchestrationError(
       CODES.unknown,
       'The caller named an agent session id that is not an Orca session id. No effects were applied.',
       NO_EFFECTS
     )
   }
-  const sessionId = actor.id
+  const sessionId = claimed
   const record = await readSessionRecord(runtime, sessionId)
   assertSessionCanAct(sessionId, record)
   const db = runtime.getOrchestrationDb()
@@ -126,8 +122,8 @@ export async function resolveOrchestrationSessionCaller(
   const terminalHandle = worker?.handle ?? null
   const caller: OrchestrationSessionCaller = Object.freeze({
     sessionId,
-    actor: formatOrchestrationActor(actor),
-    address: terminalHandle ?? formatOrchestrationActor(actor),
+    orcaSessionId: sessionId,
+    address: terminalHandle ?? formatOrcaSessionAddress(sessionId),
     terminalHandle,
     paneKey: worker?.paneKey ?? null,
     workspaceId: record.location.workspaceId

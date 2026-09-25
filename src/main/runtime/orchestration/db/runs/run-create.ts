@@ -1,6 +1,7 @@
 import type { RunRow } from '../../types'
 import { generateId } from '../generated-id'
 import type { OrchestrationDb } from '../orchestration-db'
+import type { OrcaSessionId } from '../../../../../shared/orca-session-address'
 import { addressSpellingsOf } from '../../orchestration-caller-identity'
 
 // ── Runs ──
@@ -11,14 +12,14 @@ export function createRun(
     objective: string
     coordinatorHandle: string | null
     coordinatorPaneKey: string | null
-    /** `session:<id>` when the coordinator is a structured session; see orchestration-actor. */
-    coordinatorActor?: string | null
+    /** The coordinator's bare Orca session id when it is a structured session; see orca-session-address. */
+    coordinatorOrcaSessionId?: OrcaSessionId | null
   }
 ): RunRow {
   const coordinator = {
     terminalHandle: params.coordinatorHandle,
     paneKey: params.coordinatorPaneKey,
-    actor: params.coordinatorActor ?? null
+    orcaSessionId: params.coordinatorOrcaSessionId ?? null
   }
   const id = generateId('run')
   this.db.exec('BEGIN IMMEDIATE')
@@ -27,11 +28,17 @@ export function createRun(
     this.db
       .prepare(
         `INSERT INTO runs (
-           id, objective, coordinator_handle, coordinator_pane_key, coordinator_actor,
-           coordinator_actor_generation, consumer_generation, legacy
+           id, objective, coordinator_handle, coordinator_pane_key, coordinator_orca_session_id,
+           coordinator_orca_session_id_generation, consumer_generation, legacy
          ) VALUES (?, ?, ?, ?, ?, 1, 1, 0)`
       )
-      .run(id, params.objective, coordinator.terminalHandle, coordinator.paneKey, coordinator.actor)
+      .run(
+        id,
+        params.objective,
+        coordinator.terminalHandle,
+        coordinator.paneKey,
+        coordinator.orcaSessionId
+      )
     for (const address of addressSpellingsOf(coordinator)) {
       this.rememberRunCoordinatorHandle(id, address)
     }

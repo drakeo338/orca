@@ -27,7 +27,7 @@ export const ORCHESTRATION_RUN_METHODS = [
         objective: params.objective,
         coordinatorHandle: caller.terminalHandle,
         coordinatorPaneKey: caller.paneKey,
-        coordinatorActor: caller.actor
+        coordinatorOrcaSessionId: caller.orcaSessionId
       })
       runtime.cancelMessageWaiters(params.from)
       if (priorRun) {
@@ -75,7 +75,7 @@ export const ORCHESTRATION_RUN_METHODS = [
         runId: params.id,
         coordinatorHandle: caller.terminalHandle,
         coordinatorPaneKey: caller.paneKey,
-        coordinatorActor: caller.actor,
+        coordinatorOrcaSessionId: caller.orcaSessionId,
         takeoverLegacy: params.takeoverLegacy,
         legacyCoordinatorAuthority
       })

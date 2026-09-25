@@ -270,7 +270,12 @@ describe('sendGroupMessage actually composes structured workers in', () => {
       db: db as never,
       from: 'term_sender',
       groupAddress: '@codex',
-      sender: { address: 'term_sender', terminalHandle: 'term_sender', paneKey: null, actor: null },
+      sender: {
+        address: 'term_sender',
+        terminalHandle: 'term_sender',
+        paneKey: null,
+        orcaSessionId: null
+      },
       senderPaneKey: undefined,
       senderRunId: 'run_1',
       explicitRunId: undefined,

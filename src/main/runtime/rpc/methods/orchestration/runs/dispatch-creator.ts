@@ -26,8 +26,10 @@ export function resolveDispatchCreator(
     paneKey: null
   })
   if (caller.terminalHandle === null) {
-    // A handle-less session: its actor is its whole identity.
-    return caller.actor ? { kind: 'actor', actor: caller.actor } : { kind: 'system' }
+    // A handle-less session: its Orca session id is its whole identity.
+    return caller.orcaSessionId
+      ? { kind: 'session', orcaSessionId: caller.orcaSessionId }
+      : { kind: 'system' }
   }
   const authority = runtime.getOrchestrationDispatchAuthority?.(caller.terminalHandle)
   return {
@@ -39,6 +41,6 @@ export function resolveDispatchCreator(
       runtime.getTerminalPaneKey(caller.terminalHandle) ??
       undefined,
     processIncarnation: authority?.processIncarnation ?? undefined,
-    ...(caller.actor ? { actor: caller.actor } : {})
+    ...(caller.orcaSessionId ? { orcaSessionId: caller.orcaSessionId } : {})
   }
 }
