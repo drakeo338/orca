@@ -1,7 +1,9 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import {
   clearFloatingPanelReclaimIntent,
-  consumeFloatingPanelReclaimIntent
+  consumeFloatingPanelReclaimIntent,
+  isFloatingPanelReclaimIntentArmed,
+  subscribeFloatingPanelReclaimIntent
 } from '@/lib/floating-workspace-focus-reclaim'
 import { reportFloatingFocus } from './floating-terminal-focus-reporting'
 import type { FloatingWorkspaceChromeModel } from './use-floating-workspace-chrome-model'
@@ -23,6 +25,11 @@ export function useFloatingTerminalPanelFocusReclaim({
   visibleFloatingItemCount,
   floatingFiles
 }: FloatingTerminalPanelFocusReclaimInput) {
+  const reclaimIntentArmed = useSyncExternalStore(
+    subscribeFloatingPanelReclaimIntent,
+    isFloatingPanelReclaimIntentArmed,
+    () => false
+  )
   const focusPanelForShortcuts = useCallback(
     (preserveExistingPanelFocus = true) => {
       const active = document.activeElement
@@ -103,10 +110,10 @@ export function useFloatingTerminalPanelFocusReclaim({
       clearFloatingPanelReclaimIntent()
       return
     }
-    if (consumeFloatingPanelReclaimIntent()) {
+    if (reclaimIntentArmed && consumeFloatingPanelReclaimIntent()) {
       focusPanelForShortcutsAfterClose()
     }
-  }, [focusPanelForShortcutsAfterClose, visibleFloatingItemCount])
+  }, [focusPanelForShortcutsAfterClose, reclaimIntentArmed, visibleFloatingItemCount])
 
   return { focusPanelForShortcuts, setPanelNode, reportFloatingFocusFromTarget }
 }
