@@ -109,7 +109,7 @@ export function computeVisibleWorktrees(
   }
 
   if (opts.hideDefaultBranchWorkspace) {
-    all = all.filter((w) => !isDefaultBranchWorkspace(w))
+    all = all.filter((w) => !isDefaultBranchWorkspace(w, opts.repoMap.get(w.repoId)))
   }
 
   if (opts.hideAutomationGeneratedWorkspaces) {

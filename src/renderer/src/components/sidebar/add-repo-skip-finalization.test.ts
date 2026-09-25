@@ -36,6 +36,7 @@ function makeState(overrides: Partial<AddRepoSkipFinalizationState>): AddRepoSki
     hideDefaultBranchWorkspace: false,
     showSleepingWorkspaces: true,
     alwaysShowDefaultBranchWorkspace: true,
+    repos: [],
     worktreesByRepo: {},
     setActiveRepo: vi.fn(),
     setFilterRepoIds: vi.fn(),
@@ -90,6 +91,28 @@ describe('finalizeImportedRepoAfterSkip', () => {
     })
 
     finalizeImportedRepoAfterSkip(state, 'repo-new')
+
+    expect(state.setHideDefaultBranchWorkspace).toHaveBeenCalledWith(false)
+  })
+
+  it('clears default-branch hiding for a folder project whose only row is its root', () => {
+    const state = makeState({
+      hideDefaultBranchWorkspace: true,
+      repos: [{ id: 'folder-new', kind: 'folder' }],
+      worktreesByRepo: {
+        'folder-new': [
+          makeWorktree({
+            id: 'folder-new::/notes',
+            repoId: 'folder-new',
+            isMainWorktree: true,
+            head: '',
+            branch: ''
+          })
+        ]
+      }
+    })
+
+    finalizeImportedRepoAfterSkip(state, 'folder-new')
 
     expect(state.setHideDefaultBranchWorkspace).toHaveBeenCalledWith(false)
   })
