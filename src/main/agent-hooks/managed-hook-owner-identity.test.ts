@@ -223,6 +223,22 @@ describe('managed hook owner identity', () => {
     expect(execFileAsync).toHaveBeenCalledTimes(2)
   })
 
+  it('reads the Windows machine id again after a lookup timed out, without moving the hook identity', async () => {
+    const { identity, execFileAsync } = await loadWindowsIdentity()
+    execFileAsync.mockRejectedValueOnce(Object.assign(new Error('timed out'), { killed: true }))
+    execFileAsync.mockRejectedValueOnce(Object.assign(new Error('timed out'), { killed: true }))
+
+    await expect(identity.readDurableHostIdentity()).resolves.toBeUndefined()
+    const hookIdentity = await identity.readManagedHookHostIdentity()
+    await expect(identity.readDurableHostIdentity()).resolves.toBe(
+      'win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    )
+
+    // A hook lock written under the fallback is released under the same identity.
+    expect(hookIdentity).toMatch(/^runtime:/)
+    await expect(identity.readManagedHookHostIdentity()).resolves.toBe(hookIdentity)
+  })
+
   it('retries an unverified macOS process identity', async () => {
     const identity = await loadDarwinIdentity()
 

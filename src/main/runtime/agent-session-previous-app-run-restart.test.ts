@@ -20,10 +20,13 @@ import {
   type AgentSessionHostRun
 } from './agent-session-host-run'
 
-const machineId = vi.hoisted((): { hostname: string; override: string | undefined } => ({
-  hostname: 'home-wifi.local',
-  override: undefined
-}))
+const machineId = vi.hoisted(
+  (): { hostname: string; override: string | undefined; lookups: (string | undefined)[] } => ({
+    hostname: 'home-wifi.local',
+    override: undefined,
+    lookups: []
+  })
+)
 
 vi.mock('node:os', async (importOriginal) => {
   const actual = await importOriginal<typeof OsModule>()
@@ -34,8 +37,10 @@ vi.mock('../agent-hooks/managed-hook-owner-identity', async (importOriginal) => 
   const actual = await importOriginal<typeof MachineIdentityModule>()
   return {
     ...actual,
-    readManagedHookHostIdentity: async () =>
-      machineId.override ?? (await actual.readManagedHookHostIdentity())
+    readDurableHostIdentity: async () =>
+      machineId.lookups.length > 0
+        ? machineId.lookups.shift()
+        : (machineId.override ?? (await actual.readDurableHostIdentity()))
   }
 })
 
@@ -365,6 +370,46 @@ describe('restart assumes a native owner ended with the previous app run', () =>
     })
   })
 
+  it.each(['native', 'tui'] as const)(
+    'attributes a %s owner a restart probed dead to the run it belonged to only when native',
+    async (runtimeKind) => {
+      await establishOwner(await open(), { runtimeKind })
+      await editPersistedLease((lease) => {
+        delete lease.ownerHostRun
+      })
+      const restarted = await open()
+      const probe = vi.fn(async () => ({ outcome: 'pid-absent' as const }))
+
+      await reconcile(restarted, probe)
+
+      expect(probe).toHaveBeenCalledOnce()
+      expect(restarted.getRecord(SESSION)?.lease.deathEvidence).toMatchObject(
+        runtimeKind === 'native'
+          ? { kind: 'previous-app-run', detail: 'recorded pid absent on host after restart' }
+          : { kind: 'pid-absent', detail: 'recorded pid absent on host' }
+      )
+    }
+  )
+
+  it('leaves an eviction outside the restart reconcile on its own probe evidence', async () => {
+    await establishOwner(await open())
+    await editPersistedLease((lease) => {
+      delete lease.ownerHostRun
+    })
+    const restarted = await open()
+    await reconcile(restarted, async () => MATCHED)
+    expect(restarted.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
+
+    await restarted.evictProvenDeadOwner({
+      sessionId: SESSION,
+      expectedFence: 1,
+      probe: { outcome: 'pid-absent' },
+      now: NOW + 2_000
+    })
+
+    expect(restarted.getRecord(SESSION)?.lease.deathEvidence?.kind).toBe('pid-absent')
+  })
+
   it('probes each stamped pid once per reconcile', async () => {
     const run = hostRun()
     const store = await open(run)
@@ -445,8 +490,8 @@ describe('the host run a lease is stamped with', () => {
   it("defaults to this process's own run", async () => {
     const store = await AgentSessionRecordStore.open({ directory, hostId: 'local' })
 
-    expect(store.hostRun).toEqual(await currentAgentSessionHostRun())
-    expect(store.hostRun).toMatchObject({
+    expect(await store.currentHostRun()).toEqual(await currentAgentSessionHostRun())
+    expect(await store.currentHostRun()).toMatchObject({
       pid: process.pid,
       machine: expect.stringMatching(new RegExp(`^${process.platform}:`))
     })
@@ -457,6 +502,31 @@ describe('the machine a run is stamped with', () => {
   afterEach(() => {
     machineId.hostname = 'home-wifi.local'
     machineId.override = undefined
+    machineId.lookups = []
+  })
+
+  it('retries a machine id lookup that timed out, and stamps the id once it is read', async () => {
+    // A fresh module, so no earlier test has already read this process's machine id.
+    vi.resetModules()
+    const fresh = await import('./agent-session-record-store')
+    // The first lookup times out on a slow boot; the second reads the id.
+    machineId.lookups = [undefined, 'win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee']
+    const store = await fresh.AgentSessionRecordStore.open({ directory, hostId: 'local' })
+
+    await reserve(store)
+    await reserve(store, { sessionId: 'session-bravo', spawnToken: 'spawn-b' })
+    machineId.lookups = ['win32:ffffffff-bbbb-4ccc-8ddd-eeeeeeeeeeee']
+    await reserve(store, { sessionId: 'session-charlie', spawnToken: 'spawn-c' })
+
+    const stamp = (id: string) => store.getRecord(id)?.lease.ownerHostRun
+    expect(stamp(SESSION)?.machine).toMatch(new RegExp(`^${process.platform}:runtime:`))
+    expect(stamp('session-bravo')?.machine).toMatch(
+      new RegExp(`^${process.platform}:win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`)
+    )
+    // Only a read id is kept: the third reservation neither looks it up again nor changes it.
+    expect(stamp('session-charlie')?.machine).toBe(stamp('session-bravo')?.machine)
+    expect(machineId.lookups).toHaveLength(1)
+    expect(stamp('session-bravo')?.runId).toBe(stamp(SESSION)?.runId)
   })
 
   it('is still this machine after the hostname changes, so its crashed run is not probed', async () => {

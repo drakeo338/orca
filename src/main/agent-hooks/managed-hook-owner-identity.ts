@@ -105,15 +105,12 @@ async function readDurableHostToken(): Promise<string | undefined> {
   }
 }
 
-async function readHostIdentity(): Promise<string> {
+/** This machine's id when one is readable; undefined where only a per-process id is available,
+ *  including a lookup that failed or timed out. Unmemoized. */
+export async function readDurableHostIdentity(): Promise<string | undefined> {
   const durableToken = await readDurableHostToken()
   if (durableToken) {
     return `host-token:${durableToken}`
-  }
-  if (process.platform === 'linux') {
-    // Why: an unverifiable host scope may acquire and release its own clean lock,
-    // but a later process gets a different identity and cannot steal its residue.
-    return runtimeHostIdentity
   }
   if (process.platform === 'win32') {
     try {
@@ -123,9 +120,9 @@ async function readHostIdentity(): Promise<string> {
         { encoding: 'utf8', timeout: 1_000, windowsHide: true }
       )
       const machineGuid = /^\s*MachineGuid\s+REG_\w+\s+(.+?)\s*$/im.exec(stdout)?.[1]
-      return machineGuid ? `win32:${machineGuid.toLowerCase()}` : runtimeHostIdentity
+      return machineGuid ? `win32:${machineGuid.toLowerCase()}` : undefined
     } catch {
-      return runtimeHostIdentity
+      return undefined
     }
   }
   if (process.platform === 'darwin') {
@@ -139,12 +136,18 @@ async function readHostIdentity(): Promise<string> {
         }
       )
       const platformId = /"IOPlatformUUID"\s*=\s*"([^"]+)"/.exec(stdout)?.[1]
-      return platformId ? `darwin:${platformId}` : runtimeHostIdentity
+      return platformId ? `darwin:${platformId}` : undefined
     } catch {
-      return runtimeHostIdentity
+      return undefined
     }
   }
-  return runtimeHostIdentity
+  return undefined
+}
+
+async function readHostIdentity(): Promise<string> {
+  // Why: an unverifiable host scope may acquire and release its own clean lock,
+  // but a later process gets a different identity and cannot steal its residue.
+  return (await readDurableHostIdentity()) ?? runtimeHostIdentity
 }
 
 export async function readBootIdentity(): Promise<string | undefined> {
@@ -174,6 +177,7 @@ export async function readBootIdentity(): Promise<string | undefined> {
 }
 
 export async function readManagedHookHostIdentity(): Promise<string> {
+  // Latched, fallback included: a lock written under one identity is released under the same one.
   hostIdentityPromise ??= readHostIdentity()
   return await hostIdentityPromise
 }

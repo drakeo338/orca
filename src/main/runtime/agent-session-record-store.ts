@@ -83,20 +83,24 @@ export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
 export class AgentSessionRecordStore {
   private constructor(
     private readonly transactions: AgentSessionStoreTransactionQueue,
-    /** Stamped on every native lease this store grants, and compared against at restart. */
-    readonly hostRun: AgentSessionHostRun
+    /** Stamped on every native lease this store grants, and compared against at restart. Read
+     *  per use, since the machine id can become readable only after the store opens. */
+    readonly currentHostRun: () => Promise<AgentSessionHostRun>
   ) {}
 
   static async open(
     args: { directory: string; hostId: string } & AgentSessionStoreOpenOptions
   ): Promise<AgentSessionRecordStore> {
-    const hostRun = args.hostRun ?? (await currentAgentSessionHostRun())
+    const { hostRun } = args
     const transactions = await AgentSessionStoreTransactionQueue.open(
       agentSessionStorePath(args.directory),
       args.hostId,
       args
     )
-    return new AgentSessionRecordStore(transactions, hostRun)
+    return new AgentSessionRecordStore(
+      transactions,
+      hostRun ? async () => hostRun : currentAgentSessionHostRun
+    )
   }
 
   private get state(): AgentSessionStoreState {
@@ -174,8 +178,9 @@ export class AgentSessionRecordStore {
   }
 
   async reserveOwner(request: AgentSessionReserveRequest): Promise<AgentSessionReserveResult> {
+    const hostRun = await this.currentHostRun()
     return this.transact(() =>
-      commitAgentSessionReservation(this.state, request, AGENT_SESSION_LEASE_TTL_MS, this.hostRun)
+      commitAgentSessionReservation(this.state, request, AGENT_SESSION_LEASE_TTL_MS, hostRun)
     )
   }
 
@@ -268,10 +273,11 @@ export class AgentSessionRecordStore {
   async reconcileOnRestart(
     args: AgentSessionRestartProbeArgs
   ): Promise<Map<string, AgentSessionRecord>> {
+    const hostRun = await this.currentHostRun()
     const pending = this.listRecords().filter((record) => record.lease.unreconciled)
     const endedWithPreviousAppRun = agentSessionPreviousAppRunTest(
       this.transactions.hostId,
-      this.hostRun,
+      hostRun,
       args.isPidPresent
     )
     const probes = await collectAgentSessionRestartProbes(pending, args, endedWithPreviousAppRun)
