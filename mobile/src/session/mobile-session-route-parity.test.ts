@@ -93,7 +93,7 @@ const HOST_COMPONENT_NAMES = new Set([
 // Moved, count unchanged, when the Markdown actions' Back `useEffect` became `useBackClaim`, the
 // seam that also claims the key on the page while a draft is dirty.
 const HEAD_MAIN_HOOK_SHA256 = '914bf72e0bf0abe2b22850467b5dfdc3ab3fd19111924f1de91d9c1d9d1ce74f'
-const HEAD_HOOK_BINDING_SHA256 = 'd0677b98b909f8a24089ac5d6afe9ad2c238fa6c24969da1e84e01cd6f653a16'
+const HEAD_HOOK_BINDING_SHA256 = 'bfbecfec2412868642ebb02850eb67ab8caaeff0d1eae1a555a13873ac3b1e9b'
 const HEAD_CALLBACK_IDENTITY_SHA256 =
   'e396ab759b2401acef45dea428e97c7f8f24fff41aae7fb7858da5a5b145c64c'
 // Pins that no callback body in the route changed unnoticed. Body text, not behaviour: the sends
@@ -125,7 +125,7 @@ const HEAD_CALLBACK_BODY_SHA256 = '349ad6f766da14b3bce23a13f3a67f2b013efadd8896f
 // the diff-comments effect, which now catches the loader's rejection. Count unchanged.
 // Moved again by the keyboard seam above, which is the +1 effect.
 // -1 effect for the Markdown actions' Back registration, which is `useBackClaim`'s own now.
-const HEAD_EFFECT_SHA256 = '69096e20a44fa03a2c364e00a617eeabc437a79bb850b9135408d35fbd4d4a71'
+const HEAD_EFFECT_SHA256 = '9b045a547ed269acf95db16cc87e33a9035a20c6888fd30e0363e58bb6b7d883'
 const HEAD_CONTENT_HOOK_SHA256 = '9c3b612fef3f370d66873aefdbe1d701f20cb64ded31fef5cc45fde6f8189581'
 // Same pin for the 12 bodies that sit in nested functions rather than callbacks, moved by the same
 // rewrite of those send and read expressions. Count unchanged. Refreshed again in step 6 for
@@ -177,7 +177,7 @@ const HEAD_STYLE_REFERENCE_SHA256 =
 const HEAD_IDENTITY_FIELD_SHA256 =
   '91146853930a34dd1f3d80e5c97fbacd7cf19fb93dd26fe8fc6f29169622f9d6'
 const HEAD_NAVIGATION_SHA256 = '9d96f5dad7de555d6553eac39c0fab00efad507470fd562cb9beaa32db16f512'
-const HEAD_CAPABILITY_SHA256 = '67c3154b71b542bb63a4365d3ea75aef19ef133c02f509318619618221786fab'
+const HEAD_CAPABILITY_SHA256 = 'ec1159d6e726383bf7121e9c642657fee5b4ebec049cb44ba132a303bb9a61e2'
 
 type Definition = { declaration: ts.FunctionDeclaration; sourceFile: ts.SourceFile }
 type HookFacts = {
@@ -546,7 +546,11 @@ function readCompatibilityFacts(definitions: ReadonlyMap<string, Definition>): {
         : ''
     const callText = canonical(node, sourceFile)
     if (
-      ['startRuntimeCapabilityProbe', 'supportsMobileQuickCommands'].includes(callName) ||
+      [
+        'startRuntimeCapabilityProbe',
+        'supportsMobileQuickCommands',
+        'structuredAgentSessionHostSupport'
+      ].includes(callName) ||
       (callName === 'includes' && callText.includes('capabilities.includes'))
     ) {
       capabilities.push(callText)
