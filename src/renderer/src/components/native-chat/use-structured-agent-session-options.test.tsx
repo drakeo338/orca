@@ -207,6 +207,24 @@ describe('useStructuredAgentSessionOptions', () => {
     unmount()
   })
 
+  it('shows the host catalog but takes no pick before a reopened chat attaches', async () => {
+    answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+    const unattached = { transportEnabled: true, fence: null }
+    const { result, rerender, unmount } = renderOptions(
+      unattached,
+      mutateWith(async () => null).mutate
+    )
+    await waitFor(() => expect(modelChoiceCount(result.current.optionSnapshot)).toBeGreaterThan(0))
+    // Nothing would carry the pick: no launch holds it and there is no fence to send it under.
+    expect(descriptor(result.current.optionSnapshot, 'model')).toMatchObject({
+      settable: false,
+      disabledReason: 'available-after-session-start'
+    })
+    rerender({ ...unattached, fence: 1 })
+    expect(descriptor(result.current.optionSnapshot, 'model')?.settable).toBe(true)
+    unmount()
+  })
+
   it('treats method_not_found and forbidden as an absent surface and keeps the seed', async () => {
     for (const code of ['method_not_found', 'forbidden']) {
       answer({ modelCatalog: () => Promise.reject(new FakeRpcCallError(code)) })

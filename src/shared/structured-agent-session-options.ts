@@ -211,6 +211,17 @@ export function structuredAgentSessionOptionSnapshot(
   })
 }
 
+/** No launch holds a pick and no fence can carry one yet, so the picker only shows. */
+export function lockedStructuredAgentSessionOptionSnapshot(
+  snapshot: readonly SessionOptionDescriptor[]
+): SessionOptionDescriptor[] {
+  return snapshot.map((descriptor) => ({
+    ...descriptor,
+    settable: false,
+    disabledReason: 'available-after-session-start'
+  }))
+}
+
 export function canSetStructuredAgentSessionOption(
   state: StructuredAgentSessionOptionState,
   id: string,
