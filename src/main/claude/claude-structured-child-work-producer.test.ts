@@ -72,6 +72,24 @@ function toolResult(
 
 type Delivery = { kind: 'journal' | 'legacy' | 'evidence'; detail: string }
 
+/** A real hook server already holding the session's parent row. */
+function hostWithParent(): AgentHookServer {
+  const host = new AgentHookServer()
+  host.ingestStructuredStatus(
+    {
+      sessionId: parent.sessionId,
+      workspaceId: parent.workspaceId,
+      agent: 'claude',
+      status: 'working',
+      hostExecutionOwned: true,
+      latestPrompt: 'find the flaky tests',
+      updatedAt: 100
+    },
+    parent
+  )
+  return host
+}
+
 /** With `host`, evidence goes through the host's own ingest instead of straight to reconciliation. */
 async function producer(host?: AgentHookServer) {
   const claude = fakeClaude()
@@ -406,19 +424,7 @@ describe('Claude structured child-work producer', () => {
 
   describe('a second ending for a settled child', () => {
     async function settledForegroundChild() {
-      const host = new AgentHookServer()
-      host.ingestStructuredStatus(
-        {
-          sessionId: parent.sessionId,
-          workspaceId: parent.workspaceId,
-          agent: 'claude',
-          status: 'working',
-          hostExecutionOwned: true,
-          latestPrompt: 'find the flaky tests',
-          updatedAt: 100
-        },
-        parent
-      )
+      const host = hostWithParent()
       const warn = vi.spyOn(console, 'warn')
       const error = vi.spyOn(console, 'error')
       const run = await producer(host)
@@ -525,5 +531,41 @@ describe('Claude structured child-work producer', () => {
         outcome: 'cancelled'
       })
     })
+  })
+
+  it("keeps a finished foreground child's final summary and usage, in the order the CLI sends them", async () => {
+    const { send, byDescription, ingested } = await producer(hostWithParent())
+    send(toolUse('toolu_fg', 'Agent', { description: 'Run echo hi command' }))
+    send(
+      system('task_started', {
+        task_id: 'agent-fg',
+        tool_use_id: 'toolu_fg',
+        task_type: 'local_agent',
+        subagent_type: 'general-purpose',
+        description: 'Run echo hi command',
+        is_backgrounded: false
+      })
+    )
+    // Captured from the real CLI: the child's own ending, then its summary, then the spawn result.
+    send(system('task_updated', { task_id: 'agent-fg', patch: { status: 'completed' } }))
+    send(
+      system('task_notification', {
+        task_id: 'agent-fg',
+        tool_use_id: 'toolu_fg',
+        status: 'completed',
+        summary: 'The command ran. Output: hi',
+        usage: { total_tokens: 16_908, tool_uses: 1, duration_ms: 3_393 }
+      })
+    )
+    send(toolResult('toolu_fg', 'hi'))
+    send(frame({ type: 'result', subtype: 'success', is_error: false }))
+    expect(byDescription('Run echo hi command')).toMatchObject({
+      membership: 'settled',
+      outcome: 'succeeded',
+      lastMessage: 'The command ran. Output: hi',
+      totalTokens: 16_908,
+      invocation: { invocationId: 'toolu_fg', generation: 1 }
+    })
+    expect(ingested.flatMap((outcome) => outcome?.rejected ?? [])).toEqual([])
   })
 })
