@@ -3,6 +3,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn()
@@ -173,6 +174,80 @@ describe('a send the host rejected because the agent never started', () => {
     } = mocks.call.mock.calls[1]![2]
     expect(retried.envelope.clientOperationId).not.toBe(id)
     expect(retried.body.blocks[0]?.text).toBe('hello')
+  })
+
+  it('says nothing when a Stop withdrew the message', async () => {
+    mocks.call.mockImplementation(
+      async (
+        _target: unknown,
+        _method: unknown,
+        params: { envelope: { clientOperationId: string } }
+      ) => pendingResultFor(params.envelope.clientOperationId)
+    )
+    const target = { kind: 'local' } as const
+    const { result, rerender } = renderHook(
+      (props: { submissions: AgentJournalSubmission[] }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target,
+          fence: 1,
+          submissions: props.submissions
+        }),
+      { initialProps: { submissions: NO_SUBMISSIONS } }
+    )
+
+    act(() => expect(result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
+    const id = result.current.outbox[0]!.clientMessageId
+
+    rerender({
+      submissions: [
+        {
+          ...pendingResultFor(id).value.submission,
+          dispatchState: 'rejected',
+          reason: DISPATCH_REJECTED_CANCELLED
+        }
+      ]
+    })
+
+    await waitFor(() => expect(result.current.outbox).toEqual([]))
+    expect(result.current.error).toBeNull()
+  })
+
+  it('keeps the rejection when the journal settles the message before the send answers', async () => {
+    const reason = "Codex couldn't restart: spawn codex ENOENT."
+    let answer: (value: unknown) => void = () => undefined
+    mocks.call.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    const target = { kind: 'local' } as const
+    const { result, rerender } = renderHook(
+      (props: { submissions: AgentJournalSubmission[] }) =>
+        useStructuredAgentSessionOutbox({
+          sessionId: 'session-1',
+          target,
+          fence: 1,
+          submissions: props.submissions
+        }),
+      { initialProps: { submissions: NO_SUBMISSIONS } }
+    )
+
+    act(() => expect(result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
+    const id = result.current.outbox[0]!.clientMessageId
+
+    // A start refused at once: the rejection frame lands before the send's own `pending` answer.
+    rerender({
+      submissions: [{ ...pendingResultFor(id).value.submission, dispatchState: 'rejected', reason }]
+    })
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    await act(async () => answer(pendingResultFor(id)))
+
+    expect(result.current.outbox[0]?.state).toBe('rejected')
+    expect(result.current.error).toBe(reason)
   })
 })
 

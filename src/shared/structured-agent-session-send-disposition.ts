@@ -73,6 +73,40 @@ function refusedRedelivery(
   )
 }
 
+/** Whether the journal already answers a send still in flight, so its own reply adds nothing: the
+ *  host holds the message, or rejected it — a later `pending` reply must not undo that. */
+export function journalAnswersInFlightSend(
+  submissions: readonly AgentJournalSubmission[],
+  clientMessageId: string | null
+): boolean {
+  return submissions.some(
+    (submission) =>
+      submission.clientMessageId === clientMessageId && submission.dispatchState !== 'unknown'
+  )
+}
+
+/** What to say for a message the reconcile just settled as accepted and then not delivered, which
+ *  keeps its Retry; null when there is none. A Stop's withdrawal is dropped there, so says nothing. */
+export function reconciledRejectionNotice(
+  previous: readonly StructuredAgentSessionOutboxEntry[],
+  reconciled: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[]
+): string | null {
+  const was = (
+    entries: readonly StructuredAgentSessionOutboxEntry[],
+    clientMessageId: string,
+    state: StructuredAgentSessionOutboxEntry['state']
+  ): boolean =>
+    entries.some((entry) => entry.clientMessageId === clientMessageId && entry.state === state)
+  const rejected = submissions.find(
+    (submission) =>
+      submission.dispatchState === 'rejected' &&
+      was(previous, submission.clientMessageId, 'dispatching') &&
+      was(reconciled, submission.clientMessageId, 'rejected')
+  )
+  return rejected ? structuredAgentSessionRejectionNotice(rejected.reason) : null
+}
+
 /**
  * What to put on screen for a rejection.
  *
@@ -90,21 +124,6 @@ function refusedRedelivery(
  * Exported because a client without an outbox needs the same copy: the rule about
  * which reasons a person may read is a property of the reason, not of the queue.
  */
-/** A message the host accepted and then did not deliver: the chat says why and offers Retry. */
-export function rejectedDispatchingSubmission(
-  entries: readonly StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[]
-): AgentJournalSubmission | undefined {
-  return submissions.find(
-    (submission) =>
-      submission.dispatchState === 'rejected' &&
-      entries.some(
-        (entry) =>
-          entry.clientMessageId === submission.clientMessageId && entry.state === 'dispatching'
-      )
-  )
-}
-
 export function structuredAgentSessionRejectionNotice(reason: string | null): string {
   if (reason === null) {
     return 'Message was not sent.'
