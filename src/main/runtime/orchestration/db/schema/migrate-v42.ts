@@ -33,8 +33,6 @@ export function migrateV42(this: OrchestrationDb, current: number): void {
     }
   }
   this.db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runs_coordinator_actor
-      ON runs(coordinator_actor) WHERE coordinator_actor IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_dispatch_assignee_actor
       ON dispatch_contexts(assignee_actor) WHERE assignee_actor IS NOT NULL;
   `)

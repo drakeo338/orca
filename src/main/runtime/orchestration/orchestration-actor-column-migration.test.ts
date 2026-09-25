@@ -105,7 +105,6 @@ function seedStructuredAndPtyRows(db: OrchestrationDb): SeededRows {
 function stripActorSchema(path: string, version: number): void {
   const raw = new Database(path)
   raw.exec(`
-    DROP INDEX idx_runs_coordinator_actor;
     DROP INDEX idx_dispatch_assignee_actor;
     DROP TRIGGER trg_runs_remember_coordinator_insert;
     DROP TRIGGER trg_runs_remember_coordinator_update;

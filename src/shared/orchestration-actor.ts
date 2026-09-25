@@ -51,11 +51,3 @@ export function parseOrchestrationActor(
 export function sessionOrchestrationActor(sessionId: string): OrchestrationActor | null {
   return isOrchestrationSessionId(sessionId) ? { kind: 'session', id: sessionId } : null
 }
-
-/**
- * For input already known to name a session: its address, or its bare Orca session id. Not for a
- * recipient slot, where a bare string names a terminal; handle-shaped ids are refused regardless.
- */
-export function normalizeOrchestrationActor(value: string): OrchestrationActor | null {
-  return parseOrchestrationActor(value) ?? sessionOrchestrationActor(value)
-}
