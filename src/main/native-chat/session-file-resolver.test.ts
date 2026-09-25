@@ -3,8 +3,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { ClaudeTranscriptTailIncompleteError } from '../claude/claude-transcript-branch-proof'
-import { readClaudeTranscriptLeafUuid, resolveSessionFilePath } from './session-file-resolver'
+import {
+  ClaudeTranscriptTailIncompleteError,
+  proveClaudeTranscriptBranch
+} from '../claude/claude-transcript-branch-proof'
+import { resolveSessionFilePath } from './session-file-resolver'
 
 let tempRoots: string[] = []
 
@@ -12,6 +15,16 @@ afterEach(async () => {
   await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })))
   tempRoots = []
 })
+
+async function readClaudeTranscriptLeafUuid(
+  transcriptPath: string,
+  providerSessionId: string,
+  previousLeafUuid: string | null = null
+): Promise<string> {
+  return (
+    await proveClaudeTranscriptBranch({ transcriptPath, providerSessionId, previousLeafUuid })
+  ).leafUuid
+}
 
 async function makeRoot(prefix: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix))

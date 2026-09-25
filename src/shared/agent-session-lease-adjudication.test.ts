@@ -144,7 +144,8 @@ describe('acquisition compare-and-swap', () => {
   it.each([
     ['recovering', 'agent_session_ownership_unknown'],
     ['manual-recovery', 'agent_session_ownership_unknown'],
-    ['preparing', 'agent_session_conflict']
+    ['preparing', 'agent_session_conflict'],
+    ['old-owner-stopped', 'agent_session_conflict']
   ] as const)('refuses acquisition in stage %s', (handoffStage, code) => {
     expect(acquire(lease({ handoffStage }), { outcome: 'pid-absent' })).toEqual({
       decision: 'refused',
@@ -152,25 +153,22 @@ describe('acquisition compare-and-swap', () => {
     })
   })
 
-  it.each(['old-owner-stopped', 'new-owner-proving'] as const)(
-    'refuses a different handoff operation and replays the matching one at %s',
-    (handoffStage) => {
-      const mid = lease({
-        handoffStage,
-        handoffOperationId: 'op-1',
-        ownerProcess: null,
-        claimStatus: 'reserved'
-      })
-      expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-2')).toEqual({
-        decision: 'refused',
-        code: 'agent_session_operation_conflict'
-      })
-      expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-1')).toEqual({
-        decision: 'retry-reservation',
-        fence: 7
-      })
-    }
-  )
+  it('refuses a different acquisition operation and replays the matching one', () => {
+    const mid = lease({
+      handoffStage: 'new-owner-proving',
+      handoffOperationId: 'op-1',
+      ownerProcess: null,
+      claimStatus: 'reserved'
+    })
+    expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-2')).toEqual({
+      decision: 'refused',
+      code: 'agent_session_operation_conflict'
+    })
+    expect(acquire(mid, { outcome: 'reservation-unused' }, 'op-1')).toEqual({
+      decision: 'retry-reservation',
+      fence: 7
+    })
+  })
 
   it('refuses a reservation whose spawn may have won the race with the crash', () => {
     const reserved = lease({ ownerProcess: null, claimStatus: 'reserved', handoffStage: null })
@@ -186,14 +184,14 @@ describe('acquisition compare-and-swap', () => {
 })
 
 describe('restart reconciliation', () => {
-  it('re-adopts a proven-live TUI owner without moving the fence', () => {
+  it('routes a surviving terminal owner to recovery; nothing re-adopts a terminal', () => {
     expect(
       adjudicateAgentSessionRestart({
         lease: lease({ runtimeKind: 'tui' }),
         probe: MATCHED,
         observedAt: 9_000
       })
-    ).toEqual({ disposition: 'readopt' })
+    ).toMatchObject({ disposition: 'recovering', stage: 'recovering' })
   })
 
   it('routes a surviving native owner to recovery instead of readopting a dead transport', () => {

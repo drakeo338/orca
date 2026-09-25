@@ -21,7 +21,6 @@ import type {
   AgentSessionExecutionLocation,
   AgentSessionLaunchArgs,
   AgentSessionLaunchEnv,
-  AgentSessionOwnerRuntimeKind,
   AgentSessionRecord
 } from '../../../shared/agent-session-record'
 import { structuredAgentSessionTabId } from '../../../shared/structured-agent-session-projection'
@@ -61,7 +60,8 @@ export type AgentSessionAttachParams = {
   provider: AgentSessionHandleProvider
   agent: AgentSessionHandleProvider
   accountHome: AgentSessionAccountHome
-  runtimeKind: AgentSessionOwnerRuntimeKind
+  /** Always `native`; kept on the params because the operation fingerprint covers it. */
+  runtimeKind: 'native'
   /** Host-resolved defaults for a create-by-intent; remote attach schemas do not accept them. */
   options?: Readonly<Record<string, string>>
   /** The tab id a create reserves for this chat; absent records the id clients derive. Never on

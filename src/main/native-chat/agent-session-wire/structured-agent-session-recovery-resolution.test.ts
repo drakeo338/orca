@@ -223,24 +223,36 @@ describe('structured session recovery resolution', () => {
     })
   })
 
-  it('leaves a TUI record that still names an owner to its own recovery transport', async () => {
+  it('waits out a terminal owner an older build recorded, and never stops it', async () => {
     const store = await openStore()
     await liveOwner(store, 'tui')
     await latch(store, 'recovering')
+    const stopOwnerProcess = vi.fn()
+
+    expect(
+      await resolveStructuredSessionRecovery(
+        deps(store, () => ({ outcome: 'identity-matched', matchedOn: ['spawn-token'] }), {
+          stopOwnerProcess
+        }),
+        SESSION
+      )
+    ).toBe('unresolved')
+    expect(stopOwnerProcess).not.toHaveBeenCalled()
+    expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
 
     expect(
       await resolveStructuredSessionRecovery(
         deps(store, () => ({ outcome: 'pid-absent' })),
         SESSION
       )
-    ).toBe('not-applicable')
-    expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
+    ).toBe('resolved')
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      handoffStage: null,
+      claimStatus: 'released'
+    })
   })
 
-  it('resolves a TUI reservation that names nobody, because nothing else can', async () => {
-    // The TUI carve-out exists because a TUI owner has its own recovery transport, and that
-    // transport needs a process to talk to. A reservation that crashed before `commitProcessIdentity`
-    // names none, so skipping it here left the session with no exit at all.
+  it('resolves a TUI reservation that names nobody', async () => {
     const store = await openStore()
     await reserve(store, 'tui')
     await latch(store, 'recovering')

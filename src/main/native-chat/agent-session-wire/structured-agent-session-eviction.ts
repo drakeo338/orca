@@ -60,10 +60,12 @@ export const STRUCTURED_AGENT_SESSION_EVICTION_STEPS: readonly StructuredAgentSe
     {
       // Quit's resume offer: what the sidebar shows, read while the child is still running.
       name: 'snapshot-before-stop',
-      run: (context) => {
+      run: async (context) => {
         if (context.hasProviderChild === false || !context.beforeProviderChildStop) {
           return
         }
+        // Events the provider already delivered are part of what the sidebar showed at the stop.
+        await context.eventSink.drained()
         try {
           context.beforeProviderChildStop()
         } catch {

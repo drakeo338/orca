@@ -34,13 +34,11 @@ import {
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
 import type { StructuredAgentSessionProjectedStatus } from './structured-agent-session-projection'
 
-export type AgentSessionHandoffDirection = 'to-tui' | 'to-native'
-export type AgentSessionHandoffMode = 'now' | 'after-turn' | 'stop-turn'
-export type AgentSessionHandoffAction = 'start' | 'cancel-queued' | 'retry' | 'recover'
-
+/** `agentSession.handoffStatus`. Named for the removed terminal handoff; released desktop clients
+ *  still read `owner`, and older hosts can still send the terminal-era fields. */
 export type AgentSessionHandoffStatus = {
   owner: AgentSessionOwnerRuntimeKind | 'none'
-  direction: AgentSessionHandoffDirection | null
+  direction: 'to-tui' | 'to-native' | null
   phase: 'idle' | 'queued' | 'switching' | 'waiting-for-exit' | 'failed'
   stage: AgentSessionHandoffStage | null
   operationId: string | null
@@ -58,15 +56,6 @@ export type AgentSessionHandoffStatus = {
     canRetryProof?: boolean
   }
 }
-
-export type AgentSessionHandoffRequest = {
-  envelope: AgentSessionMutationEnvelope
-  direction: AgentSessionHandoffDirection
-  mode: AgentSessionHandoffMode
-  action?: AgentSessionHandoffAction
-}
-
-export type AgentSessionHandoffResult = { status: AgentSessionHandoffStatus }
 
 export type {
   AgentSessionBackgroundTask,
@@ -163,7 +152,6 @@ export type AgentSessionSubscribeEvent =
       sessionId: string
       page: AgentSessionHistoryPage
       fence: number
-      handoff?: AgentSessionHandoffStatus
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
@@ -174,9 +162,8 @@ export type AgentSessionSubscribeEvent =
       type: 'batch'
       sessionId: string
       batch: AgentSessionJournalBatch
-      /** Added with handoff state so mixed-version cursors retain the ownership fence. */
+      /** Optional so mixed-version cursors retain the ownership fence. */
       fence?: number
-      handoff?: AgentSessionHandoffStatus
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null
@@ -189,7 +176,6 @@ export type AgentSessionSubscribeEvent =
       reset: AgentJournalResetReason
       page: AgentSessionHistoryPage
       fence: number
-      handoff?: AgentSessionHandoffStatus
       backgroundTasks?: AgentSessionBackgroundTaskState | null
       /** Omitted when unchanged; null clears a previous provider catalog. */
       commands?: AgentSessionSlashCommand[] | null

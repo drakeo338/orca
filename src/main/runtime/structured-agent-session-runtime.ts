@@ -31,7 +31,6 @@ import {
   type StructuredAgentSessionHostDeps
 } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { StructuredAgentSessionAdapterRouter } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router'
-import type { StructuredAgentSessionHandoffTransport } from '../native-chat/agent-session-wire/structured-agent-session-handoff-types'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   readClaudeManagedAccountGateSettings,
@@ -47,7 +46,6 @@ import {
 import { agentSessionPtyWriteGate } from './agent-session-pty-write-gate'
 import type { NativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { createStructuredAgentEnvironmentResolvers } from './structured-agent-shell-environment'
-import { recordAgentSessionProviderHandle } from './agent-session-provider-handle-transition'
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtime-adapter'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
@@ -107,7 +105,6 @@ export type StructuredAgentSessionRuntimeDeps = {
   onSessionStatusChanged?: StructuredAgentSessionHostDeps['onSessionStatusChanged']
   /** The agent-status store; see `StructuredAgentSessionHostDeps.statusSink`. */
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
-  handoffTransport?: StructuredAgentSessionHandoffTransport
   reapOrphanChildren?: typeof stopOrphanAgentSessionChildren
   /** The account home a structured launch would pin right now, for catalog
    *  reads with no session record. Absent disables the catalog surface. */
@@ -321,12 +318,6 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
         ? { onSessionStatusChanged: deps.onSessionStatusChanged }
         : {}),
       ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
-      persistTuiProviderHandle: async ({ sessionId, link, now }) => {
-        await store.transitionHandoff(sessionId, (record) =>
-          recordAgentSessionProviderHandle({ record, fence: record.lease.runtimeFence, link, now })
-        )
-      },
-      ...(deps.handoffTransport ? { handoffTransport: deps.handoffTransport } : {}),
       ...(await modelCatalogHostDeps({ store, deps, envResolvers }))
     })
     setStructuredAgentSessionHost(host)

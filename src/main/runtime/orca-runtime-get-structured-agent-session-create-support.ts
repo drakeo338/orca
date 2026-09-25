@@ -1,8 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { OrcaRuntimeWithStopStructuredSessionProcess } from './orca-runtime-stop-structured-session-process'
-import type { AgentSessionOwnerBinding } from '../../shared/agent-session-host-authority'
-import { agentSessionOwnerBindingsEqual } from '../../shared/claimed-agent-pty-owner-snapshot'
-import { resolvePinnedCodexRolloutProof } from '../codex/codex-tui-rollout-proof'
+import { OrcaRuntimeWithGetWorktreePs } from './orca-runtime-get-worktree-ps'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
 import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
@@ -12,7 +9,6 @@ import {
   resolveStructuredAgentSessionAdoptionForCreate
 } from './structured-agent-session-create-adoption'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
@@ -26,36 +22,7 @@ import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 
-export class OrcaRuntimeWithResolveRecoveredStructuredTuiTranscript extends OrcaRuntimeWithStopStructuredSessionProcess {
-  protected async resolveRecoveredStructuredTuiTranscript(input: {
-    handle: string
-    paneKey: string
-    threadId: string
-    codexHome: string
-    durableOwner: { binding: AgentSessionOwnerBinding; incarnationId: string }
-  }): Promise<{ transcriptPath: string; leafUuid?: never }> {
-    const assertDurableOwner = (): void => {
-      const pty = this.getLivePtyForHandle(input.handle)?.pty
-      if (
-        !pty?.connected ||
-        pty.paneKey !== input.paneKey ||
-        pty.incarnationId !== input.durableOwner.incarnationId ||
-        !pty.agentSessionOwners.some((owner) =>
-          agentSessionOwnerBindingsEqual(owner, input.durableOwner.binding)
-        )
-      ) {
-        throw new Error('The resumed terminal lost its durable owner identity.')
-      }
-    }
-    assertDurableOwner()
-    const transcriptPath = await resolvePinnedCodexRolloutProof(input.codexHome, input.threadId)
-    assertDurableOwner()
-    if (!transcriptPath) {
-      throw new Error('The agent terminal did not prove the expected Codex rollout.')
-    }
-    return { transcriptPath }
-  }
-
+export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaRuntimeWithGetWorktreePs {
   async getStructuredAgentSessionCreateSupport(
     worktreeSelector: string,
     agent: 'claude' | 'codex'
@@ -70,29 +37,6 @@ export class OrcaRuntimeWithResolveRecoveredStructuredTuiTranscript extends Orca
           : supportsCodexStructuredLocation(location),
       getSettings: () => this.requireStore().getSettings()
     })
-  }
-
-  protected hasProviderSessionObservationSource(): boolean {
-    return (
-      this.getAgentProviderSessionRowsForPaneFn !== null ||
-      this.getAgentProviderSessionSnapshotFn !== null
-    )
-  }
-
-  protected findAdoptedProviderSession(
-    paneKey: string,
-    provider: 'claude' | 'codex',
-    providerSessionId: string
-  ): AgentStatusIpcPayload | undefined {
-    const rows =
-      this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ??
-      (this.getAgentProviderSessionSnapshotFn?.() ?? []).filter((row) => row.paneKey === paneKey)
-    return rows
-      .filter((row) => row.agentType === provider && row.providerSession?.id === providerSessionId)
-      .reduce<AgentStatusIpcPayload | undefined>(
-        (latest, row) => (!latest || row.receivedAt > latest.receivedAt ? row : latest),
-        undefined
-      )
   }
 
   protected async resolveStructuredAgentSessionLocation(worktreeSelector: string) {

@@ -51,8 +51,13 @@ export type AgentSessionLaunchEnv = Record<string, string>
 /** Provider CLI arguments captured by the host when the session is created. */
 export type AgentSessionLaunchArgs = string[]
 
+/** `tui` is read-only history: only the removed terminal handoff wrote it, and restart recovery
+ *  waits a recorded terminal owner out rather than adopting or stopping it. */
 export type AgentSessionOwnerRuntimeKind = 'native' | 'tui'
 
+/** The acquisition stage. `preparing` and `old-owner-stopped` were written only by the removed
+ *  terminal handoff and stay here so older records load; restart reconciliation and settlement
+ *  retry overwrite them like any other stage. */
 export type AgentSessionHandoffStage =
   | 'preparing'
   | 'old-owner-stopped'

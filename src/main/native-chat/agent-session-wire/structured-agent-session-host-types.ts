@@ -1,5 +1,4 @@
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
-import type { AgentSessionProviderHandleLink } from '../../../shared/agent-session-provider-handle'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -11,7 +10,6 @@ import type {
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
 import type { AgentSessionAttachParams } from './structured-agent-session-attach'
-import type { StructuredAgentSessionHandoffTransport } from './structured-agent-session-handoff-types'
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 
@@ -48,7 +46,7 @@ export type StructuredAgentSessionHostSession = {
   acquisitionGeneration: string | null
   /** The fence of the released owner this child replaced, when it was resumed into a lease handed
    *  back cleanly. A writer current as of that owner is admitted at `fence`: the restart is the
-   *  only thing that moved it. Absent for a create, a handoff, or a journal restored for reading. */
+   *  only thing that moved it. Absent for a create or a journal restored for reading. */
   resumedFromFence?: number
 }
 
@@ -75,11 +73,6 @@ export type StructuredAgentSessionHostDeps = {
     provider: AgentSessionRecord['provider']
   ) => Promise<Record<string, string> | undefined> | Record<string, string> | undefined
   now?: () => number
-  persistTuiProviderHandle?: (input: {
-    sessionId: string
-    link: AgentSessionProviderHandleLink
-    now: number
-  }) => Promise<void>
   /** How long a session outlives its last surface. Tests drive this; production takes the default. */
   releaseGraceMs?: number
   onEventSinkError?: (input: { sessionId: string; error: unknown }) => void
@@ -93,7 +86,6 @@ export type StructuredAgentSessionHostDeps = {
    *  removed from. Both production hosts pass one — the desktop and headless `orcad`; absent,
    *  every reader of that store simply lists no structured session. */
   statusSink?: StructuredAgentSessionStatusSink
-  handoffTransport?: StructuredAgentSessionHandoffTransport
   /** Host model catalog surface; absent means every catalog read answers `unknown`. */
   modelCatalog?: AgentModelCatalogService
 }

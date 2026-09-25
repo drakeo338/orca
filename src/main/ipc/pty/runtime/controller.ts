@@ -25,7 +25,6 @@ import {
   resizePtyFromRuntimeController,
   serializeProviderBufferFromRuntimeController,
   waitForRendererSerializerFromRuntimeController,
-  writePtyAgentSessionProofFromRuntimeController,
   writePtyFromRuntimeController
 } from './operations'
 import { supportsForegroundProcessEvidenceFromRuntimeController } from './foreground-process-evidence-capability'
@@ -48,8 +47,6 @@ export function installPtyRuntimeController(deps: PtyRuntimeControllerDeps): voi
     write: (ptyId, data) => writePtyFromRuntimeController(deps, ptyId, data),
     writeWithSettlement: (ptyId, data) =>
       writePtyFromRuntimeController(deps, ptyId, data, { waitForSettlement: true }),
-    writeAgentSessionProof: (ptyId, data, authority) =>
-      writePtyAgentSessionProofFromRuntimeController(ptyId, data, authority),
     probePtyLiveness: (ptyId) => probePtyLivenessFromRuntimeController(deps, ptyId),
     // Why: subscriber-driven ingestion for daemon sessions no renderer pane
     // ever attached. Local daemon sessions only — SSH panes have their own

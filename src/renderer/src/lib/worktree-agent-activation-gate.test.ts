@@ -368,87 +368,6 @@ describe('worktree agent activation gate', () => {
     })
   })
 
-  it('adopts the exact structured TUI surface without creating a duplicate tab', async () => {
-    const tabId = 'structured-agent-session-live-session'
-    const live = sleepingRecord(tabId, LIVE_LEAF_ID, 'live-session')
-    const livePtyId = `${WORKTREE_ID}@@live-agent`
-    const { deps, createTab, resume } = testDeps({
-      sessions: [listed(livePtyId)],
-      sleeping: [live],
-      resumeCount: 0
-    })
-    const ownerTabId = '3359f7c8-9bd8-4931-8104-52b6bdbd108d'
-    const ownerLeafId = '2659ee80-d3fc-454f-b4ea-0638de1ae345'
-
-    await expect(
-      runWorktreeAgentActivationGate(WORKTREE_ID, {
-        ...deps,
-        hasStructuredSession: async () => ({
-          snapshot: runtimeSnapshot(tabId, LIVE_LEAF_ID, [livePtyId]),
-          ownerBySessionId: new Map([
-            [
-              'live-session',
-              {
-                owner: 'tui',
-                terminal: {
-                  paneKey: `${ownerTabId}:${ownerLeafId}`,
-                  ptyId: livePtyId,
-                  tabId: ownerTabId
-                }
-              }
-            ]
-          ])
-        })
-      })
-    ).resolves.toBe('adopted')
-
-    expect(createTab).toHaveBeenCalledOnce()
-    expect(createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined, {
-      id: ownerTabId,
-      initialLeafId: ownerLeafId,
-      initialPtyId: livePtyId,
-      activate: false,
-      recordInteraction: false
-    })
-    expect(resume).toHaveBeenCalledWith(WORKTREE_ID, {
-      skipClaimKeys: new Set([`${WORKTREE_ID}\0codex\0session_id\0live-session`])
-    })
-  })
-
-  it.each(['present', 'unknown'] as const)(
-    'does not resume OMP when a surfaced %s agent lacks conversation ownership',
-    async (agentOwnership) => {
-      const record = {
-        ...sleepingRecord('old-tab', DEAD_LEAF_ID, 'omp-session'),
-        agent: 'omp' as const
-      }
-      const ptyId = `${WORKTREE_ID}@@current-omp`
-      const { deps, resume, createTab } = testDeps({
-        sessions: [{ ...listed(ptyId), title: 'OMP', agentOwnership }],
-        sleeping: [record],
-        surfaceOwners: new Map([
-          [
-            ptyId,
-            {
-              ptyId,
-              tabId: 'current-tab',
-              paneKey: `current-tab:${LIVE_LEAF_ID}`
-            }
-          ]
-        ])
-      })
-      seedExistingSurface(deps.getState(), {
-        tabId: 'current-tab',
-        leafId: LIVE_LEAF_ID,
-        boundPtyId: ptyId
-      })
-      await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('blocked')
-      expect(resume).not.toHaveBeenCalled()
-      expect(createTab).not.toHaveBeenCalled()
-      expect(deps.getState().sleepingAgentSessionsByPaneKey[record.paneKey]).toEqual(record)
-    }
-  )
-
   it('does not use an ambiguous tab binding as a live session claim', async () => {
     const live = sleepingRecord('tab-live', LIVE_LEAF_ID, 'live-session')
     const livePtyId = `${WORKTREE_ID}@@live-agent`
@@ -460,7 +379,8 @@ describe('worktree agent activation gate', () => {
     expect(resume).not.toHaveBeenCalled()
   })
 
-  it('blocks when a structured TUI owner is absent from live inventory', async () => {
+  it('blocks when the host names no chat owner for a structured tab', async () => {
+    // An older host can still answer that a terminal owns the session; that is no chat owner.
     const tabId = 'structured-agent-session-live-session'
     const live = sleepingRecord(tabId, LIVE_LEAF_ID, 'live-session')
     const livePtyId = `${WORKTREE_ID}@@live-agent`
@@ -471,53 +391,12 @@ describe('worktree agent activation gate', () => {
         ...deps,
         hasStructuredSession: async () => ({
           snapshot: runtimeSnapshot(tabId, LIVE_LEAF_ID, [livePtyId]),
-          ownerBySessionId: new Map([
-            [
-              'live-session',
-              {
-                owner: 'tui',
-                terminal: {
-                  paneKey: live.paneKey,
-                  ptyId: `${WORKTREE_ID}@@different-agent`,
-                  tabId
-                }
-              }
-            ]
-          ])
+          ownerBySessionId: new Map()
         })
       })
     ).resolves.toBe('blocked')
 
     expect(resume).not.toHaveBeenCalled()
-  })
-
-  it('uses the restored owner surface even when its tab predates structured naming', async () => {
-    const tabId = 'structured-agent-session-other-session'
-    const live = sleepingRecord(tabId, LIVE_LEAF_ID, 'live-session')
-    const livePtyId = `${WORKTREE_ID}@@live-agent`
-    const { deps, resume } = testDeps({ sessions: [listed(livePtyId)], sleeping: [live] })
-
-    await expect(
-      runWorktreeAgentActivationGate(WORKTREE_ID, {
-        ...deps,
-        hasStructuredSession: async () => ({
-          snapshot: runtimeSnapshot(tabId, LIVE_LEAF_ID, [livePtyId]),
-          ownerBySessionId: new Map([
-            [
-              'live-session',
-              {
-                owner: 'tui',
-                terminal: { paneKey: live.paneKey, ptyId: livePtyId, tabId }
-              }
-            ]
-          ])
-        })
-      })
-    ).resolves.toBe('resumed')
-
-    expect(resume).toHaveBeenCalledWith(WORKTREE_ID, {
-      skipClaimKeys: new Set([`${WORKTREE_ID}\0codex\0session_id\0live-session`])
-    })
   })
 
   it('suppresses the exact structured session when native already owns it', async () => {

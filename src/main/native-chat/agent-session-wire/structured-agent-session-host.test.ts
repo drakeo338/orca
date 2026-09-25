@@ -706,7 +706,8 @@ describe('subscribe', () => {
       emit: (event) => events.push(event),
       cursor: first.cursor
     })
-    expect(events[0]).toMatchObject({ type: 'batch', handoff: { owner: 'native', phase: 'idle' } })
+    expect(events[0]).toMatchObject({ type: 'batch' })
+    expect(events[0]).not.toHaveProperty('handoff')
 
     const second = hostTestMessage('and a timeout')
     await host.send(CALLER, {

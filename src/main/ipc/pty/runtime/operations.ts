@@ -65,21 +65,6 @@ export function writePtyFromRuntimeController(
   }
 }
 
-export function writePtyAgentSessionProofFromRuntimeController(
-  ptyId: string,
-  data: string,
-  authority: { sessionId: string; spawnToken: string }
-): boolean {
-  if (!agentSessionPtyWriteGate.admitProof(ptyId, authority)) {
-    return false
-  }
-  try {
-    return getProviderForPty(ptyId).write(ptyId, data) !== false
-  } catch {
-    return false
-  }
-}
-
 export async function probePtyLivenessFromRuntimeController(
   deps: PtyRuntimeControllerDeps,
   ptyId: string

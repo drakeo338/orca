@@ -149,12 +149,6 @@ function refuseUnlessWriterAdmitted(lease: AgentSessionLease): AgentSessionWireR
       message: `The session is mid-handoff (${lease.handoffStage}).`
     }
   }
-  if (lease.runtimeKind === 'tui' && agentSessionLeaseAdmitsWriter(lease)) {
-    return {
-      code: 'agent_session_conflict',
-      message: 'The agent terminal owns this session.'
-    }
-  }
   return {
     code: 'agent_session_ownership_unknown',
     message: 'The session has no live owner to accept writes.'

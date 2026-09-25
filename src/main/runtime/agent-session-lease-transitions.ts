@@ -18,7 +18,6 @@ import {
 } from '../../shared/agent-session-provider-handle'
 import type {
   AgentSessionJournalCheckpoint,
-  AgentSessionHandoffStage,
   AgentSessionLease,
   AgentSessionOwnerRuntimeKind,
   AgentSessionProcessIdentity,
@@ -250,30 +249,6 @@ export function evictAgentSessionOwner(args: {
     settlementRetryId: settlementRequired
       ? agentSessionRestartEvictionSettlementId(record.lease, adjudication)
       : undefined
-  })
-}
-
-export function setAgentSessionHandoffStage(args: {
-  record: AgentSessionRecord
-  fence: number
-  stage: AgentSessionHandoffStage | null
-  handoffOperationId: string | null
-  now: number
-}): AgentSessionRecord {
-  const { record } = args
-  assertFence(record.lease, args.fence)
-  if (
-    record.lease.handoffOperationId !== null &&
-    args.handoffOperationId !== null &&
-    args.handoffOperationId !== record.lease.handoffOperationId
-  ) {
-    throw new Error('agent_session_operation_conflict')
-  }
-  return withLease(record, {
-    ...record.lease,
-    handoffStage: args.stage,
-    handoffOperationId: args.handoffOperationId,
-    lastRenewedAt: args.now
   })
 }
 
