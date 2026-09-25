@@ -3,14 +3,23 @@ import { createConnection, type Socket } from 'node:net'
 import { createHash } from 'node:crypto'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { RemoteBrowserSocksServer } from '../../../src/main/browser/remote-browser-socks-server'
+import {
+  RemoteBrowserSocksServer,
+  type RemoteBrowserNetworkTarget
+} from '../../../src/main/browser/remote-browser-socks-server'
+
+type FixtureNetworkEvent =
+  | { event: 'http'; route: string; host: string | undefined; path: string | undefined }
+  | { event: 'websocket'; route: string; host: string | undefined }
+  | ({ event: 'socks-connect'; route: string; tunnelDown: boolean } & RemoteBrowserNetworkTarget)
+  | { event: 'control'; path: string | undefined }
 
 const directory = process.argv[2]
 if (!directory) {
   throw new Error('Expected artifact directory')
 }
 const sockets = new Set<Socket>()
-const log = (event: object): void => {
+const log = (event: FixtureNetworkEvent): void => {
   appendFileSync(
     join(directory, 'network.jsonl'),
     JSON.stringify({ time: Date.now(), ...event }) + '\n'
