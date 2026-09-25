@@ -26,7 +26,6 @@ async function liveStore(): Promise<AgentSessionRecordStore> {
     },
     provider: 'codex',
     accountHome: { variable: 'CODEX_HOME', path: root },
-    runtimeKind: 'native',
     expectedFence: null,
     spawnToken: 'spawn-renewal',
     claimKeyId: 'key-1',
