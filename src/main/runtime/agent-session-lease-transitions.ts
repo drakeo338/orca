@@ -19,13 +19,11 @@ import {
 import type {
   AgentSessionJournalCheckpoint,
   AgentSessionLease,
-  AgentSessionOwnerRuntimeKind,
   AgentSessionProcessIdentity,
   AgentSessionRecord
 } from '../../shared/agent-session-record'
 
 export type AgentSessionReservation = {
-  runtimeKind: AgentSessionOwnerRuntimeKind
   spawnToken: string
   claimKeyId: string
   handoffOperationId: string | null
@@ -76,7 +74,7 @@ export function reserveAgentSessionOwner(args: {
     disposition: 'reserved',
     record: withLease(record, {
       ...record.lease,
-      runtimeKind: reservation.runtimeKind,
+      runtimeKind: 'native',
       runtimeFence: decision.nextFence,
       // Why: a reserved owner is not yet a writer; it may only talk to the provider to prove resume.
       handoffStage: 'new-owner-proving',

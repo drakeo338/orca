@@ -1,6 +1,6 @@
 // Records an older build persisted mid terminal handoff. That build could leave a lease at
 // `preparing` or `old-owner-stopped`, or owned by a terminal (`runtimeKind: 'tui'`). This build
-// has no handoff to finish, so each state must still load and end in a chat the user can send to.
+// has no handoff to finish, so each state loads normalized and ends in a chat the user can send to.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,7 +8,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
-import type { AgentSessionLease } from '../../../shared/agent-session-record'
+import type { PersistedAgentSessionLease } from '../../../shared/agent-session-legacy-handoff-lease'
+import { writeOlderBuildLease } from '../../runtime/agent-session-older-build-lease.test-fixture'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -53,13 +54,12 @@ function openHost(): void {
 }
 
 /** Writes the lease an older build left behind, then starts a fresh app generation over it. */
-async function persistFromOlderBuild(lease: Partial<AgentSessionLease>): Promise<void> {
+async function persistFromOlderBuild(lease: Partial<PersistedAgentSessionLease>): Promise<void> {
   expect(await host.attach(CALLER, hostTestAttachParams(null))).toMatchObject({ ok: true })
-  await store.transitionHandoff(SESSION, (record) => ({
-    ...record,
-    lease: { ...record.lease, ...lease }
-  }))
+  const attached = store.getRecord(SESSION)?.lease
   await host.flushAllStreamedEvents()
+  // Over the attached owner: the older build's stage or terminal owner kept it from releasing.
+  await writeOlderBuildLease(join(root, 'store'), SESSION, { ...attached, ...lease })
   store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
   acquire.mockClear()
   openHost()
@@ -124,7 +124,11 @@ describe('a record an older build left mid terminal handoff', () => {
       settlementRetryId: `restart-eviction:${SESSION}:2`
     })
     expect(store.isSessionUnreadable(SESSION)).toBe(false)
-    expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('old-owner-stopped')
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      runtimeKind: 'native',
+      handoffStage: 'recovering',
+      claimStatus: 'released'
+    })
 
     await host.restoreReadableSessions()
 
@@ -157,6 +161,7 @@ describe('a record an older build left mid terminal handoff', () => {
         observedAt: NOW
       }
     })
+    expect(store.getRecord(SESSION)?.lease.handoffStage).toBe('recovering')
 
     await host.restoreReadableSessions()
 
@@ -171,6 +176,11 @@ describe('a record an older build left mid terminal handoff', () => {
   it('loads a chat owner quiesced for a handoff that never finished, and the chat accepts a send', async () => {
     await persistFromOlderBuild({ handoffStage: 'preparing', handoffOperationId: `${NOW}-handoff` })
     expect(store.isSessionUnreadable(SESSION)).toBe(false)
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      handoffStage: 'recovering',
+      handoffOperationId: `${NOW}-handoff`,
+      claimStatus: 'live'
+    })
 
     await host.restoreReadableSessions()
 
@@ -187,15 +197,23 @@ describe('a record an older build left mid terminal handoff', () => {
 
   it('waits out a terminal owner that is still running, never stops it, then resumes the chat', async () => {
     await persistFromOlderBuild({ runtimeKind: 'tui' })
+    // A conflicted claim is probed but never stopped, by this build and by older ones.
+    expect(store.getRecord(SESSION)?.lease).toMatchObject({
+      runtimeKind: 'native',
+      claimStatus: 'conflicted'
+    })
     probe.mockResolvedValue({ outcome: 'identity-matched', matchedOn: ['spawn-token'] })
 
     await host.restoreReadableSessions()
 
     expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      runtimeKind: 'tui',
-      handoffStage: 'recovering'
+      claimStatus: 'conflicted',
+      handoffStage: 'manual-recovery'
     })
-    expect(await send('while the terminal still runs')).toMatchObject({ ok: false })
+    expect(await send('while the terminal still runs')).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_conflict' }
+    })
     expect(stopOwnerProcess).not.toHaveBeenCalled()
     expect(acquire).not.toHaveBeenCalled()
 

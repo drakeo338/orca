@@ -17,8 +17,7 @@ export function structuredAgentSessionOwnerStatus(
   if (!adapterSupportsRecord(deps.adapter, record)) {
     throw new Error('structured_agent_session_unsupported')
   }
-  const { lease } = record
-  const { handoffStage: stage, handoffOperationId: operationId } = lease
+  const { handoffStage: stage, handoffOperationId: operationId } = record.lease
   if (stage === 'manual-recovery') {
     return {
       owner: 'none',
@@ -33,7 +32,7 @@ export function structuredAgentSessionOwnerStatus(
     }
   }
   return {
-    owner: lease.runtimeKind,
+    owner: 'native',
     direction: stage ? 'to-native' : null,
     phase: stage ? 'switching' : 'idle',
     stage,

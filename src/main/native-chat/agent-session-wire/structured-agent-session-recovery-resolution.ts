@@ -52,9 +52,9 @@ export function structuredSessionRecoveryIsResolvable(record: AgentSessionRecord
 }
 
 /** Stopping a matched owner is only Orca's call when Orca owned its transport. A conflicted claim
- *  means ownership was never settled, and a TUI child is the user's foreground agent. */
+ *  means ownership was never settled — including a terminal an older build recorded as owner. */
 function recoveryMayStopOwner(record: AgentSessionRecord): boolean {
-  return record.lease.runtimeKind === 'native' && record.lease.claimStatus !== 'conflicted'
+  return record.lease.claimStatus !== 'conflicted'
 }
 
 export async function resolveStructuredSessionRecovery(

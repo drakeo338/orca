@@ -28,7 +28,6 @@ import {
   agentSessionScopeKey,
   type AgentSessionExecutionLocation,
   type AgentSessionHandoffStage,
-  type AgentSessionOwnerRuntimeKind,
   type AgentSessionRecord
 } from './agent-session-record'
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
@@ -37,7 +36,7 @@ import type { StructuredAgentSessionProjectedStatus } from './structured-agent-s
 /** `agentSession.handoffStatus`. Named for the removed terminal handoff; released desktop clients
  *  still read `owner`. Clients parse the reply as unknown, since older hosts sent more fields. */
 export type AgentSessionHandoffStatus = {
-  owner: AgentSessionOwnerRuntimeKind | 'none'
+  owner: 'native' | 'none'
   direction: 'to-native' | null
   phase: 'idle' | 'switching' | 'failed'
   stage: AgentSessionHandoffStage | null

@@ -145,10 +145,6 @@ export function evaluateAgentSessionAcquisition(args: {
     // Why: no stage expires into an owner; recovery is resolved by proof or by the user.
     return { decision: 'refused', code: 'agent_session_ownership_unknown' }
   }
-  if (lease.handoffStage !== null && lease.handoffStage !== 'new-owner-proving') {
-    // Why: a terminal-handoff stage from an older build stays refused until restart retires it.
-    return { decision: 'refused', code: 'agent_session_conflict' }
-  }
   if (lease.handoffStage !== null && lease.handoffOperationId !== null) {
     if (handoffOperationId !== lease.handoffOperationId) {
       // Why: the retry key is operation id + fence + stage; a different id is a different intent.
@@ -236,8 +232,7 @@ export function adjudicateAgentSessionRestart(args: {
   }
   if (isProvenAliveProbe(probe)) {
     // Why: the surviving child's stdio died with the previous runtime, so readoption would renew
-    // a lease no host can drive. Recovery stops a chat child and respawns at fence + 1; a terminal
-    // owner an older build recorded is waited out, never stopped.
+    // a lease no host can drive. Recovery stops the child and respawns at fence + 1.
     return {
       disposition: 'recovering',
       stage: 'recovering',
