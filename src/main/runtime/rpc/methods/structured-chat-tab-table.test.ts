@@ -341,7 +341,38 @@ describe('a create that reserves its tab', () => {
     expect(store.getRecord('session-bravo')).toBeNull()
   })
 
-  it('releases the reserved id when the create fails, so the tab is not restored and the id is free', async () => {
+  it('answers a create that reserved nothing with the id its tab was given', async () => {
+    expect(await createChat(HOST_TEST_SESSION)).toMatchObject({
+      ok: true,
+      value: { tabId: SOURCE_TAB }
+    })
+  })
+
+  it('restores no tab for a reserved create that stopped before its tab was published', async () => {
+    const attached = await host.attach(
+      caller,
+      hostTestAttachParams(null, {
+        envelope: {
+          sessionId: HOST_TEST_SESSION,
+          clientOperationId: hostTestOperationId(),
+          expectedRuntimeFence: null,
+          payloadFingerprint: ''
+        },
+        surfaceTabId: 'reserved-tab'
+      })
+    )
+    expect(attached).toMatchObject({ ok: true })
+    await host.flushAllStreamedEvents()
+
+    await openHost()
+    expect(host.getPersistedVisibleSessionTabIndex().sessionIds).toEqual([])
+    expect(await createChat('session-bravo', 'reserved-tab')).toMatchObject({
+      ok: true,
+      value: { tabId: 'reserved-tab' }
+    })
+  })
+
+  it('leaves no tab behind when the create fails, so nothing is restored and the id is free', async () => {
     acquireFails = true
     expect(await createChat(HOST_TEST_SESSION, 'reserved-tab')).toMatchObject({ ok: false })
     expect(store.getSessionTabId(HOST_TEST_SESSION)).toBeNull()

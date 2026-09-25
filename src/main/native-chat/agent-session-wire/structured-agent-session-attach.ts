@@ -63,8 +63,8 @@ export type AgentSessionAttachParams = {
   runtimeKind: AgentSessionOwnerRuntimeKind
   /** Host-resolved defaults for a create-by-intent; remote attach schemas do not accept them. */
   options?: Readonly<Record<string, string>>
-  /** The tab id a create reserves for this chat, claimed with its reservation. Never on the attach
-   *  fingerprint: which tab shows the chat is not which conversation it attaches to. */
+  /** The tab id a create reserves for this chat, taken when its tab is published. Never on the
+   *  attach fingerprint: which tab shows the chat is not which conversation it attaches to. */
   surfaceTabId?: string
   launchArgs?: string[]
   /** Omitted only for create-by-intent; the adapter proves the durable handle. */

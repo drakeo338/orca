@@ -39,8 +39,7 @@ export async function settlePostAcquisitionAttachFailure(
         message: cause instanceof Error ? cause.message : String(cause)
       },
       exitProof,
-      now: input.now(),
-      releaseTab: input.params.surfaceTabId !== undefined
+      now: input.now()
     })
   } catch (settlementError) {
     throw new AggregateError(

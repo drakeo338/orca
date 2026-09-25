@@ -179,8 +179,7 @@ export async function performAttach(
           callerKey: input.callerKey,
           operationId: params.envelope.clientOperationId,
           ...failedAcquisitionSettlement(error),
-          now: input.now(),
-          releaseTab: params.surfaceTabId !== undefined
+          now: input.now()
         })
       } catch (settlementError) {
         throw new AggregateError(
@@ -281,8 +280,7 @@ async function settleUnsupportedReservation(
         message: 'Structured session support changed before the provider could start.'
       },
       exitProof: 'processless',
-      now: input.now(),
-      releaseTab: input.params.surfaceTabId !== undefined
+      now: input.now()
     })
   } catch (error) {
     throw new AggregateError([error], 'agent session unsupported reservation settlement failed')

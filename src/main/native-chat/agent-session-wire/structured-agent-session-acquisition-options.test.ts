@@ -574,7 +574,7 @@ describe('structured session acquisition options', () => {
   })
 })
 
-describe('the tab a create claims', () => {
+describe('the tab a create reserves', () => {
   async function openStore() {
     root = await mkdtemp(join(tmpdir(), 'orca-surface-tab-id-'))
     return AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
@@ -603,25 +603,14 @@ describe('the tab a create claims', () => {
     })
   }
 
-  it('claims the id the caller reserved', async () => {
+  it('takes no tab at attach, then answers a retry naming another tab with the one it was given', async () => {
     const store = await openStore()
-    expect(await attachWith(store, 'chat-tab-1')).toMatchObject({
-      ok: true,
-      value: { tabId: 'chat-tab-1' }
-    })
-    expect(store.getSessionTabId(SESSION)).toBe('chat-tab-1')
-  })
-
-  it('claims nothing when the caller reserved none; the tab is given out when it is shown', async () => {
-    const store = await openStore()
-    const result = await attachWith(store)
-    expect(result.ok && result.value.tabId).toBeUndefined()
+    const created = await attachWith(store, 'chat-tab-1')
+    // Publishing the tab takes the id, so a create that never gets there leaves nothing behind.
+    expect(created.ok && created.value.tabId).toBeUndefined()
     expect(store.getSessionTabId(SESSION)).toBeNull()
-  })
 
-  it('keeps the claimed id when a retry names another tab', async () => {
-    const store = await openStore()
-    await attachWith(store, 'chat-tab-1')
+    await store.setSessionTabVisibility(SESSION, true, 'chat-tab-1')
     expect(await attachWith(store, 'chat-tab-2')).toMatchObject({
       ok: true,
       value: { tabId: 'chat-tab-1' }

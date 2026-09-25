@@ -44,7 +44,6 @@ import {
   type AgentSessionReservation
 } from './agent-session-lease-transitions'
 import type { AgentSessionStoreState } from './agent-session-record-store-file'
-import { AgentSessionTabTable } from './agent-session-tab-table'
 
 export type AgentSessionReserveRequest = {
   sessionId: string
@@ -57,8 +56,8 @@ export type AgentSessionReserveRequest = {
   launchEnv?: AgentSessionLaunchEnv
   /** Initial provider options persisted before the first process is acquired. */
   options?: Readonly<Record<string, string>>
-  /** The tab id a create reserved for this conversation, claimed in the same transaction. A session
-   *  that already has a tab keeps it; an id another session's tab holds is refused. */
+  /** The tab id a create reserved for this conversation, taken when its tab is published. An id
+   *  another session's tab holds is refused here, before anything is spawned. */
   surfaceTabId?: string
   /** Set only when this create adopts an existing provider conversation. Seeds the handle chain so
    *  the adapter resumes; without it a new record has never proved a thread and starts a fresh one. */
@@ -176,7 +175,7 @@ export function applyAgentSessionReservation(
     if (request.expectedFence !== null) {
       throw new Error('agent_session_checkpoint_stale')
     }
-    claimReservedTab(state, request)
+    assertReservedTabUnheld(state, request)
     return { record: createAgentSessionRecord(request, reservation), disposition: 'created' }
   }
   if (
@@ -197,7 +196,7 @@ export function applyAgentSessionReservation(
   if (request.expectedFence === null && !recreatable) {
     throw new Error('agent_session_conflict')
   }
-  claimReservedTab(state, request)
+  assertReservedTabUnheld(state, request)
   const pinned = {
     ...existing,
     ...(!existing.launchArgs && request.launchArgs ? { launchArgs: [...request.launchArgs] } : {}),
@@ -246,8 +245,12 @@ function assertAdoptedConversationUnowned(
   }
 }
 
-/** A tab id names one conversation, so a reserved id another session's tab holds is a conflict. */
-function claimReservedTab(
+/**
+ * A tab id names one conversation, so a reserved id another session's tab holds is a conflict.
+ * Checked, not claimed: the id is taken when the chat's tab is published, so a create that never
+ * gets that far leaves nothing in the table to restore or release.
+ */
+function assertReservedTabUnheld(
   state: AgentSessionStoreState,
   request: AgentSessionReserveRequest
 ): void {
@@ -257,8 +260,10 @@ function claimReservedTab(
   if (!isAgentSessionSurfaceTabId(request.surfaceTabId)) {
     throw new Error('agent_session_operation_invalid')
   }
-  state.sessionTabs ??= new AgentSessionTabTable()
-  state.sessionTabs.show(request.sessionId, request.surfaceTabId)
+  const holder = state.sessionTabs?.sessionIdFor(request.surfaceTabId)
+  if (holder !== undefined && holder !== request.sessionId) {
+    throw new Error('agent_session_conflict')
+  }
 }
 
 function createAgentSessionRecord(

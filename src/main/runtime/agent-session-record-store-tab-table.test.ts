@@ -69,9 +69,14 @@ describe('chat tab table', () => {
   const filePath = () => agentSessionStorePath(directory)
   const readFileJson = async () => JSON.parse(await readFile(filePath(), 'utf-8'))
 
-  it('claims the reserved tab id and refuses a second chat under it', async () => {
+  it('takes a reserved id only when the tab is shown, and refuses it to a second chat', async () => {
     const store = await open()
     await store.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
+    // A create that dies before its tab is shown leaves nothing to restore or release.
+    expect(store.getSessionTabId('session-alpha')).toBeNull()
+    expect((await readFileJson()).sessionTabs).toBeUndefined()
+
+    await store.setSessionTabVisibility('session-alpha', true, 'tab-alpha')
     expect(store.getSessionTabId('session-alpha')).toBe('tab-alpha')
     const persisted = await readFileJson()
     expect(persisted.sessionTabs).toEqual([{ tabId: 'tab-alpha', sessionId: 'session-alpha' }])
@@ -93,6 +98,7 @@ describe('chat tab table', () => {
   it('frees a reserved id once its chat is hidden', async () => {
     const store = await open()
     await store.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
+    await store.setSessionTabVisibility('session-alpha', true, 'tab-alpha')
     await store.setSessionTabVisibility('session-alpha', false)
     await store.reserveOwner(
       reserveRequest({
@@ -101,6 +107,7 @@ describe('chat tab table', () => {
         operation: { callerKey: 'client-1', operationId: operationId(), fingerprint: 'fp-2' }
       })
     )
+    await store.setSessionTabVisibility('session-beta', true, 'tab-alpha')
     expect(store.getSessionTabId('session-beta')).toBe('tab-alpha')
   })
 
@@ -123,7 +130,7 @@ describe('chat tab table', () => {
 
   it('seeds the table from an older store, keeping each visible chat on the id it has today', async () => {
     const first = await open()
-    await first.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
+    await first.reserveOwner(reserveRequest())
     await first.reserveOwner(
       reserveRequest({
         sessionId: 'session-beta',
@@ -166,7 +173,8 @@ describe('chat tab table', () => {
 
   it('reads the table, never the record field, once the table is on disk', async () => {
     const first = await open()
-    await first.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
+    await first.reserveOwner(reserveRequest())
+    await first.setSessionTabVisibility('session-alpha', true, 'tab-alpha')
     const raw = await readFileJson()
     raw.records['session-alpha'].surfaceTabId = 'tab-stale'
     await writeFile(filePath(), JSON.stringify(raw))
@@ -188,9 +196,12 @@ describe('chat tab table', () => {
 
   it('treats a malformed table as a corrupt store rather than guessing', async () => {
     const first = await open()
-    await first.reserveOwner(reserveRequest({ surfaceTabId: 'tab-alpha' }))
+    await first.reserveOwner(reserveRequest())
     const raw = await readFileJson()
-    raw.sessionTabs.push({ tabId: 'tab-alpha', sessionId: 'session-beta' })
+    raw.sessionTabs = [
+      { tabId: 'tab-alpha', sessionId: 'session-alpha' },
+      { tabId: 'tab-alpha', sessionId: 'session-beta' }
+    ]
     await writeFile(filePath(), JSON.stringify(raw))
     await expect(open()).rejects.toThrow('agent_session_store_corrupt')
   })
