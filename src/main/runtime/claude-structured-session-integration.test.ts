@@ -525,6 +525,26 @@ describe('a structured Claude session over agentSession.*', () => {
     expect(host?.hasSession(SESSION)).toBe(true)
   })
 
+  it('hands a chat to the terminal when its stop sees the Claude root exit but not its descendants', async () => {
+    const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    // The terminal owner tails the transcript the native owner left.
+    await writeFile(transcriptPath, '')
+    const first = claude.live()
+    first.exitVerdict = { root: 'exited', tree: 'unverifiable' }
+    first.close = async () => {
+      first.closed = true
+      return false
+    }
+
+    await ok('agentSession.requestHandoff', handoffParams('to-tui', created.fence))
+
+    // The root was the only writer on the thread, so its seen exit is enough to hand it over.
+    expect(await getStructuredAgentSessionHost()?.handoffStatus(SESSION)).toMatchObject({
+      owner: 'tui',
+      phase: 'idle'
+    })
+  })
+
   it('routes a published Claude first-hand exit through fenced host reconciliation', async () => {
     await ok<{ fence: number }>('agentSession.create', createIntentParams())
     const connection = claude.live()

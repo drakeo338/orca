@@ -3,7 +3,10 @@ import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { LegacyImportOptions } from '../agent-session-journal/journal-legacy-import'
 import { importLegacyTranscriptIntoJournal } from '../agent-session-journal/journal-legacy-import'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import {
+  stopAgentSessionProviderRoot,
+  type StructuredAgentSessionAdapter
+} from './structured-agent-session-adapter'
 import { canRestoreLiveTuiOwner } from './structured-agent-session-handoff-restart'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
@@ -79,8 +82,11 @@ export function createStructuredAgentSessionHostHandoff(
       if (!deps.adapter.closeSession) {
         return { state: 'live' }
       }
-      const exited = await deps.adapter.closeSession(sessionId)
-      if (exited !== true) {
+      const closeSession = deps.adapter.closeSession
+      const exited = await stopAgentSessionProviderRoot(() =>
+        closeSession.call(deps.adapter, sessionId)
+      )
+      if (!exited) {
         // Report the unproven exit; the forward handoff refuses on it.
         return { state: 'live' }
       }
