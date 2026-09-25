@@ -6,7 +6,7 @@
 // dead child — it is the content of the next turn's context.
 //
 // The window is anchored on the leaf uuid Orca durably recorded for the session
-// and walks back to it from the file's last transcript row, which is where a
+// and walks back to it from the file's last main-chain message, which is where a
 // resume by session id continues; Claude's marker lags a crash mid-turn.
 // Without that anchor the read has no proven start, and the branch proof is what
 // decides whether the file we just read still descends from it: a fork, a

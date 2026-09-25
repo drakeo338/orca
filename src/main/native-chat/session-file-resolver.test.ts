@@ -71,6 +71,49 @@ describe('resolveSessionFilePath', () => {
     ).resolves.toBe('turn-3-reply')
   })
 
+  it('continues from a hook or attachment row an older build saved as the leaf', async () => {
+    const root = await makeRoot('orca-native-chat-resolve-claude-legacy-leaf-')
+    const idle = join(root, 'idle.jsonl')
+    const advanced = join(root, 'advanced.jsonl')
+    const row = (type: string, uuid: string, parentUuid: string | null, extra = {}) =>
+      JSON.stringify({ type, uuid, parentUuid, sessionId: 'session-1', ...extra })
+    const turn1 = [
+      row('user', 'turn-1-prompt', null),
+      row('assistant', 'turn-1-reply', 'turn-1-prompt')
+    ]
+    await writeFile(
+      idle,
+      [
+        ...turn1,
+        row('system', 'turn-1-stop-hook', 'turn-1-reply', { subtype: 'stop_hook_summary' }),
+        JSON.stringify({
+          type: 'last-prompt',
+          leafUuid: 'turn-1-stop-hook',
+          sessionId: 'session-1'
+        })
+      ].join('\n'),
+      'utf8'
+    )
+    await writeFile(
+      advanced,
+      [
+        ...turn1,
+        // A dead end: the next prompt descends from the reply, not from this row.
+        row('attachment', 'turn-1-attachment', 'turn-1-reply'),
+        row('user', 'turn-2-prompt', 'turn-1-reply'),
+        row('assistant', 'turn-2-reply', 'turn-2-prompt')
+      ].join('\n'),
+      'utf8'
+    )
+
+    await expect(readClaudeTranscriptLeafUuid(idle, 'session-1', 'turn-1-stop-hook')).resolves.toBe(
+      'turn-1-reply'
+    )
+    await expect(
+      readClaudeTranscriptLeafUuid(advanced, 'session-1', 'turn-1-attachment')
+    ).resolves.toBe('turn-2-reply')
+  })
+
   it('fails closed when a Claude transcript has no main-chain message', async () => {
     const root = await makeRoot('orca-native-chat-resolve-claude-no-leaf-')
     const transcript = join(root, 'session.jsonl')

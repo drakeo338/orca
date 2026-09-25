@@ -343,6 +343,18 @@ describe('a crash between Claude saving a prompt and Orca recording its echo', (
     expect(verdict).toMatchObject({ clientMessageId: 'bravo-send', outcome: 'accepted' })
   })
 
+  it('reads from the stop-hook summary an older build saved as the leaf', () => {
+    const idle = CRASHED_MID_TURN.split('\n').slice(0, 10).join('\n')
+    expect(read(`${idle}\n`, 'alpha-stop-summary')).toEqual({
+      items: [],
+      boundaryConsistent: true,
+      turnInFlight: false
+    })
+    expect(
+      read(`${CRASHED_MID_TURN}\n`, 'alpha-stop-summary').items.map((item) => item.providerItemId)
+    ).toEqual(['bravo'])
+  })
+
   it('ends the conversation at the last main-chain row, never a trailing sidechain row', () => {
     const subagent = row('assistant', 'subagent-reply', null, { isSidechain: true })
     const window = read(`${CRASHED_MID_TURN}\n${JSON.stringify(subagent)}\n`, 'alpha-reply')

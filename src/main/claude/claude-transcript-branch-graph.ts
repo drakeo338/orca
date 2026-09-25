@@ -17,6 +17,8 @@ type TranscriptNode = {
   lineIndex: number
   /** UUIDs from result/init/stream frames and sidechains are never leaves. */
   disallowedLeaf: boolean
+  /** A row `readClaudeTranscriptEntryUuid` accepts. */
+  message: boolean
 }
 
 export type ClaudeTranscriptBranchProof = {
@@ -164,13 +166,32 @@ function createBranchProof(input: BranchProofInput) {
     ) {
       throw transcriptError(`record ${uuid} has conflicting ancestry`)
     }
+    const entryUuid = readClaudeTranscriptEntryUuid(row)
     nodes.set(uuid, {
       parentUuid,
       sessionId,
       lineIndex: existing?.lineIndex ?? index,
-      disallowedLeaf
+      disallowedLeaf,
+      message: existing?.message ?? entryUuid !== null
     })
-    leafUuid = readClaudeTranscriptEntryUuid(row) ?? leafUuid
+    leafUuid = entryUuid ?? leafUuid
+  }
+
+  /** Older builds saved marker-named hook and attachment rows as the leaf; the
+   *  conversation such a row names ends at its nearest message ancestor. */
+  function messageAnchor(uuid: string): string {
+    let cursor: string | null = uuid
+    for (let depth = 0; cursor !== null && depth < MAX_CLAUDE_TRANSCRIPT_ANCESTRY; depth += 1) {
+      const node = nodes.get(cursor)
+      if (!node) {
+        break
+      }
+      if (node.message) {
+        return cursor
+      }
+      cursor = node.parentUuid
+    }
+    return uuid
   }
 
   function finish(): ClaudeTranscriptBranchProof {
@@ -202,7 +223,8 @@ function createBranchProof(input: BranchProofInput) {
     // otherwise a cursor that descended through a parent-tool-use sidechain
     // could be persisted and resumed as if it were on the main transcript.
     proveMainLineAncestry(nodes, previousLeafUuid, input.providerSessionId)
-    if (leafUuid === previousLeafUuid) {
+    const anchorUuid = messageAnchor(previousLeafUuid)
+    if (leafUuid === anchorUuid) {
       proveAppendOrder(nodes)
       return { leafUuid, relation: 'same' }
     }
@@ -221,7 +243,7 @@ function createBranchProof(input: BranchProofInput) {
         throw transcriptError(`ancestor ${cursor} is not on the main transcript`)
       }
       cursor = node.parentUuid
-      if (cursor === previousLeafUuid) {
+      if (cursor === anchorUuid) {
         proveAppendOrder(nodes)
         return { leafUuid, relation: 'descendant' }
       }
@@ -238,7 +260,8 @@ function createBranchProof(input: BranchProofInput) {
    *  A walk that does NOT reach the anchor throws rather than returning empty:
    *  empty is the caller's "nothing followed the anchor", and answering that for
    *  a broken walk would report non-delivery for records we never looked at. */
-  function ancestryChain(leafUuid: string, anchorUuid: string): string[] {
+  function ancestryChain(leafUuid: string, requestedAnchorUuid: string): string[] {
+    const anchorUuid = messageAnchor(requestedAnchorUuid)
     const chain: string[] = []
     let cursor: string | null = leafUuid
     for (let depth = 0; cursor !== null && cursor !== anchorUuid; depth += 1) {
