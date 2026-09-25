@@ -377,10 +377,11 @@ describe('an idle-prompt Ctrl+C with only a background shell (captured)', () => 
 describe('an idle-prompt Ctrl+C after the background agent already finished (captured)', () => {
   const records = loadCapture('claude-idle-ctrl-c-finished-agent-hooks')
 
-  it('disarms when the agent finishes, so a later line changes nothing', async () => {
+  it('disarms when the agent finishes, so a line written while unwatched never counts', async () => {
     const server = await startServer()
     const transcript = transcriptFile()
-    const replay = replayer(server, records, transcript, Date.now())
+    const t0 = Date.now()
+    const replay = replayer(server, records, transcript, t0)
     await replay([0, 1, 2, 3, 4, 5, 6, 7])
     expect(watch(server)).toBeDefined()
     // A NATURAL finish does announce itself: SubagentStop fires and the CLI injects a
@@ -395,5 +396,18 @@ describe('an idle-prompt Ctrl+C after the background agent already finished (cap
     appendFileSync(transcript, '{"type":"system","subtype":"agents_killed"}\n')
     expect(watch(server)).toBeUndefined()
     expect(row(server)).toEqual(settled)
+
+    // A later background agent re-arms the watch at the transcript's end, past that line.
+    vi.setSystemTime(t0 + 60_000)
+    const start = { ...hookAt(records, 4).payload, transcript_path: transcript, agent_id: 'a01' }
+    await expect(postHookEvent(server, buildBody(start))).resolves.toMatchObject({ status: 204 })
+    expect(row(server).subagents).toEqual([
+      expect.objectContaining({ id: 'a01', state: 'working' })
+    ])
+    appendFileSync(transcript, '{"type":"user"}\n')
+    await watchCaughtUp(server, transcript)
+    expect(row(server).subagents).toEqual([
+      expect.objectContaining({ id: 'a01', state: 'working' })
+    ])
   })
 })
