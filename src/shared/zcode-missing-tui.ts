@@ -25,6 +25,14 @@
 // it was bundled.
 const ZCODE_MISSING_TUI_RE = /Cannot find (?:package|module) ['"]@zcode\/tui['"]/
 
+/**
+ * What a `zcode` build can do when asked for a session.
+ *
+ * `unknown` is a real answer, not a failure: a probe that could not run says nothing about
+ * the build, and callers must not treat it as broken.
+ */
+export type ZCodeInteractiveCapability = 'interactive' | 'missing-tui' | 'unknown'
+
 /** True when this output is ZCode reporting that its terminal UI is not installed. */
 export function isZCodeMissingTuiOutput(output: string): boolean {
   return ZCODE_MISSING_TUI_RE.test(output)

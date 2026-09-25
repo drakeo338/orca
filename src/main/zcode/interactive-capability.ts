@@ -1,5 +1,8 @@
 import { runProcess } from '../../shared/child-process/run-process'
-import { isZCodeMissingTuiOutput } from '../../shared/zcode-missing-tui'
+import {
+  isZCodeMissingTuiOutput,
+  type ZCodeInteractiveCapability
+} from '../../shared/zcode-missing-tui'
 
 /**
  * Asking a `zcode` build whether it can open a session, before Orca opens a pane for it.
@@ -24,7 +27,7 @@ import { isZCodeMissingTuiOutput } from '../../shared/zcode-missing-tui'
  * always carries the TUI as embedded assets; and the desktop app's bundled runtime carries
  * neither, which is the case worth catching.
  */
-export type ZCodeInteractiveCapability = 'interactive' | 'missing-tui' | 'unknown'
+export type { ZCodeInteractiveCapability }
 
 // Why bounded: the answer arrives in well under a second on both builds measured. A hang
 // means something unexpected, and an unexpected build must not be called broken.
