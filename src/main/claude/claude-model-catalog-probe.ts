@@ -1,6 +1,7 @@
 import { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'
 import { commandBackslashMode } from '../text-generation/commit-message-text-generation'
 import { spawnSourceControlAgent } from '../text-generation/source-control-agent-launch'
+import { claudeConfigDirEnvPatch } from './claude-config-dir-pin'
 import {
   resolveClaudeStructuredInvocation,
   type ClaudeStructuredLaunchResolverDeps
@@ -30,9 +31,11 @@ export function createClaudeModelCatalogProbe(
   deps: ClaudeModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
+    // Same pin rule as the session spawn: naming the CLI's default dir would move
+    // it off the default Keychain item and list under another identity.
     const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) => ({
       ...base,
-      CLAUDE_CONFIG_DIR: accountHomePath
+      ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
     }))
     const result = await (deps.discover ?? discoverModelsLocal)({
       agentId: 'claude',

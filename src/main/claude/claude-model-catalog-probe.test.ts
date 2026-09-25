@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createClaudeModelCatalogProbe } from './claude-model-catalog-probe'
 import { resolveClaudeStructuredInvocation } from './claude-structured-launch-resolution'
@@ -97,6 +99,22 @@ describe('claude model catalog probe', () => {
     expect(captured[0]!.agentCommandOverride).toBeUndefined()
     expect(spawnAgent).toHaveBeenCalledTimes(1)
     expect(spawnAgent.mock.calls[0]![0].binary).toBe(invocation.command)
+  })
+
+  it('pins no CLAUDE_CONFIG_DIR for the CLI default home, exactly as a session spawn does', async () => {
+    const envs: DiscoverInput['env'][] = []
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      discover: async (input) => {
+        envs.push(input.env)
+        return listedResult()
+      }
+    })
+    await probe(join(homedir(), '.claude'))
+    await probe('/homes/account-a')
+    // An explicit default would move the CLI off its default Keychain item (claude.ai OAuth).
+    expect(envs[0]).not.toHaveProperty('CLAUDE_CONFIG_DIR')
+    expect(envs[1]).toMatchObject({ CLAUDE_CONFIG_DIR: '/homes/account-a' })
   })
 
   it('refuses a static-fallback answer rather than reporting it as a catalog', async () => {
