@@ -22,6 +22,8 @@ export const AGENT_CHILD_WORK_INVOCATION_HISTORY_MAX = 32
 export const AGENT_CHILD_WORK_RESIDENCIES = ['foreground', 'background'] as const
 export const AGENT_CHILD_WORK_OPERATION_BASES = ['open', 'reported'] as const
 export const AGENT_CHILD_WORK_LAST_MESSAGE_MAX_LENGTH = 512
+export const AGENT_CHILD_WORK_LABEL_MAX_LENGTH = 512
+export const AGENT_CHILD_WORK_DESCRIPTION_MAX_LENGTH = 8_000
 
 export type AgentChildWorkId = string
 export type AgentChildWorkKind = (typeof AGENT_CHILD_WORK_KINDS)[number]
@@ -78,7 +80,7 @@ export type AgentChildWorkInput = {
   model?: string
   totalTokens?: number
   providerTiming?: AgentChildWorkProviderTiming
-  /** The child that owns this work (a nested agent's spawner, or the agent that launched a
+  /** The child that owns this invocation (a nested agent's spawner, or the agent that launched a
    *  shell). Absent means the session's main agent owns it. */
   parentChildWorkId?: AgentChildWorkId
   /** Host-only: settlement consults it; never projected to a view. */

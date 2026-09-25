@@ -28,9 +28,10 @@ export type AgentChildWorkObservationAlias = {
   alias: string
 }
 
-/** An observation may be sparse: an omitted label, token count, owner, residency, or (within one
- *  invocation) last message or definite outcome keeps its stored value, and tokens never shrink.
- *  Omitting `operation` clears it. */
+/** An observation may be sparse, and raw provider text is fine: admission folds text to one line.
+ *  An omitted or malformed label, token count, residency or timing keeps its stored value; the
+ *  owner, last message and a definite outcome last only for their invocation. Tokens never
+ *  shrink. Omitting `operation` clears it. */
 export type AgentChildWorkObservationFields = {
   kind: AgentChildWorkKind
   state: AgentChildWorkState
@@ -44,9 +45,8 @@ export type AgentChildWorkObservationFields = {
   providerTiming?: AgentChildWorkProviderTiming
   parentChildWorkId?: AgentChildWorkId
   residency?: AgentChildWorkResidency
-  /** Raw provider text is fine: admission folds it to the one-line previews a status row uses,
-   *  clamps `observedAt` into [firstObservedAt, request observedAt], and drops the operation when
-   *  the state cannot carry one (settled, idle, unverifiable). Labels are NOT normalized. */
+  /** Admission clamps `observedAt` into [firstObservedAt, request observedAt], and drops the
+   *  operation when the state cannot carry one (settled, idle, unverifiable). */
   operation?: AgentChildWorkOperation
   lastMessage?: string
   observedAt: number

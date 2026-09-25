@@ -1,6 +1,8 @@
 import {
+  AGENT_CHILD_WORK_DESCRIPTION_MAX_LENGTH,
   AGENT_CHILD_WORK_INVOCATION_HISTORY_MAX,
   AGENT_CHILD_WORK_KINDS,
+  AGENT_CHILD_WORK_LABEL_MAX_LENGTH,
   AGENT_CHILD_WORK_MEMBERSHIPS,
   AGENT_CHILD_WORK_OUTCOMES,
   AGENT_CHILD_WORK_STATES,
@@ -20,14 +22,14 @@ import { parseAgentStatusSubject } from './agent-status-subject'
 import {
   hasOnlyKeys,
   isBoundedString,
+  isChildWorkText,
+  isChildWorkTokenCount,
   isRecord,
   isTimestamp
 } from './agent-status-child-work-value-guards'
 import { parseAgentChildWorkActivityFields } from './agent-status-child-work-activity-codec'
 import { isAgentChildWorkLifecycleLegal } from './agent-status-child-work-legality'
 
-const MAX_LABEL_LENGTH = 512
-const MAX_DESCRIPTION_LENGTH = 8_000
 const CHILD_WORK_KIND_SET: ReadonlySet<string> = new Set(AGENT_CHILD_WORK_KINDS)
 const CHILD_WORK_STATE_SET: ReadonlySet<string> = new Set(AGENT_CHILD_WORK_STATES)
 const CHILD_WORK_MEMBERSHIP_SET: ReadonlySet<string> = new Set(AGENT_CHILD_WORK_MEMBERSHIPS)
@@ -67,7 +69,9 @@ export function parseAgentChildWorkInvocationFence(
   return { invocationId: value.invocationId, generation: value.generation }
 }
 
-function parseProviderTiming(value: unknown): AgentChildWorkProviderTiming | null {
+export function parseAgentChildWorkProviderTiming(
+  value: unknown
+): AgentChildWorkProviderTiming | null {
   if (!isRecord(value) || !hasOnlyKeys(value, [], ['startedAt', 'completedAt'])) {
     return null
   }
@@ -125,14 +129,19 @@ function parseInvocationHistory(value: unknown): AgentChildWorkInvocationHistory
   return history
 }
 
-function parseOptionalLabel(value: unknown, maxLength = MAX_LABEL_LENGTH): string | null {
-  return value === undefined ? '' : isBoundedString(value, maxLength) ? value : null
+function parseOptionalLabel(
+  value: unknown,
+  maxLength = AGENT_CHILD_WORK_LABEL_MAX_LENGTH
+): string | null {
+  return value === undefined ? '' : isChildWorkText(value, maxLength) ? value : null
 }
 
 /** The host's integrity gate for its own store, strict by design: an unknown key or enum arm
  *  rejects the whole record. Never a cross-version decoder — anything reading records or views
  *  from another build must ignore unknown keys and degrade unknown arms, or negotiate
- *  (docs/reference/remote-wire-compatibility.md, Rules 1 and 4). */
+ *  (docs/reference/remote-wire-compatibility.md, Rules 1 and 4).
+ *  Every malformed field rejects, descriptive or not: admission drops bad provider facts before
+ *  they get here, so a value outside its image is a writer bug, never data to repair silently. */
 export function parseAgentChildWorkInput(value: unknown): AgentChildWorkInput | null {
   if (
     !isRecord(value) ||
@@ -178,10 +187,7 @@ export function parseAgentChildWorkInput(value: unknown): AgentChildWorkInput | 
     !isTimestamp(value.observedAt) ||
     value.firstObservedAt > value.observedAt ||
     typeof value.stoppable !== 'boolean' ||
-    (value.totalTokens !== undefined &&
-      (typeof value.totalTokens !== 'number' ||
-        !Number.isSafeInteger(value.totalTokens) ||
-        value.totalTokens < 0))
+    (value.totalTokens !== undefined && !isChildWorkTokenCount(value.totalTokens))
   ) {
     return null
   }
@@ -189,21 +195,33 @@ export function parseAgentChildWorkInput(value: unknown): AgentChildWorkInput | 
   const invocation = parseAgentChildWorkInvocationFence(value.invocation)
   const provenance = parseProvenance(value.provenance)
   const timing =
-    value.providerTiming === undefined ? undefined : parseProviderTiming(value.providerTiming)
+    value.providerTiming === undefined
+      ? undefined
+      : parseAgentChildWorkProviderTiming(value.providerTiming)
   const history =
     value.previousInvocations === undefined
       ? undefined
       : parseInvocationHistory(value.previousInvocations)
   const labels = {
     name: parseOptionalLabel(value.name),
-    description: parseOptionalLabel(value.description, MAX_DESCRIPTION_LENGTH),
+    description: parseOptionalLabel(value.description, AGENT_CHILD_WORK_DESCRIPTION_MAX_LENGTH),
     agentType: parseOptionalLabel(value.agentType),
     model: parseOptionalLabel(value.model)
   }
-  if (!parent || !invocation || !provenance || timing === null || history === null) {
-    return null
-  }
-  if (Object.values(labels).includes(null)) {
+  const activity = parseAgentChildWorkActivityFields(value, {
+    childWorkId: value.childWorkId,
+    firstObservedAt: value.firstObservedAt,
+    observedAt: value.observedAt
+  })
+  if (
+    !parent ||
+    !invocation ||
+    !provenance ||
+    timing === null ||
+    history === null ||
+    !activity ||
+    Object.values(labels).includes(null)
+  ) {
     return null
   }
   // A settled record written without these fields (an older writer) reads as an unknown ending
@@ -215,11 +233,6 @@ export function parseAgentChildWorkInput(value: unknown): AgentChildWorkInput | 
     : settled
       ? value.observedAt
       : undefined
-  const activity = parseAgentChildWorkActivityFields(value, {
-    childWorkId: value.childWorkId,
-    firstObservedAt: value.firstObservedAt,
-    observedAt: value.observedAt
-  })
   if (
     !isAgentChildWorkLifecycleLegal({
       kind: value.kind,

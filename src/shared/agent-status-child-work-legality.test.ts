@@ -117,6 +117,18 @@ describe('child-work descriptive fields', () => {
     expect(parseAgentChildWorkRecord(value)).toEqual(value)
   })
 
+  it('admits text already in its one-line form, at the caps', () => {
+    const value = live({
+      name: 'x'.repeat(512),
+      description: 'Map the codebase\u00a0now',
+      operation: { ...OPERATION, toolName: 'x'.repeat(60), input: 'y'.repeat(160) },
+      lastMessage: 'z'.repeat(512)
+    })
+    expect(parseAgentChildWorkInput(value)).toEqual(value)
+  })
+
+  // Admission drops bad provider facts before they reach the codec, so each of these is a writer
+  // bug: the codec refuses the record rather than repairing it.
   it.each([
     ['an operation that is not an object', { operation: 'Bash' }],
     ['an operation with an unknown key', { operation: { ...OPERATION, raw: {} } }],
@@ -139,13 +151,15 @@ describe('child-work descriptive fields', () => {
     ['an unknown residency', { residency: 'detached' }],
     ['a last message longer than 512', { lastMessage: 'x'.repeat(513) }],
     ['a multi-line last message', { lastMessage: 'one\ntwo' }],
+    ['a last message ending in a space', { lastMessage: 'cut here ' }],
+    ['a last message with a line separator', { lastMessage: 'one\u2028two' }],
+    ['a name with a next-line control', { name: 'one\u0085two' }],
+    ['a name with a tab', { name: 'one\ttwo' }],
+    ['a description ending in a space', { description: 'cut here ' }],
+    ['a model longer than 512', { model: 'x'.repeat(513) }],
+    ['a negative token count', { totalTokens: -1 }],
     ['an empty owner id', { parentChildWorkId: '' }],
-    ['a child that owns itself', { parentChildWorkId: 'child-1' }]
-  ])('drops %s and keeps the record', (_case, field) => {
-    expect(parseAgentChildWorkInput({ ...live(), ...field })).toEqual(live())
-  })
-
-  it.each([
+    ['a child that owns itself', { parentChildWorkId: 'child-1' }],
     ['an unknown top-level key', { note: 'x' }],
     [
       'a settle time that is not a timestamp',
@@ -155,7 +169,7 @@ describe('child-work descriptive fields', () => {
       'an outcome outside the vocabulary',
       { membership: 'settled', state: 'done', outcome: 'crashed' }
     ]
-  ])('still rejects %s', (_case, field) => {
+  ])('rejects %s', (_case, field) => {
     expect(parseAgentChildWorkInput({ ...live(), ...field })).toBeNull()
   })
 })

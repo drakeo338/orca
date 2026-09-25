@@ -146,18 +146,18 @@ describe('child-work admission of sparse observations', () => {
     expect(store.getChild('child-1')).toEqual(before)
   })
 
-  it('replaces a label the request carries and still refuses an invalid token count', () => {
+  it('replaces a label the request carries and keeps the count over an invalid one', () => {
     const { store, admission } = setup()
     admission.announce(observation(described))
     admission.announce(observation({ name: 'reviewer', observedAt: 11 }))
     expect(store.getChild('child-1')).toMatchObject({ ...described, name: 'reviewer' })
-    expect(admission.announce(observation({ totalTokens: -1, observedAt: 12 }))).toEqual({
-      accepted: false,
-      reason: 'invalid'
+    expect(admission.announce(observation({ totalTokens: -1, observedAt: 12 }))).toMatchObject({
+      accepted: true
     })
+    expect(store.getChild('child-1')?.totalTokens).toBe(5_000)
   })
 
-  it('carries labels and tokens into a resumed invocation but not the old ending message', () => {
+  function settledFirstRun() {
     const { store, admission } = setup()
     admission.announce(
       observation({
@@ -166,19 +166,33 @@ describe('child-work admission of sparse observations', () => {
         membership: 'settled',
         outcome: 'succeeded',
         observedAt: 20,
+        parentChildWorkId: 'child-spawner',
         lastMessage: 'First run done'
       })
     )
-    expect(
+    const resume = (overrides: Partial<AgentChildWorkAnnounceRequest> = {}) =>
       admission.resume({
-        ...observation({ observedAt: 30 }),
+        ...observation({ observedAt: 30, ...overrides }),
         childWorkId: 'child-1',
         expectedFence: { invocationId: 'invocation-1', generation: 1 },
         nextFence: { invocationId: 'invocation-2', generation: 2 }
       })
-    ).toMatchObject({ accepted: true })
+    return { store, resume }
+  }
+
+  it('carries labels and tokens into a resumed invocation but not its ending or spawner', () => {
+    const { store, resume } = settledFirstRun()
+    expect(resume()).toMatchObject({ accepted: true })
     const child = store.getChild('child-1')
     expect(child).toMatchObject({ membership: 'live', ...described })
     expect(child).not.toHaveProperty('lastMessage')
+    // Restarted by the main agent: it no longer nests under the child that first spawned it.
+    expect(child).not.toHaveProperty('parentChildWorkId')
+  })
+
+  it('nests a resumed invocation under the child that restarted it', () => {
+    const { store, resume } = settledFirstRun()
+    expect(resume({ parentChildWorkId: 'child-restarter' })).toMatchObject({ accepted: true })
+    expect(store.getChild('child-1')?.parentChildWorkId).toBe('child-restarter')
   })
 })
