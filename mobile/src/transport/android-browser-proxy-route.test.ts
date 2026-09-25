@@ -23,7 +23,8 @@ const tick = async () => {
   }
 }
 
-function harness() {
+function harness(credit = true) {
+  let retained = 0
   let response: ((value: RpcResponse) => void) | undefined
   let state: ((value: ConnectionState) => void) | undefined
   let channel: RpcBinaryChannelOptions | undefined
@@ -59,7 +60,9 @@ function harness() {
       queueMicrotask(() => {
         if (frame.opcode === Op.Open) {
           send(Op.Opened, frame.streamId)
-          send(Op.WindowUpdate, frame.streamId, encodeBrowserNetworkTunnelWindowUpdate(65536))
+          if (credit) {
+            send(Op.WindowUpdate, frame.streamId, encodeBrowserNetworkTunnelWindowUpdate(65536))
+          }
         }
         if (frame.opcode === Op.Data) {
           send(Op.Data, frame.streamId, frame.payload.slice())
@@ -96,10 +99,18 @@ function harness() {
       return client
     },
     minimumTunnelGeneration: 0,
-    outboundMemory: { claimApplicationBytes: () => () => {} }
+    outboundMemory: {
+      claimApplicationBytes: (bytes) => {
+        retained += bytes
+        return () => {
+          retained -= bytes
+        }
+      }
+    }
   })
   return {
     route,
+    retained: () => retained,
     native,
     client,
     accepts,
@@ -153,4 +164,40 @@ it('closes a listener returned after route disposal', async () => {
   listener.resolve({ route: 8, port: 43210 })
   await expect(h.route.ready).resolves.toBeNull()
   expect(h.native.browserProxyClose).toHaveBeenCalledExactlyOnceWith(8)
+})
+
+it('settles every peer and RPC when native route disposal throws', async () => {
+  const h = harness(false)
+  h.ready()
+  await h.route.ready
+  for (const id of [1, 2]) {
+    h.accepts.shift()!.resolve(id)
+    await tick()
+    h.reads.get(id)!.resolve(new Uint8Array([5, 1, 0, 5, 1, 0, 3, 3, 97, 46, 98, 0, 80, id]))
+    await tick()
+  }
+  expect(h.retained()).toBe(2)
+  vi.mocked(h.native.browserProxyClose).mockImplementation(() => {
+    throw new Error('Module destroyed')
+  })
+  expect(() => h.route.close()).not.toThrow()
+  expect(h.retained()).toBe(0)
+  h.route.close()
+  expect(h.client.close).toHaveBeenCalledOnce()
+  expect(h.native.browserProxyClose).toHaveBeenCalledOnce()
+})
+
+it('ignores throwing cleanup of a listener returned after module teardown', async () => {
+  const h = harness()
+  const listener = deferred<{ route: number; port: number }>()
+  vi.mocked(h.native.browserProxyStart).mockReturnValue(listener.promise)
+  vi.mocked(h.native.browserProxyClose).mockImplementation(() => {
+    throw new Error('Obsolete route')
+  })
+  h.ready()
+  await tick()
+  h.route.close()
+  listener.resolve({ route: 8, port: 43210 })
+  await expect(h.route.ready).resolves.toBeNull()
+  expect(h.client.close).toHaveBeenCalledOnce()
 })

@@ -3,7 +3,7 @@ import { createServer, connect, type Socket } from 'node:net'
 import { expect, it, vi } from 'vitest'
 import { BrowserNetworkTunnelClient } from '../../src/shared/browser-network-tunnel-client'
 import { BrowserNetworkTunnelSession } from '../../src/main/browser/browser-network-tunnel-session'
-import { AndroidBrowserTunnelSocket } from '../../mobile/src/transport/android-browser-tunnel-socket'
+import { AndroidBrowserTunnelSocket } from './mobile-browser-tunnel-clients'
 
 it('carries Android adapter bytes through the existing tunnel session to a real TCP destination', async () => {
   const peers = new Set<Socket>()

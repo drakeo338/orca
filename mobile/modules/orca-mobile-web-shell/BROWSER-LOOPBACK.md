@@ -21,8 +21,13 @@ execution, never the page URL. There is no direct-egress fallback.
 
 - Native accept/read/write are pull operations, not data events. There is one
   pending accept and at most one pending read and write per socket. A worker pool
-  has at most 65 threads (32 duplex peers plus accept), with a zero-length task
-  queue. Idle workers expire; disposal closes descriptors to unblock I/O.
+  has at most 65 threads and 65 queued operations (one accept plus one read/write
+  per peer). The queue bridges completed callbacks whose worker has not returned;
+  queued operations retain their existing per-operation ownership. Core and maximum
+  pool sizes both equal 65 so blocking operations grow the pool before queueing;
+  no threads are prestarted and all idle threads expire after 30 seconds.
+  Disposal cancels and removes obsolete queued operations, settles pending callbacks,
+  and attempts every descriptor close even if another close throws.
 - Read and write chunks are at most 16 KiB. Socket buffer sizes are requested at
   16 KiB; these are OS hints, not measured Android kernel memory ceilings.
   Handshake retention is at most a 262-byte partial header plus one native chunk;

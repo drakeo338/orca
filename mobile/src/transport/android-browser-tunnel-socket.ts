@@ -27,7 +27,7 @@ export class AndroidBrowserTunnelSocket implements BrowserNetworkTunnelClientSoc
 
   start(sink: AndroidBrowserByteStream, initial: Uint8Array): void {
     if (this.destroyed || this.sink) {
-      sink.close()
+      this.closeSink(sink)
       return
     }
     this.sink = sink
@@ -103,8 +103,11 @@ export class AndroidBrowserTunnelSocket implements BrowserNetworkTunnelClientSoc
     }
     this.destroyed = true
     this.bind()
-    this.sink?.close()
+    const sink = this.sink
     this.sink = null
+    if (sink) {
+      this.closeSink(sink)
+    }
     this.callbacks.destroyStream(error ?? null, () => {})
   }
 
@@ -127,6 +130,14 @@ export class AndroidBrowserTunnelSocket implements BrowserNetworkTunnelClientSoc
         return
       }
       bytes = await this.sink.read()
+    }
+  }
+
+  private closeSink(sink: AndroidBrowserByteStream): void {
+    try {
+      sink.close()
+    } catch {
+      // Native lifetime loss must not retain core ownership.
     }
   }
 

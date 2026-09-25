@@ -3,15 +3,19 @@ package expo.modules.orcamobilewebshell
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.FutureTask
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /** Pull-only I/O: no worker may enqueue a second chunk while JS owns the first. */
-internal class BrowserLoopbackProxy : AutoCloseable {
+internal class BrowserLoopbackProxy(
+  private val listener: ServerSocket = ServerSocket(0, MAX_SOCKETS, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))
+) : AutoCloseable {
   companion object {
     const val CHUNK_BYTES = 16 * 1024
     const val MAX_SOCKETS = 32
+    const val MAX_OPERATIONS = 1 + 2 * MAX_SOCKETS
   }
 
   private class Peer(val socket: Socket) {
@@ -20,8 +24,12 @@ internal class BrowserLoopbackProxy : AutoCloseable {
   }
 
   private val lock = Any()
-  private val listener = ServerSocket(0, MAX_SOCKETS, InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)))
-  private val workers = ThreadPoolExecutor(0, 65, 30, TimeUnit.SECONDS, SynchronousQueue<Runnable>())
+  // Grow before queuing: zero core threads would serialize blocking I/O.
+  private val workers = ThreadPoolExecutor(
+    MAX_OPERATIONS, MAX_OPERATIONS, 30, TimeUnit.SECONDS,
+    ArrayBlockingQueue<Runnable>(MAX_OPERATIONS)
+  ).apply { allowCoreThreadTimeOut(true) }
+  private val operations = mutableMapOf<FutureTask<*>, Peer?>()
   private val peers = mutableMapOf<Int, Peer>()
   private var accepting = false
   private var closed = false
@@ -38,7 +46,6 @@ internal class BrowserLoopbackProxy : AutoCloseable {
       try {
         synchronized(lock) {
           if (closed || !socket.inetAddress.isLoopbackAddress) {
-            socket.close()
             error("Proxy closed")
           }
           socket.tcpNoDelay = true
@@ -50,7 +57,7 @@ internal class BrowserLoopbackProxy : AutoCloseable {
           id
         }
       } catch (error: Exception) {
-        socket.close()
+        runCatching { socket.close() }
         throw error
       }
     }
@@ -58,7 +65,7 @@ internal class BrowserLoopbackProxy : AutoCloseable {
 
   fun read(id: Int, done: (Result<ByteArray?>) -> Unit) {
     val peer = claim(id, true)
-    execute(done, { synchronized(lock) { peer.reading = false } }) {
+    execute(done, { synchronized(lock) { peer.reading = false } }, peer) {
       val bytes = ByteArray(CHUNK_BYTES)
       val count = peer.socket.getInputStream().read(bytes)
       if (count < 0) null else if (count == bytes.size) bytes else bytes.copyOf(count)
@@ -68,7 +75,7 @@ internal class BrowserLoopbackProxy : AutoCloseable {
   fun write(id: Int, bytes: ByteArray?, done: (Result<Unit>) -> Unit) {
     require(bytes == null || bytes.size in 1..CHUNK_BYTES) { "Proxy chunk exceeds limit" }
     val peer = claim(id, false)
-    execute(done, { synchronized(lock) { peer.writing = false } }) {
+    execute(done, { synchronized(lock) { peer.writing = false } }, peer) {
       if (bytes == null) peer.socket.shutdownOutput() else peer.socket.getOutputStream().write(bytes)
     }
   }
@@ -86,32 +93,58 @@ internal class BrowserLoopbackProxy : AutoCloseable {
     peer
   }
 
-  private fun <T> execute(done: (Result<T>) -> Unit, release: () -> Unit, action: () -> T) {
-    try {
-      workers.execute {
-        val result = runCatching(action)
+  private fun <T> execute(
+    done: (Result<T>) -> Unit, release: () -> Unit, peer: Peer? = null, action: () -> T
+  ) {
+    val task = object : FutureTask<Result<T>>({ runCatching(action) }) {
+      override fun done() {
+        synchronized(lock) { operations.remove(this) }
         release()
+        val result = runCatching { get() }.fold({ it }, { Result.failure(it) })
         done(result)
       }
-    } catch (error: Exception) {
-      release()
-      done(Result.failure(error))
+    }
+    synchronized(lock) {
+      if (closed || (peer != null && !peers.containsValue(peer))) {
+        task.cancel(false)
+        return
+      }
+      operations[task] = peer
+      try { workers.execute(task) }
+      catch (_: java.util.concurrent.RejectedExecutionException) { task.cancel(false) }
+    }
+  }
+
+  private fun cancel(tasks: List<FutureTask<*>>) {
+    tasks.forEach {
+      workers.remove(it)
+      runCatching { it.cancel(false) }
     }
   }
 
   fun closeSocket(id: Int) {
-    val peer = synchronized(lock) { peers.remove(id) }
-    peer?.socket?.close()
+    val (peer, tasks) = synchronized(lock) {
+      val peer = peers.remove(id) ?: return
+      val tasks = operations.filterValues { it === peer }.keys.toList()
+      // Free obsolete queue slots before a replacement peer can be admitted.
+      tasks.forEach { workers.remove(it) }
+      peer to tasks
+    }
+    runCatching { peer.socket.close() }
+    cancel(tasks)
   }
 
   override fun close() {
-    val sockets = synchronized(lock) {
+    val (sockets, tasks) = synchronized(lock) {
       if (closed) return
       closed = true
-      peers.values.map { it.socket }.also { peers.clear() }
+      val sockets = peers.values.map { it.socket }
+      peers.clear()
+      sockets to operations.keys.toList()
     }
-    listener.close()
-    sockets.forEach { it.close() }
+    runCatching { listener.close() }
+    sockets.forEach { runCatching { it.close() } }
+    cancel(tasks)
     workers.shutdown()
   }
 }

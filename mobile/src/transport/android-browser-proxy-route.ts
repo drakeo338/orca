@@ -57,9 +57,19 @@ export class AndroidBrowserProxyRoute {
     }
     this.peers.clear()
     if (this.route !== null) {
-      this.native.browserProxyClose(this.route)
+      const route = this.route
+      this.route = null
+      this.closeNative(() => this.native.browserProxyClose(route))
     }
     this.connection?.close()
+  }
+
+  private closeNative(close: () => void): void {
+    try {
+      close()
+    } catch {
+      // Obsolete native handles must not interrupt local disposal.
+    }
   }
 
   private async start(): Promise<{ host: '127.0.0.1'; port: number } | null> {
@@ -71,7 +81,8 @@ export class AndroidBrowserProxyRoute {
       const listener = await this.native.browserProxyStart()
       this.route = listener.route
       if (this.closed) {
-        this.native.browserProxyClose(listener.route)
+        this.route = null
+        this.closeNative(() => this.native.browserProxyClose(listener.route))
         return null
       }
       void this.accept(tunnel).catch(() => this.close())
@@ -108,7 +119,7 @@ export class AndroidBrowserProxyRoute {
             return
           }
           if (!this.closed) {
-            this.native.browserProxyCloseSocket(route, id)
+            this.closeNative(() => this.native.browserProxyCloseSocket(route, id))
           }
           this.capacity()
         }

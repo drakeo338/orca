@@ -177,3 +177,41 @@ describe('Android socket with the real portable tunnel core', () => {
     expect(h.socket.readableEnded).toBe(false)
   })
 })
+
+it('releases actual core claims when native close throws and disposal repeats', async () => {
+  const h = await coreHarness()
+  const native = stream()
+  vi.mocked(native.close).mockImplementation(() => {
+    throw new Error('Proxy route closed')
+  })
+  h.socket.start(native, new Uint8Array([1, 2, 3]))
+  expect(h.retained()).toBe(3)
+  expect(() => h.socket.destroy()).not.toThrow()
+  h.socket.destroy()
+  await tick()
+  expect(h.retained()).toBe(0)
+  expect(native.close).toHaveBeenCalledOnce()
+  h.core.close()
+})
+
+it('settles a rejected late native read without a throwing rejection handler', async () => {
+  const h = await coreHarness()
+  let rejectRead!: (error: Error) => void
+  const native = stream()
+  vi.mocked(native.read).mockImplementation(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectRead = reject
+      })
+  )
+  vi.mocked(native.close).mockImplementation(() => {
+    throw new Error('Proxy route closed')
+  })
+  h.socket.start(native, new Uint8Array())
+  rejectRead(new Error('Module destroyed'))
+  await tick()
+  expect(h.socket.destroyed).toBe(true)
+  expect(h.retained()).toBe(0)
+  expect(native.close).toHaveBeenCalledOnce()
+  h.core.close()
+})
