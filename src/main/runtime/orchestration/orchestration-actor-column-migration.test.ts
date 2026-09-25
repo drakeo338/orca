@@ -10,6 +10,7 @@ import {
 } from '../structured-worker-identity'
 import { OrchestrationDb } from './db'
 import { SCHEMA_VERSION } from './db/contract-constants'
+import { RUN_PANE_KEY_MATCH_SUFFIX_SQL } from './db/pane-key-match'
 import {
   currentRunCoordinatorActor,
   currentRunCoordinatorActorSql
@@ -105,6 +106,7 @@ function seedStructuredAndPtyRows(db: OrchestrationDb): SeededRows {
 function stripActorSchema(path: string, version: number): void {
   const raw = new Database(path)
   raw.exec(`
+    DROP INDEX idx_runs_coordinator_actor;
     DROP INDEX idx_dispatch_assignee_actor;
     DROP TRIGGER trg_runs_remember_coordinator_insert;
     DROP TRIGGER trg_runs_remember_coordinator_update;
@@ -116,6 +118,21 @@ function stripActorSchema(path: string, version: number): void {
   `)
   raw.pragma(`user_version = ${version}`)
   raw.close()
+}
+
+/** The plan for finding a caller's Runs by pane leaf or by coordinator actor in one statement. */
+function coordinatorLookupPlan(db: Database.Database): string {
+  return db
+    .prepare(
+      `EXPLAIN QUERY PLAN SELECT id FROM runs
+       WHERE legacy = 0 AND (
+         (coordinator_pane_key IS NOT NULL AND ${RUN_PANE_KEY_MATCH_SUFFIX_SQL} = ?)
+         OR coordinator_actor = ?
+       )`
+    )
+    .all('leaf', CHAT_SESSION_ACTOR)
+    .map((row) => String(row.detail))
+    .join(' | ')
 }
 
 function coordinatorTriggerSql(db: Database.Database): string[] {
@@ -521,6 +538,27 @@ describe('orchestration actor column migration', () => {
     } finally {
       reopened.close()
     }
+  })
+
+  it('finds Runs by coordinator actor through an index on fresh and upgraded databases', () => {
+    const expectIndexedLookup = (path: string): void => {
+      const db = new OrchestrationDb(path)
+      try {
+        const plan = coordinatorLookupPlan(db.db)
+        expect(plan).toContain('USING INDEX idx_runs_coordinator_actor')
+        expect(plan).not.toContain('SCAN runs')
+      } finally {
+        db.close()
+      }
+    }
+    expectIndexedLookup(tempDbPath())
+
+    const upgradedPath = tempDbPath()
+    const seed = new OrchestrationDb(upgradedPath)
+    seedStructuredAndPtyRows(seed)
+    seed.close()
+    stripActorSchema(upgradedPath, 41)
+    expectIndexedLookup(upgradedPath)
   })
 
   it('replays a database stamped v42 before the coordinator actor carried its generation', () => {

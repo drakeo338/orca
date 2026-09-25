@@ -32,7 +32,10 @@ export function migrateV42(this: OrchestrationDb, current: number): void {
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
     }
   }
+  // A Run lookup that ORs a pane-leaf match with an actor match scans every Run without this index.
   this.db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runs_coordinator_actor
+      ON runs(coordinator_actor) WHERE coordinator_actor IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_dispatch_assignee_actor
       ON dispatch_contexts(assignee_actor) WHERE assignee_actor IS NOT NULL;
   `)
