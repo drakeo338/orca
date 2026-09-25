@@ -248,3 +248,46 @@ describe('a relayed Claude cancel with a background shell (captured)', () => {
     expect(row(pane.desktop).mainAgent).not.toHaveProperty('outcome')
   })
 })
+
+it('keeps a relayed waiting child visible when the main agent is cancelled', () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(1_000)
+  try {
+    const server = new AgentHookServer()
+    server.ingestRemote(
+      {
+        paneKey: PANE,
+        tabId: 'tab-1',
+        worktreeId: 'wt-1',
+        payload: {
+          state: 'working',
+          prompt: 'coordinate reviewers',
+          agentType: 'claude',
+          mainAgent: { state: 'working', stateStartedAt: 900 },
+          subagents: [{ id: 'reviewer-1', state: 'waiting', startedAt: 900 }]
+        }
+      },
+      'conn-1'
+    )
+    const baseline = row(server)
+
+    vi.setSystemTime(1_500)
+    expect(
+      server.inferInterrupt({
+        paneKey: PANE,
+        baselineUpdatedAt: baseline.receivedAt,
+        baselineStateStartedAt: baseline.stateStartedAt,
+        baselinePrompt: baseline.prompt,
+        baselineAgentType: 'claude',
+        intent: 'ctrl-c'
+      })
+    ).toBe(true)
+    expect(row(server)).toMatchObject({
+      state: 'waiting',
+      mainAgent: { state: 'done', outcome: 'cancellation' },
+      subagents: [{ id: 'reviewer-1', state: 'waiting' }]
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})

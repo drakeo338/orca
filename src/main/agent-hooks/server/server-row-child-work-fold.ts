@@ -3,7 +3,7 @@ import {
   foldAgentLeadStatus,
   type AgentLeadStatusResolution
 } from '../../../shared/agent-lead-status-fold'
-import { agentChildWorkLivenessFromEvidence } from '../../../shared/agent-status-child-work-liveness'
+import { agentChildWorkLiveness } from '../../../shared/agent-status-child-work-liveness'
 import type { AgentStatusState, AgentSubagentSnapshot } from '../../../shared/agent-status-types'
 
 type RowChildWork = Pick<AgentHookEventPayload, 'claudeRunningNonAgentTask'> & {
@@ -17,13 +17,12 @@ export function foldMainAgentWithRowChildWork(
   leadState: AgentStatusState,
   row: RowChildWork
 ): AgentLeadStatusResolution {
-  return foldAgentLeadStatus({
-    leadState,
-    childWorkLiveness: agentChildWorkLivenessFromEvidence({
-      // Only the Codex lane feeds a child's wait into the fold, and Codex never folds here.
-      hasWaitingChildWork: false,
-      hasLiveAgentWork: row.payload.subagents?.some((child) => child.state === 'working') === true,
-      hasLiveNonAgentWork: row.claudeRunningNonAgentTask === true
-    })
-  })
+  const childWorkLiveness = agentChildWorkLiveness([
+    ...(row.payload.subagents?.map((child) => ({ kind: 'agent' as const, state: child.state })) ??
+      []),
+    ...(row.claudeRunningNonAgentTask
+      ? [{ kind: 'command' as const, state: 'working' as const }]
+      : [])
+  ])
+  return foldAgentLeadStatus({ leadState, childWorkLiveness })
 }
