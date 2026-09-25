@@ -13,6 +13,8 @@ export type AgentModelCatalogPersistence = {
   load: () => Promise<AgentModelCatalogEntry[]>
   /** Fire-and-forget, coalesced; a failed write never surfaces to a caller. */
   save: (entries: readonly AgentModelCatalogEntry[]) => void
+  /** Writes a coalesced save now; the delay timer is unref'd, so quit must not rely on it. */
+  flush: () => Promise<void>
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -109,12 +111,15 @@ export function createAgentModelCatalogFilePersistence(
   let timer: ReturnType<typeof setTimeout> | null = null
   let writing = Promise.resolve()
 
-  const flush = (): void => {
-    timer = null
+  const flush = (): Promise<void> => {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
     const entries = pending
     pending = null
     if (!entries) {
-      return
+      return writing
     }
     writing = writing.then(async () => {
       try {
@@ -126,6 +131,7 @@ export function createAgentModelCatalogFilePersistence(
         // Bookkeeping only; the in-memory store stays authoritative this run.
       }
     })
+    return writing
   }
 
   return {
@@ -149,6 +155,7 @@ export function createAgentModelCatalogFilePersistence(
         timer = setTimeout(flush, SAVE_COALESCE_MS)
         timer.unref?.()
       }
-    }
+    },
+    flush
   }
 }

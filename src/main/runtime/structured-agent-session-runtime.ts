@@ -180,6 +180,7 @@ export async function stopStructuredAgentSessionRuntime(options?: {
       failures.push(error)
     }
   }
+  await agentModelCatalogStore.flushPersistence()
   if (failures.length === 1) {
     throw failures[0]
   }

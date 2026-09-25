@@ -84,6 +84,10 @@ export class AgentModelCatalogStore {
     this.evictOverCap()
   }
 
+  flushPersistence(): Promise<void> {
+    return this.persistence?.flush() ?? Promise.resolve()
+  }
+
   get(fingerprint: string): AgentModelCatalogEntry | null {
     const entry = this.entries.get(fingerprint)
     if (!entry) {

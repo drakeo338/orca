@@ -143,7 +143,7 @@ describe('agent model catalog store', () => {
     let at = 1_000
     const store = new AgentModelCatalogStore({ now: () => at })
     const save = vi.fn()
-    void store.attachPersistence({ load: async () => [], save })
+    void store.attachPersistence({ load: async () => [], save, flush: async () => {} })
     store.recordSuccess('fp', 'claude', success('opus'))
     at += AGENT_MODEL_CATALOG_FRESH_MS
     store.recordSuccess('fp', 'claude', success('opus'))
@@ -174,6 +174,16 @@ describe('agent model catalog store', () => {
     // The failure died with the process: doubt is never a durable fact.
     expect(restarted.hasActiveFailure('fp-2')).toBe(false)
     expect(restarted.get('fp-2')).toBeNull()
+  })
+
+  it('writes a coalesced save at once when flushed', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'agent-model-catalog-'))
+    const store = new AgentModelCatalogStore()
+    await store.attachPersistence(createAgentModelCatalogFilePersistence(directory))
+    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
+    await store.flushPersistence()
+    const persisted = await createAgentModelCatalogFilePersistence(directory).load()
+    expect(persisted.map((entry) => entry.fingerprint)).toEqual(['fp-1'])
   })
 
   it('loads nothing from a malformed persistence file', async () => {
