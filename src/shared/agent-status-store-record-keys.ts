@@ -1,5 +1,6 @@
-// Keys the store derives from its own records. Stored records are frozen, so a record's key is
-// computed once instead of on every mutation's validation and every alias lookup.
+// Keys the store derives from its own records. A stored record is frozen, so a key re-derived for
+// every edge that touches the record (an alias re-validated with its child, a retired binding read
+// on every lookup) is computed once per record.
 
 import {
   serializeAgentChildWorkAliasKey,
@@ -30,15 +31,9 @@ function memoized<R extends object, V extends {} | null>(
   return value
 }
 
-const aliasKeys = new WeakMap<AgentChildWorkAliasRecord, string>()
 const bindingKeys = new WeakMap<AgentChildWorkAliasRecord, string>()
 type RetiredAlias = { alias: AgentChildWorkAliasInput; key: string }
 const retiredAliases = new WeakMap<AgentStatusTombstoneRecord, RetiredAlias | null>()
-const tombstoneKeysValid = new WeakMap<AgentStatusTombstoneRecord, boolean>()
-
-export function storedAliasKey(alias: AgentChildWorkAliasRecord): string {
-  return memoized(aliasKeys, alias, serializeAgentChildWorkAliasKey)
-}
 
 export function storedBindingKey(alias: AgentChildWorkAliasRecord): string {
   return memoized(bindingKeys, alias, serializeAgentChildWorkBindingKey)
@@ -52,17 +47,15 @@ export function storedRetiredAlias(tombstone: AgentStatusTombstoneRecord): Retir
   })
 }
 
-export function storedTombstoneKeyIsValid(tombstone: AgentStatusTombstoneRecord): boolean {
-  return memoized(tombstoneKeysValid, tombstone, (record) => {
-    switch (record.entity) {
-      case 'parent':
-        return deserializeAgentStatusSubject(record.key) !== null
-      case 'alias':
-        return deserializeAgentChildWorkBindingKey(record.key) !== null
-      case 'fact':
-        return deserializeAgentStatusFactKey(record.key) !== null
-      case 'child':
-        return true
-    }
-  })
+export function tombstoneKeyIsValid(tombstone: AgentStatusTombstoneRecord): boolean {
+  switch (tombstone.entity) {
+    case 'parent':
+      return deserializeAgentStatusSubject(tombstone.key) !== null
+    case 'alias':
+      return deserializeAgentChildWorkBindingKey(tombstone.key) !== null
+    case 'fact':
+      return deserializeAgentStatusFactKey(tombstone.key) !== null
+    case 'child':
+      return true
+  }
 }
