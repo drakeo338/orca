@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import type * as OsModule from 'node:os'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,10 +10,34 @@ import {
   setStoredAgentSessionHandoffStage,
   stopStoredAgentSessionOwnerForHandoff
 } from './agent-session-handoff-record-transitions'
+import type * as MachineIdentityModule from '../agent-hooks/managed-hook-owner-identity'
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
-import { currentAgentSessionHostRun, type AgentSessionHostRun } from './agent-session-host-run'
+import {
+  currentAgentSessionHostRun,
+  readAgentSessionHostRun,
+  type AgentSessionHostRun
+} from './agent-session-host-run'
+
+const machineId = vi.hoisted((): { hostname: string; override: string | undefined } => ({
+  hostname: 'home-wifi.local',
+  override: undefined
+}))
+
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof OsModule>()
+  return { ...actual, hostname: () => machineId.hostname }
+})
+
+vi.mock('../agent-hooks/managed-hook-owner-identity', async (importOriginal) => {
+  const actual = await importOriginal<typeof MachineIdentityModule>()
+  return {
+    ...actual,
+    readManagedHookHostIdentity: async () =>
+      machineId.override ?? (await actual.readManagedHookHostIdentity())
+  }
+})
 
 const NOW = 1_800_000_000_000
 const SESSION = 'session-alpha'
@@ -424,6 +449,42 @@ describe('the host run a lease is stamped with', () => {
     expect(store.hostRun).toMatchObject({
       pid: process.pid,
       machine: expect.stringMatching(new RegExp(`^${process.platform}:`))
+    })
+  })
+})
+
+describe('the machine a run is stamped with', () => {
+  afterEach(() => {
+    machineId.hostname = 'home-wifi.local'
+    machineId.override = undefined
+  })
+
+  it('is still this machine after the hostname changes, so its crashed run is not probed', async () => {
+    await establishOwner(await open(await readAgentSessionHostRun()))
+    // macOS renames the host when the network changes and no HostName is set.
+    machineId.hostname = 'office-network.local'
+    const restarted = await open(await readAgentSessionHostRun())
+    const probe = vi.fn(async () => MATCHED)
+
+    await reconcile(restarted, probe)
+
+    expect(probe).not.toHaveBeenCalled()
+    expect(restarted.getRecord(SESSION)?.lease).toMatchObject(previousAppRunEviction)
+  })
+
+  it('is another machine under a different machine id, so its lease is probed', async () => {
+    machineId.override = 'host-token:00000000-0000-4000-8000-000000000001'
+    await establishOwner(await open(await readAgentSessionHostRun()))
+    machineId.override = 'host-token:00000000-0000-4000-8000-000000000002'
+    const restarted = await open(await readAgentSessionHostRun())
+    const probe = vi.fn(async () => MATCHED)
+
+    await reconcile(restarted, probe)
+
+    expect(probe).toHaveBeenCalledOnce()
+    expect(restarted.getRecord(SESSION)?.lease).toMatchObject({
+      runtimeFence: 1,
+      deathEvidence: null
     })
   })
 })

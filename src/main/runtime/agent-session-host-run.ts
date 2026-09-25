@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { hostname } from 'node:os'
 import type { AgentSessionOwnerHostRun } from '../../shared/agent-session-record'
-import { readLinuxPidNamespace } from '../agent-hooks/managed-hook-owner-identity'
+import {
+  readLinuxPidNamespace,
+  readManagedHookHostIdentity
+} from '../agent-hooks/managed-hook-owner-identity'
 import { isProcessPidPresent } from './agent-session-process-identity-probe'
 
 /** This Orca process run; a lease stamp adds the fence the run granted. */
@@ -14,10 +16,14 @@ export function currentAgentSessionHostRun(): Promise<AgentSessionHostRun> {
   return current
 }
 
-async function readAgentSessionHostRun(): Promise<AgentSessionHostRun> {
-  let machine = `${process.platform}:${hostname()}`
+/** Unmemoized, for tests that stand up a second run on this machine. */
+export async function readAgentSessionHostRun(): Promise<AgentSessionHostRun> {
+  // Why not the hostname: macOS renames the host with the network, which would read a run that
+  // crashed before the change as another machine's. A machine with no stable id gets one per
+  // process, so its stamps never match and are probed.
+  let machine = `${process.platform}:${await readManagedHookHostIdentity()}`
   if (process.platform === 'linux') {
-    // Why: containers on one host share a hostname but not a pid space.
+    // Why: containers on one host can share its id but not its pid space.
     const namespace = await readLinuxPidNamespace(process.pid)
     machine = namespace ? `${machine}:${namespace}` : machine
   }
