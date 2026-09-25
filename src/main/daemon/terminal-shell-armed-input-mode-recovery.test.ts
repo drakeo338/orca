@@ -108,14 +108,15 @@ describe('armed input modes arm the unclean-death trigger', () => {
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })
 
-  it('re-asserts only the host modes after the ground, without a new owner', () => {
+  it('re-asserts only the host private modes after the ground, without a new owner', () => {
     const scanner = new TerminalShellLifecycleScanner()
     scanner.seedOwner('shell')
     const prompt = `\x1b[?1004h\x1b[>5u$ ${COMMAND_START}`
     expect(triggers(scanner, `${prompt}\x1b[?1003h\x1b[>1uRUN${COMMAND_DONE}`)).toBe(true)
     const generation = scanner.generation
 
-    expect(scanner.groundProcessBoundary()).toBe(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h\x1b[>5u`)
+    // Kitty flags are never re-asserted: the ground clears them and the next prompt re-pushes its own.
+    expect(scanner.groundProcessBoundary()).toBe(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`)
     expect(scanner.generation).toBe(generation)
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })

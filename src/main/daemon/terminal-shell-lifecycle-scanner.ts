@@ -83,7 +83,7 @@ export class TerminalShellLifecycleScanner {
   /** Scans the process-boundary ground plus a re-assert of the host's input modes,
    *  which never counts as a new owner; returns the bytes to inject. */
   groundProcessBoundary(): string {
-    const hostModes = this.inputModes.hostModes()
+    const hostModes = this.inputModes.hostPrivateModes()
     this.scan(PROCESS_BOUNDARY_GROUND)
     return `${PROCESS_BOUNDARY_GROUND}${this.inputModes.reassertHostModes(hostModes)}`
   }

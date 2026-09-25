@@ -5,13 +5,12 @@ const TRACKED_PRIVATE_MODES = new Set([9, 1000, 1002, 1003, 1004, 1005, 1006, 10
 // Why one key per screen: kitty flags are per screen, so ownership must be too.
 type ModeKey = number | 'kitty-main' | 'kitty-alt'
 // host: armed before any marker (ConPTY's ?1004h) or by a prompt a 133;C proved;
-// survives the ground. prompt: armed after 133;A/D, unproven until C. command:
+// its private modes survive the ground. Kitty flags never do: fish pops its own
+// before running a command and re-pushes at the next prompt. prompt: armed after 133;A/D, unproven until C. command:
 // armed after C. stale: left past a 133;D by a command or an unproven prompt.
 type ModeOwner = 'host' | 'prompt' | 'command' | 'stale'
 // Matches xterm.js's eviction limit, so the model drops the same entries.
 const KITTY_STACK_LIMIT = 16
-
-export type HostInputModes = { privateModes: number[]; kittyFlags: number }
 
 /**
  * Who armed each tracked input mode. A command that ends with a mode it armed
@@ -23,8 +22,6 @@ export class TerminalArmedInputModes {
   private readonly owners = new Map<ModeKey, ModeOwner>()
   // Who an enable arriving now belongs to. Without a 133;C nothing is ever a command's.
   private enableOwner: 'host' | 'prompt' | 'command' = 'host'
-  // The main-screen flags the host set: a command's push over them must not lose them.
-  private hostKittyFlags = 0
   // Mirrors xterm.js's kitty state: current flags, the other screen's flags, and a stack per screen.
   private kittyFlags = 0
   private kittyMainFlags = 0
@@ -80,10 +77,10 @@ export class TerminalArmedInputModes {
         mode === 2 ? this.kittyFlags | first : mode === 3 ? this.kittyFlags & ~first : first
     }
     if (this.kittyFlags === 0) {
-      this.disarm(this.kittyKey())
+      this.owners.delete(this.kittyKey())
     } else if (this.kittyFlags !== before) {
       // Why no host stickiness: new flags are a new writer's, not a repeat.
-      this.claim(this.kittyKey(), this.enableOwner)
+      this.owners.set(this.kittyKey(), this.enableOwner)
     }
   }
 
@@ -91,7 +88,7 @@ export class TerminalArmedInputModes {
   markCommandStart(): void {
     for (const [key, owner] of this.owners) {
       if (owner === 'prompt') {
-        this.claim(key, 'host')
+        this.owners.set(key, 'host')
       }
     }
     this.enableOwner = 'command'
@@ -115,37 +112,27 @@ export class TerminalArmedInputModes {
     return left
   }
 
-  hostModes(): HostInputModes {
-    const privateModes: number[] = []
+  hostPrivateModes(): number[] {
+    const modes: number[] = []
     for (const [key, owner] of this.owners) {
       if (owner === 'host' && typeof key === 'number') {
-        privateModes.push(key)
+        modes.push(key)
       }
     }
-    return { privateModes, kittyFlags: this.hostKittyFlags }
+    return modes
   }
 
-  /** After a ground (which lands on the main screen): re-arms `modes` as the host's; returns the bytes. */
-  reassertHostModes(modes: HostInputModes): string {
-    let bytes = ''
-    if (modes.privateModes.length > 0) {
-      bytes += `\x1b[?${modes.privateModes.join(';')}h`
-      for (const mode of modes.privateModes) {
-        this.claim(mode, 'host')
-      }
+  /** After a ground: re-arms `modes` as the host's; returns the bytes. */
+  reassertHostModes(modes: readonly number[]): string {
+    for (const mode of modes) {
+      this.owners.set(mode, 'host')
     }
-    if (modes.kittyFlags > 0) {
-      bytes += `\x1b[>${modes.kittyFlags}u`
-      this.applyKittyKeyboard('>', String(modes.kittyFlags))
-      this.claim('kitty-main', 'host')
-    }
-    return bytes
+    return modes.length > 0 ? `\x1b[?${modes.join(';')}h` : ''
   }
 
   /** `ESC c`: every mode is off, but a running command is still running. */
   reset(): void {
     this.owners.clear()
-    this.hostKittyFlags = 0
     this.kittyFlags = 0
     this.kittyMainFlags = 0
     this.kittyAltFlags = 0
@@ -161,32 +148,18 @@ export class TerminalArmedInputModes {
   // Why no claim when already armed: a pop or screen swap only uncovers flags an earlier writer set.
   private uncoverKittyFlags(): void {
     if (this.kittyFlags === 0) {
-      this.disarm(this.kittyKey())
+      this.owners.delete(this.kittyKey())
     } else if (!this.owners.has(this.kittyKey())) {
-      this.claim(this.kittyKey(), this.enableOwner)
+      this.owners.set(this.kittyKey(), this.enableOwner)
     }
   }
 
   private setArmed(key: number, armed: boolean): void {
     if (!armed) {
-      this.disarm(key)
+      this.owners.delete(key)
     } else if (this.owners.get(key) !== 'host') {
       // Host arming is sticky: a program re-sending the host's enable is a wire no-op.
-      this.claim(key, this.enableOwner)
-    }
-  }
-
-  private claim(key: ModeKey, owner: ModeOwner): void {
-    this.owners.set(key, owner)
-    if (key === 'kitty-main' && owner === 'host') {
-      this.hostKittyFlags = this.onAlternateScreen ? this.kittyMainFlags : this.kittyFlags
-    }
-  }
-
-  private disarm(key: ModeKey): void {
-    this.owners.delete(key)
-    if (key === 'kitty-main' && this.enableOwner !== 'command') {
-      this.hostKittyFlags = 0
+      this.owners.set(key, this.enableOwner)
     }
   }
 }
