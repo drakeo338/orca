@@ -214,6 +214,47 @@ describe('a send the host rejected because the agent never started', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('reads a message rejected while the chat was closed as not sent, and sends past it', async () => {
+    const reason = "Codex couldn't restart: spawn codex ENOENT."
+    mocks.call.mockImplementation(
+      async (
+        _target: unknown,
+        _method: unknown,
+        params: { envelope: { clientOperationId: string } }
+      ) => pendingResultFor(params.envelope.clientOperationId)
+    )
+    const target = { kind: 'local' } as const
+    const first = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target,
+        fence: 1,
+        submissions: NO_SUBMISSIONS
+      })
+    )
+    act(() => expect(first.result.current.send('hello')).toBe(true))
+    await waitFor(() => expect(first.result.current.outbox[0]?.state).toBe('dispatching'))
+    const id = first.result.current.outbox[0]!.clientMessageId
+    first.unmount()
+
+    // Reopened after the start failed, or after a quit settled the message as not sent.
+    const rejected = [
+      { ...pendingResultFor(id).value.submission, dispatchState: 'rejected' as const, reason }
+    ]
+    const { result } = renderHook(() =>
+      useStructuredAgentSessionOutbox({
+        sessionId: 'session-1',
+        target,
+        fence: 1,
+        submissions: rejected
+      })
+    )
+
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('rejected'))
+    act(() => expect(result.current.send('second')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+  })
+
   it('keeps the rejection when the journal settles the message before the send answers', async () => {
     const reason = "Codex couldn't restart: spawn codex ENOENT."
     let answer: (value: unknown) => void = () => undefined

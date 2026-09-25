@@ -125,8 +125,12 @@ export function reconcileStructuredAgentSessionOutbox(
       return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
     }
     // Accepted, then not delivered — the agent never started, or its start was refused. The text
-    // stays here for the user's Retry, and nothing queues behind it.
-    if (submission?.dispatchState === 'rejected' && entry.state === 'dispatching') {
+    // stays here for the user's Retry, and nothing queues behind it. `unconfirmed` is how a
+    // remount reads an entry it left dispatching; the journal has since answered it.
+    if (
+      submission?.dispatchState === 'rejected' &&
+      (entry.state === 'dispatching' || entry.state === 'unconfirmed')
+    ) {
       return [{ ...entry, state: 'rejected' as const }]
     }
     if (
