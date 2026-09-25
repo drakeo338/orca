@@ -96,6 +96,7 @@ describe('process boundary ground at a cold restore', () => {
     const checkpoint = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo,
+      pendingRecords: [],
       isFirstTake: true
     })
 
