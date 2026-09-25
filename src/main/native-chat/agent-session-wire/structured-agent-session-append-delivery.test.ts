@@ -52,7 +52,8 @@ function liveReader() {
     }
     return {
       statuses: items.flatMap((item) => (item.body.kind === 'status' ? [item.body.text] : [])),
-      submissions
+      submissions,
+      batches: events.slice(opened).filter((event) => event.type === 'batch').length
     }
   }
   return { received }
@@ -184,5 +185,40 @@ describe('an open chat receives every row its journal commits', () => {
     )
 
     expect(pane.received().statuses).toEqual(['written by a writer that publishes nothing'])
+  })
+})
+
+describe('an open chat receives each row once', () => {
+  it('when the provider frame that wrote it also publishes', async () => {
+    const pane = liveReader()
+    const sink = providerSink()
+
+    sink.appendItem(
+      { provider: 'orca', clientMessageId: 'streamed' },
+      { kind: 'status', text: 'streamed row' }
+    )
+    sink.publish()
+    await host.flushStreamedEvents(SESSION)
+
+    expect(pane.received().statuses).toEqual(['streamed row'])
+  })
+
+  it('when a writer publishes the row it appended', async () => {
+    const pane = liveReader()
+    const journal = host['sessions'].get(SESSION)?.journal
+    if (!journal) {
+      throw new Error('the attached chat has no journal')
+    }
+
+    await journal.appendItem(
+      { provider: 'orca', clientMessageId: 'host-row' },
+      { kind: 'status', text: 'host row' },
+      { fence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0 }
+    )
+    host['subscribers'].publish(SESSION, journal)
+
+    expect(pane.received().statuses).toEqual(['host row'])
+    // The second publish found nothing past the reader's cursor, so it sent nothing at all.
+    expect(pane.received().batches).toBe(1)
   })
 })

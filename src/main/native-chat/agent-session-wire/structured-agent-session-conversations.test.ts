@@ -6,6 +6,7 @@ import type { AgentSessionJournalIdentity } from '../../../shared/agent-session-
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
 import { StructuredAgentSessionConversations } from './structured-agent-session-conversations'
+import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { hostTestAttachParams } from './structured-agent-session-host-test-data'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -66,6 +67,19 @@ describe('a conversation delivers what its journal commits', () => {
     // Already delivered when the writer's await returns, as an explicit publish would have been.
     expect(deliver).toHaveBeenCalledOnce()
     expect(deliver).toHaveBeenCalledWith('session-1', journal)
+  })
+
+  it('binds a handle set through a plain map reference', async () => {
+    const deliver = vi.fn()
+    // Collaborators hold the host's map as a plain `Map`; `set` still reaches the binding.
+    const sessions: Map<string, StructuredAgentSessionHostSession> =
+      new StructuredAgentSessionConversations({ deliver, onDeliveryError: vi.fn() })
+    const journal = await openJournal('a')
+    sessions.set('session-1', session(journal))
+
+    await appendStatus(journal, 'through the plain map')
+
+    expect(deliver).toHaveBeenCalledExactlyOnceWith('session-1', journal)
   })
 
   it('delivers an epoch replacement, which readers must reload from', async () => {
