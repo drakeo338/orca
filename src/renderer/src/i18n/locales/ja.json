@@ -17047,8 +17047,8 @@
         "activityApproval": "承認待ち: {{value0}}",
         "activityQuestion": "回答待ち: {{value0}}",
         "activityMidReply": "返信の途中でした",
-        "activitySubagentOne": "サブエージェント実行中: {{value0}}",
-        "activitySubagentMany": "{{value0}} 個のサブエージェントが実行中",
+        "activitySubagentOne": "サブ Agent 実行中: {{value0}}",
+        "activitySubagentMany": "{{value0}} 個のサブ Agent が実行中",
         "activityMonitorOne": "監視中: {{value0}}",
         "activityMonitorMany": "{{value0}} 個のバックグラウンドタスクを監視中"
       },
