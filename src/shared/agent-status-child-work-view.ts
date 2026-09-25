@@ -118,10 +118,7 @@ export function projectAgentChildWorkViews(
   aliases: readonly AgentChildWorkViewAlias[]
 ): AgentChildWorkView[] {
   const byId = new Map(records.map((record) => [record.childWorkId, record]))
-  const aliasesByChild = new Map<AgentChildWorkId, AgentChildWorkViewAlias[]>()
-  for (const alias of aliases) {
-    aliasesByChild.set(alias.childWorkId, [...(aliasesByChild.get(alias.childWorkId) ?? []), alias])
-  }
+  const aliasesByChild = Map.groupBy(aliases, (alias) => alias.childWorkId)
   return records.map((record) => {
     const providerId = providerIdFor(record, aliasesByChild.get(record.childWorkId) ?? [])
     const owner = resolvedOwner(record, byId)
@@ -159,12 +156,7 @@ export function agentChildWorkOwnedLiveness(
   views: readonly AgentChildWorkOwnershipView[],
   ownerId: AgentChildWorkId
 ): AgentChildWorkLiveness {
-  const owned = new Map<AgentChildWorkId, AgentChildWorkOwnershipView[]>()
-  for (const view of views) {
-    if (view.parentChildWorkId !== undefined) {
-      owned.set(view.parentChildWorkId, [...(owned.get(view.parentChildWorkId) ?? []), view])
-    }
-  }
+  const owned = Map.groupBy(views, (view) => view.parentChildWorkId)
   const seen = new Set<AgentChildWorkId>([ownerId])
   const frontier = [ownerId]
   const liveDescendants: AgentChildWorkOwnershipView[] = []
