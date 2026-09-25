@@ -15027,9 +15027,7 @@
           "noPython": "Python est introuvable sur cet ordinateur. Installez-le depuis [python.org](https://www.python.org/downloads/), puis réexécutez la cellule.",
           "kernelDied": "Le kernel est mort.",
           "localOnly": "Les cellules du notebook ne peuvent s'exécuter que pour des fichiers sur cet ordinateur.",
-          "pythonOnly": "Seuls les notebooks Python peuvent s'exécuter dans Orca.",
-          "chooseAnother": "Choisir un autre",
-          "installFailed": "L'installation d'ipykernel a échoué. Exécutez `{{command}}` vous-même, ou créez un environnement virtuel pour ce projet avec `{{venvCommand}}` et sélectionnez-le comme kernel."
+          "pythonOnly": "Seuls les notebooks Python peuvent s'exécuter dans Orca."
         },
         "MarkdownPreview": {
           "e4683f70c4": "Annuler",

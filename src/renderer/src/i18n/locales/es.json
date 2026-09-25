@@ -13091,11 +13091,9 @@
           "missingIpykernelTitle": "¿Instalar ipykernel?",
           "missingIpykernel": "Ejecutar celdas con '{{env}}' requiere el paquete ipykernel.",
           "copyCommand": "Copiar comando",
-          "chooseAnother": "Elegir otro",
           "install": "Instalar",
           "kernelStartFailed": "El kernel no pudo iniciarse.",
           "noPython": "No se encontró Python en este equipo. Instálalo desde [python.org](https://www.python.org/downloads/) y vuelve a ejecutar la celda.",
-          "installFailed": "No se pudo instalar ipykernel. Ejecuta `{{command}}` tú mismo o crea un entorno virtual para este proyecto con `{{venvCommand}}` y selecciónalo como kernel.",
           "kernelDied": "El kernel murió.",
           "localOnly": "Las celdas del notebook solo pueden ejecutarse para archivos de este equipo.",
           "pythonOnly": "Solo los notebooks de Python pueden ejecutarse en Orca."

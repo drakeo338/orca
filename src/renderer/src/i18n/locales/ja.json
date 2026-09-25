@@ -14924,9 +14924,7 @@
           "noPython": "このコンピュータに Python が見つかりません。[python.org](https://www.python.org/downloads/) からインストールして、セルを再実行してください。",
           "kernelDied": "カーネルが停止しました。",
           "localOnly": "ノートブックセルはこのコンピュータ上のファイルでのみ実行できます。",
-          "pythonOnly": "Orca では Python ノートブックのみ実行できます。",
-          "chooseAnother": "その他を選択",
-          "installFailed": "ipykernel のインストールに失敗しました。`{{command}}` を自分で実行するか、このプロジェクト用の仮想環境を `{{venvCommand}}` で作成してカーネルとして選択してください。"
+          "pythonOnly": "Orca では Python ノートブックのみ実行できます。"
         },
         "MarkdownPreview": {
           "e4683f70c4": "キャンセル",

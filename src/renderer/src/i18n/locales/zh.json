@@ -14924,9 +14924,7 @@
           "noPython": "在此电脑上未找到 Python。请从 [python.org](https://www.python.org/downloads/) 安装，然后重新运行单元格。",
           "kernelDied": "内核已停止。",
           "localOnly": "笔记本单元格只能针对此电脑上的文件运行。",
-          "pythonOnly": "Orca 中只能运行 Python 笔记本。",
-          "chooseAnother": "选择其他",
-          "installFailed": "安装 ipykernel 失败。请自行运行 `{{command}}`，或使用 `{{venvCommand}}` 为此项目创建虚拟环境并将其选作内核。"
+          "pythonOnly": "Orca 中只能运行 Python 笔记本。"
         },
         "MarkdownPreview": {
           "e4683f70c4": "取消",
