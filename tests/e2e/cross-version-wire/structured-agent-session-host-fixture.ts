@@ -73,6 +73,7 @@ export function structuredHostStub(
     requestHandoff: vi.fn(async () => ({ status: { owner: 'native' } })),
     handoffStatus: vi.fn(async () => ({ owner: 'native' })),
     readOptions: vi.fn(async () => ({ models: [], current: { model: 'gpt-live' } })),
+    modelCatalog: vi.fn(() => ({ origin: 'unknown' as const })),
     readCommands: vi.fn(() => ({ commands: [{ name: 'clear', kind: 'command' as const }] })),
     // History and subscribe open a persisted chat's journal on first read before answering.
     ensureReadable: vi.fn(async () => 'readable' as const),
@@ -104,6 +105,7 @@ export function installableHost(
 ): StructuredAgentSessionHost {
   const host = {
     ...hostCalls,
+    deps: { modelCatalog: { read: hostCalls.modelCatalog } },
     restartResume: {
       list: hostCalls.restartResumableList,
       listFailures: hostCalls.restartResumableFailures,

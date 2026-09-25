@@ -39,8 +39,11 @@ export type StructuredAgentSessionLifetimeContext = {
   now: () => number
   /** Drops the session's row from the agent-status store; see `forgetStructuredAgentSession`. */
   forgetStatus: (sessionId: string) => void
-  /** Quit-only witness validation after provider exit and event drain, before prompt cancellation. */
-  onStoppedWork?: (sessionId: string) => void
+  /** Quit-only snapshot taken immediately before the provider child is stopped. */
+  restartWitness?: {
+    beforeStop: (sessionId: string) => void
+    stopped: (sessionId: string) => void
+  }
   /** Teardown only: the app itself is going away, so a turn this eviction cuts off is noted. */
   appGoingAway?: boolean
 }
@@ -93,9 +96,13 @@ export async function evictHeldStructuredAgentSession(
     owesProviderChildWindDown: owesWindDown,
     eventSink: context.runtimeState.eventSinkFor(sessionId),
     adapter: context.deps.adapter,
+    ...(context.restartWitness
+      ? { beforeProviderChildStop: () => context.restartWitness?.beforeStop(sessionId) }
+      : {}),
     // Host state must not disagree with the adapter for the seven steps in between.
     onProviderChildStopped: () => {
       session.hasProviderChild = false
+      context.restartWitness?.stopped(sessionId)
     },
     forget: async () => {
       await forgetStructuredAgentSession(context, sessionId)
@@ -103,7 +110,6 @@ export async function evictHeldStructuredAgentSession(
     },
     discardSink: () => context.runtimeState.discardEventSink(sessionId),
     settleWork: async () => {
-      context.onStoppedWork?.(sessionId)
       const settled = await settleStructuredAgentSessionDeadGeneration({
         journal: session.journal,
         sessionId,
