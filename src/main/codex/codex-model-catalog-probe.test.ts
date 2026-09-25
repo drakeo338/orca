@@ -53,6 +53,8 @@ describe('codex model catalog probe', () => {
       OPENAI_BASE_URL: 'https://gateway.example',
       CODEX_HOME: '/homes/account-a'
     })
+    // A short-lived probe must not start plugin marketplace clones that outlive its teardown.
+    expect(invocations[0]!.args.join(' ')).toContain('features.plugins=false')
   })
 
   it('refuses an empty listing rather than reporting it as a catalog', async () => {
