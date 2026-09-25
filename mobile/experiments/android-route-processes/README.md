@@ -31,17 +31,17 @@ provided the proposal through orchestration, which was read before the experimen
 event timestamps, memory readings and cleanup receipts from the measured pass.
 Earlier-run logcat lines and unrelated emulator process listings were omitted.
 
-| Check | Actual observation |
-| --- | --- |
-| Separate app processes | A PID **5740**, B PID **5854**, same APK; manifest `:route_a` / `:route_b`. These are app PIDs, not just WebView renderer PIDs. |
-| Identical URL, separate routing | Every report used `http://localhost:5173/`; SOCKS CONNECT targets were `localhost:5173`. A served route `a`, B served route `b`. |
-| Concurrent fetch | Each route delivered at least three interval fetch reports in the same post-load observation window. |
-| Concurrent real HMR | Editing both Vite modules to revisions 2 and 3 produced each route's `hmr` report through Vite's WebSocket without reloading either document. |
-| Screen switching | `am start` switched A → B → A → B; lifecycle logs show stop/resume and retained PIDs/documents. No Activity embedding or custom compositor. |
-| Process death | `run-as dev.orca.routeproof kill -9 5740` terminated only A; process table confirmed its absence, B retained PID 5854 and received revision 4. |
-| Recovery | Starting A created PID **6046**, loaded current revision 3, then accepted revision 4 over HMR. B did not reload. |
-| Storage | Both initially saw empty cookies/localStorage. Each wrote and continued reading its own route value at the identical origin. Restarted A read its persisted `a` values. |
-| Memory | App-process PSS snapshots: A **69,940 KiB**, B **75,909 KiB** (about 142 MiB combined). Renderer memory is **not included**; these are single snapshots, not marginal cost or a production budget. |
+| Check                           | Actual observation                                                                                                                                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Separate app processes          | A PID **5740**, B PID **5854**, same APK; manifest `:route_a` / `:route_b`. These are app PIDs, not just WebView renderer PIDs.                                                                    |
+| Identical URL, separate routing | Every report used `http://localhost:5173/`; SOCKS CONNECT targets were `localhost:5173`. A served route `a`, B served route `b`.                                                                   |
+| Concurrent fetch                | Each route delivered at least three interval fetch reports in the same post-load observation window.                                                                                               |
+| Concurrent real HMR             | Editing both Vite modules to revisions 2 and 3 produced each route's `hmr` report through Vite's WebSocket without reloading either document.                                                      |
+| Screen switching                | `am start` switched A → B → A → B; lifecycle logs show stop/resume and retained PIDs/documents. No Activity embedding or custom compositor.                                                        |
+| Process death                   | `run-as dev.orca.routeproof kill -9 5740` terminated only A; process table confirmed its absence, B retained PID 5854 and received revision 4.                                                     |
+| Recovery                        | Starting A created PID **6046**, loaded current revision 3, then accepted revision 4 over HMR. B did not reload.                                                                                   |
+| Storage                         | Both initially saw empty cookies/localStorage. Each wrote and continued reading its own route value at the identical origin. Restarted A read its persisted `a` values.                            |
+| Memory                          | App-process PSS snapshots: A **69,940 KiB**, B **75,909 KiB** (about 142 MiB combined). Renderer memory is **not included**; these are single snapshots, not marginal cost or a production budget. |
 
 The measured pass completed the scenario in about 5.4 seconds after A's first
 observed load. This is not a cold-start latency benchmark: it excludes install,
@@ -92,15 +92,15 @@ switching is observed; product back navigation, a shared tab strip, transitions,
 keyboard integration and accessibility are untested. A native full-screen browser
 screen is simpler to investigate next than cross-process view embedding.
 
-| Alternative | Comparison |
-| --- | --- |
-| One process, one proxy, switch active route | Least native lifecycle code, but cannot preserve two independently routed live documents at the same URL. Existing connections and subsequent requests also complicate switching. Not equivalent to the requirement. |
-| AndroidX profiles in one process | Useful storage separation; the tested WebKit API's proxy controller is process-specific, not a per-profile route. It does not remove this network-routing conflict. |
-| One local HTTP gateway with unique ports/hostnames | Can multiplex routes, but changes origin/URL and can require rewriting dev-server WebSocket or redirect behavior. Does not preserve the stated same-origin requirement. |
-| Request interception | Introduces a replacement network stack and does not provide general WebSocket interception; less durable than the platform proxy for real HMR. |
-| VPN or external browser | Adds device-level permission/routing and lifecycle ownership; same-destination route ambiguity and automation ownership still need solving. Not a simpler drop-in. |
-| Existing server-hosted browser | Already owns desktop browser automation and background execution; simplest way to retain those capabilities today, with the current streamed interaction tradeoff. |
-| Two fixed Activity processes | Observed solution to concurrent same-URL routing, at a measurable memory cost; broader product integration remains work. |
+| Alternative                                        | Comparison                                                                                                                                                                                                           |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One process, one proxy, switch active route        | Least native lifecycle code, but cannot preserve two independently routed live documents at the same URL. Existing connections and subsequent requests also complicate switching. Not equivalent to the requirement. |
+| AndroidX profiles in one process                   | Useful storage separation; the tested WebKit API's proxy controller is process-specific, not a per-profile route. It does not remove this network-routing conflict.                                                  |
+| One local HTTP gateway with unique ports/hostnames | Can multiplex routes, but changes origin/URL and can require rewriting dev-server WebSocket or redirect behavior. Does not preserve the stated same-origin requirement.                                              |
+| Request interception                               | Introduces a replacement network stack and does not provide general WebSocket interception; less durable than the platform proxy for real HMR.                                                                       |
+| VPN or external browser                            | Adds device-level permission/routing and lifecycle ownership; same-destination route ambiguity and automation ownership still need solving. Not a simpler drop-in.                                                   |
+| Existing server-hosted browser                     | Already owns desktop browser automation and background execution; simplest way to retain those capabilities today, with the current streamed interaction tradeoff.                                                   |
+| Two fixed Activity processes                       | Observed solution to concurrent same-URL routing, at a measurable memory cost; broader product integration remains work.                                                                                             |
 
 Recommendation: **go for bounded Android native-routing feasibility; no-go for a
 claim of desktop-parity mobile browsing/automation based on this experiment alone.**
@@ -155,7 +155,7 @@ manual cleanup of these experiment-owned resources; the emulator is caller-owned
 Focused static checks:
 
 ```sh
-ORCA_BACKGROUND_LAUNCH=1 pnpm exec tsc -p mobile/experiments/android-route-processes/tsconfig.json
+ORCA_BACKGROUND_LAUNCH=1 pnpm --dir mobile run typecheck:android-route-proof
 ORCA_BACKGROUND_LAUNCH=1 pnpm exec oxlint mobile/experiments/android-route-processes/*.ts
 ```
 
