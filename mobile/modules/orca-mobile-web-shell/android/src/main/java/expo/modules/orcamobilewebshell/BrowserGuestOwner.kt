@@ -34,13 +34,16 @@ internal class BrowserGuestOwner {
       val endpoint = message.replyTo
       if (error != null || endpoint == null) {
         current.open.completeExceptionally(IllegalStateException(error ?: "guest_endpoint_missing"))
-        current.retired = true
+        retire(current)
       } else {
         current.endpoint = endpoint
         try {
           endpoint.binder.linkToDeath({ main.post { died(current) } }, 0)
-          if (current.retired) send(current, 2, 0, "")
-        } catch (_: RemoteException) { died(current) }
+          if (current.retired) requestClose(current)
+        } catch (error: RemoteException) {
+          current.open.completeExceptionally(IllegalStateException("guest_transport_unavailable", error))
+          retire(current)
+        }
       }
     } else if (message.arg1 == 0) {
       if (error != null) {
@@ -75,15 +78,14 @@ internal class BrowserGuestOwner {
             putExtra("route", route)
           })
         } catch (error: Exception) {
-          died(current)
+          current.task.stop()
+          lease = null
           throw error
         }
         main.postDelayed({
           if (!result.isDone && lease === current) {
-            current.retired = true
-            current.task.stop()
             result.completeExceptionally(IllegalStateException("guest_open_timeout"))
-            current.endpoint?.let { send(current, 2, 0, "") }
+            retire(current)
           }
         }, 15000)
       } catch (error: Exception) { result.completeExceptionally(error) }
@@ -101,7 +103,10 @@ internal class BrowserGuestOwner {
         require(request.length <= 65536) { "command_too_large" }
         val id = ++sequence
         current.pending[id] = result
-        send(current, 1, id, request)
+        try { send(current, 1, id, request) } catch (error: Exception) {
+          current.pending.remove(id)
+          throw error
+        }
         main.postDelayed({
           if (current.pending.remove(id) != null) {
             result.completeExceptionally(IllegalStateException("guest_command_timeout"))
@@ -174,7 +179,6 @@ internal class BrowserGuestOwner {
   fun destroy() {
     main.post {
       lease?.let { current ->
-        current.task.stop()
         retire(current)
       }
     }
@@ -188,11 +192,21 @@ internal class BrowserGuestOwner {
   }
 
   private fun retire(current: Lease) {
+    if (current.retired) return
     current.retired = true
     current.task.stop()
+    current.open.completeExceptionally(IllegalStateException("guest_closed"))
+    current.resume?.completeExceptionally(IllegalStateException("guest_closed"))
+    current.resume = null
     current.pending.values.forEach { it.completeExceptionally(IllegalStateException("guest_closed")) }
     current.pending.clear()
-    current.endpoint?.let { send(current, 2, 0, "") }
+    requestClose(current)
+  }
+
+  private fun requestClose(current: Lease) {
+    try { current.endpoint?.let { send(current, 2, 0, "") } } catch (error: Exception) {
+      current.close?.completeExceptionally(error)
+    }
   }
 
   private fun send(current: Lease, operation: Int, id: Int, request: String) {
@@ -201,7 +215,10 @@ internal class BrowserGuestOwner {
         what = operation; arg1 = id
         data = Bundle().apply { putString("generation", current.generation); putString("request", request) }
       })
-    } catch (_: RemoteException) { died(current) }
+    } catch (error: RemoteException) {
+      // A failed transaction can have taken effect; only the death recipient frees the lease.
+      throw IllegalStateException("guest_transport_unavailable", error)
+    }
   }
 
   private fun died(current: Lease) {

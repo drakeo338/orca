@@ -70,12 +70,6 @@ final class EngineCdp implements AutoCloseable {
 
     JSONObject command(String method) throws Exception { return command(method, new JSONObject()); }
 
-    Object evaluate(String expression) throws Exception {
-        JSONObject result = command("Runtime.evaluate", new JSONObject().put("expression", expression).put("returnByValue", true));
-        if (result.has("exceptionDetails")) throw new IllegalStateException(result.toString());
-        return result.getJSONObject("result").opt("value");
-    }
-
     @Override public void close() {
         if (socket != null) socket.cancel();
         client.connectionPool().evictAll();

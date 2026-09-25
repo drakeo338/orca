@@ -30,6 +30,9 @@ This fixture does not establish full network isolation or WebRTC policy.
   close and resume. Binder death rejects pending commands and releases the slot.
   One command may be in flight. Startup, commands, and close confirmation are
   bounded; ambiguous startup fails closed rather than admitting another guest.
+  A failed Binder send reports `guest_transport_unavailable`, never proves death,
+  and never retries the request. Even a failed close retains the occupied slot
+  until the registered death recipient fires.
 - Guest pause preserves its document and rejects new commands as
   `guest_not_foreground`. Explicit `resumeNativeBrowser` waits for actual native
   resume. The standard RN headless-task API keeps the **existing shell runtime**
@@ -46,7 +49,8 @@ This fixture does not establish full network isolation or WebRTC policy.
 - Commands are navigation, by-value evaluation, engine AX tree, viewport PNG,
   engine pointer click and text insertion. Native request strings are capped at
   64 Ki characters and replies at 240,000 characters, below Binder's shared
-  transaction budget. Large screenshots fail explicitly; this is not a streaming
+  transaction limit; the caps cannot reserve space in the shared buffer.
+  Large screenshots fail explicitly; this is not a streaming
   file channel. Evaluation exceptions reject, rather than looking successful.
 - Enabling WebView debugging exposes its normal same-UID and device-owner shell
   access on stock Android. The wrapper cannot make Chromium's socket app-exclusive.
@@ -102,3 +106,30 @@ Additional checks: `node --test mobile/plugins/android-browser-process.test.cjs`
 repository changed-code quality gate. Native route unit tests cover every
 profile dimension, stable identity across proxy ports, loopback admission and
 rejection of native-resource navigation schemes.
+
+## Lifecycle regression checks and activation gates
+
+`ORCA_BACKGROUND_LAUNCH=1 ./gradlew :orca-mobile-web-shell:testBrowserLifecycle`
+from `mobile/android` compiles the actual `BrowserGuestOwner.kt` and
+`BrowserGuestReactTask.kt` against deterministic Android/RN boundary doubles.
+`testDebugUnitTest` also runs it. The suite injects live-endpoint transaction and
+dead-object errors, checks no replay or premature profile reuse, distinguishes
+close failure from death confirmation, preserves launch errors, and checks
+resume teardown, task tokens, startup timeout and stale generations. It does not
+simulate kernel buffer pressure, Android task ordering, Chromium or React reload;
+route parsing is stubbed here and covered by the native route unit tests.
+
+**Production activation remains blocked on replacement-owner lifetime proof.**
+Each Expo module constructs its own owner; `OnDestroy` only posts retirement.
+A replacement module can therefore have an empty lease while the old guest is
+still alive, and the single-task Activity has no replacement-owner handshake in
+`onNewIntent`. The per-owner tests cannot establish Android ordering or make
+that process-wide ownership safe. Before enabling the seam, test actual React
+reload/open racing old-owner teardown and establish process-wide ownership until
+confirmed death. This change retains the default-disabled build gate and does
+not claim to solve that race.
+
+Hidden creation and commands while paused also remain activation gates: this
+fixture always launches a foreground Activity and rejects every command while
+stopped. Decoupling page lifetime from presentation and choosing the matching
+same-runtime task lifetime require a separate design and Android proof.
