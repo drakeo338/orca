@@ -6,7 +6,8 @@ import {
 } from '../../../../shared/agent-session-option-catalog'
 import {
   getCommitMessageModelDiscoveryHostKeyForLocalRuntime,
-  getCommitMessageModelDiscoveryHostKeyForScope
+  getCommitMessageModelDiscoveryHostKeyForScope,
+  LOCAL_COMMIT_MESSAGE_HOST_KEY
 } from '../../../../shared/commit-message-host-key'
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { getConnectionIdFromState } from '@/lib/connection-context'
@@ -19,7 +20,6 @@ import {
   getRuntimeGitScope,
   type RuntimeGitContext
 } from '@/runtime/runtime-git-client'
-import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import type {
   AgentSessionModelCatalogResult,
@@ -75,20 +75,6 @@ export function resolveNativeChatModelDiscoveryContext(
   }
 }
 
-const RUNTIME_HOST_KEY_PREFIX = 'runtime:'
-
-/** The runtime that owns a host catalog for this key, or null where none does
- *  (SSH relays and WSL distros have no structured runtime to ask). */
-function hostCatalogTargetForKey(hostKey: string): RuntimeClientTarget | null {
-  if (hostKey === 'local') {
-    return { kind: 'local' }
-  }
-  if (hostKey.startsWith(RUNTIME_HOST_KEY_PREFIX)) {
-    return { kind: 'environment', environmentId: hostKey.slice(RUNTIME_HOST_KEY_PREFIX.length) }
-  }
-  return null
-}
-
 function catalogModelsFromHostCatalog(
   agent: 'claude' | 'codex',
   models: AgentSessionModelOption[]
@@ -112,13 +98,12 @@ function catalogModelsFromHostCatalog(
 
 /** Null when the host has no listing yet or predates the surface (`forbidden`
  *  or `method_not_found`) — the caller then falls back to the CLI listing. */
-async function readHostCatalogModels(
-  agent: 'claude' | 'codex',
-  target: RuntimeClientTarget
+async function readLocalHostCatalogModels(
+  agent: 'claude' | 'codex'
 ): Promise<CatalogModel[] | null> {
   try {
     const result = await callStructuredAgentSession<AgentSessionModelCatalogResult>(
-      target,
+      { kind: 'local' },
       'agentSession.modelCatalog',
       { agent }
     )
@@ -136,18 +121,15 @@ export async function discoverNativeChatCatalogModels(
   context: RuntimeGitContext,
   hostKey?: string
 ): Promise<CatalogModel[] | null> {
-  // Claude/Codex read the host's one model catalog where a structured runtime
-  // owns one; the CLI listing below remains only for hosts without a store
-  // (SSH, WSL) and as a transitional answer while a host has never listed.
+  // Claude/Codex on this machine read its host model catalog; the CLI listing
+  // below remains for every other host and while this one has never listed.
   const hostCatalogAgent =
     agent === 'claude' ? ('claude' as const) : agent === 'codex' ? ('codex' as const) : null
-  if (hostCatalogAgent && hostKey) {
-    const target = hostCatalogTargetForKey(hostKey)
-    if (target) {
-      const fromHost = await readHostCatalogModels(hostCatalogAgent, target)
-      if (fromHost) {
-        return fromHost
-      }
+  // Only `local` proves a native pane: a paired runtime's key also covers its SSH/WSL worktrees.
+  if (hostCatalogAgent && hostKey === LOCAL_COMMIT_MESSAGE_HOST_KEY) {
+    const fromHost = await readLocalHostCatalogModels(hostCatalogAgent)
+    if (fromHost) {
+      return fromHost
     }
   }
   const result = await discoverRuntimeCommitMessageModels(context, agent)
