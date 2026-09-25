@@ -327,4 +327,33 @@ describe('a Claude cancel with a live subagent (captured)', () => {
       server.stop()
     }
   })
+
+  it('settles the drained row as a stopped turn, never a completed one', async () => {
+    const server = await startServer()
+    try {
+      for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+        await post(server, hookAt(records, index))
+      }
+      expect(pressCtrlC(server)).toBe(true)
+      await post(server, hookAt(records, 9))
+      expect(row(server)).toMatchObject({ state: 'working' })
+      expect(row(server).turnCompletedAt).toBeUndefined()
+
+      // Why: a completion stamp or a done without `interrupted` is what renderers announce as finished.
+      for (const index of [4, 9]) {
+        await post(server, {
+          ...hookAt(records, index),
+          payload: { ...hookAt(records, index).payload, hook_event_name: 'SubagentStop' }
+        })
+      }
+      expect(row(server)).toMatchObject({
+        state: 'done',
+        interrupted: true,
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+      expect(row(server).turnCompletedAt).toBeUndefined()
+    } finally {
+      server.stop()
+    }
+  })
 })
