@@ -167,7 +167,8 @@ describe('child-work admission of sparse observations', () => {
         outcome: 'succeeded',
         observedAt: 20,
         parentChildWorkId: 'child-spawner',
-        lastMessage: 'First run done'
+        lastMessage: 'First run done',
+        providerTiming: { startedAt: 12, completedAt: 20 }
       })
     )
     const resume = (overrides: Partial<AgentChildWorkAnnounceRequest> = {}) =>
@@ -180,12 +181,15 @@ describe('child-work admission of sparse observations', () => {
     return { store, resume }
   }
 
-  it('carries labels and tokens into a resumed invocation but not its ending or spawner', () => {
+  it('carries labels and tokens into a resumed invocation but not its ending, timing or spawner', () => {
     const { store, resume } = settledFirstRun()
+    expect(store.getChild('child-1')?.providerTiming).toEqual({ startedAt: 12, completedAt: 20 })
     expect(resume()).toMatchObject({ accepted: true })
     const child = store.getChild('child-1')
     expect(child).toMatchObject({ membership: 'live', ...described })
     expect(child).not.toHaveProperty('lastMessage')
+    // The first run's completion time would claim the live restart had already finished.
+    expect(child).not.toHaveProperty('providerTiming')
     // Restarted by the main agent: it no longer nests under the child that first spawned it.
     expect(child).not.toHaveProperty('parentChildWorkId')
   })

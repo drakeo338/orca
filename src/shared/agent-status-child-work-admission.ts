@@ -29,9 +29,9 @@ export type AgentChildWorkObservationAlias = {
 }
 
 /** An observation may be sparse, and raw provider text is fine: admission folds text to one line.
- *  An omitted or malformed label, token count, residency or timing keeps its stored value; the
- *  owner, last message and a definite outcome last only for their invocation. Tokens never
- *  shrink. Omitting `operation` clears it. */
+ *  An omitted or malformed label, token count or residency keeps its stored value; the owner,
+ *  last message, provider timing and a definite outcome last only for their invocation. Tokens
+ *  never shrink. Omitting `operation` clears it. */
 export type AgentChildWorkObservationFields = {
   kind: AgentChildWorkKind
   state: AgentChildWorkState

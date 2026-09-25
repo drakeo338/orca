@@ -206,7 +206,6 @@ function mergeObservationFacts(
     agentType: said.agentType ?? prior?.agentType,
     model: said.model ?? prior?.model,
     residency: said.residency ?? prior?.residency,
-    providerTiming: said.providerTiming ?? prior?.providerTiming,
     // Cumulative, so a late or duplicate frame never shrinks it.
     totalTokens:
       said.totalTokens !== undefined && prior?.totalTokens !== undefined
@@ -215,6 +214,8 @@ function mergeObservationFacts(
     // Whoever started this run owns it; a restart names its own spawner, or none for the main agent.
     parentChildWorkId: said.parentChildWorkId ?? run?.parentChildWorkId,
     lastMessage: said.lastMessage ?? run?.lastMessage,
+    // The provider's start and end of this run: a restart has not completed.
+    providerTiming: said.providerTiming ?? run?.providerTiming,
     // Its absence means the child stopped doing it.
     operation: said.operation
   }
