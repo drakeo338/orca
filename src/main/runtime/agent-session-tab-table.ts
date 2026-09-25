@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { isAgentSessionId, type AgentSessionRecord } from '../../shared/agent-session-record'
 import { isAgentSessionSurfaceTabId } from '../../shared/agent-session-surface-tab-id'
 import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
@@ -40,14 +39,15 @@ export class AgentSessionTabTable {
 
   /**
    * Gives a session a tab unless it already has one. Without a reserved id it gets the id clients
-   * derive for it, unless a cleared conversation's tab kept that id; then it gets a fresh one.
+   * derive for it, unless a cleared conversation's tab kept that id.
    */
   show(sessionId: string, tabId?: string): void {
     if (this.tabBySession.has(sessionId)) {
       return
     }
     const derived = structuredAgentSessionTabId(sessionId)
-    this.put(tabId ?? (this.sessionByTab.has(derived) ? randomUUID() : derived), sessionId)
+    const held = (candidate: string): boolean => this.sessionByTab.has(candidate)
+    this.put(tabId ?? (held(derived) ? reopenedTabId(sessionId, held) : derived), sessionId)
   }
 
   /** Returns the id the session's tab had, if it had one. */
@@ -98,6 +98,19 @@ export class AgentSessionTabTable {
     this.sessionByTab.set(tabId, sessionId)
     this.tabBySession.set(sessionId, tabId)
   }
+}
+
+/**
+ * The id a cleared conversation reopened from history takes while the tab now showing its
+ * replacement holds its own. Deterministic, so a table seeded again gives it the same id.
+ */
+function reopenedTabId(sessionId: string, held: (tabId: string) => boolean): string {
+  const base = `${structuredAgentSessionTabId(sessionId)}-reopened`
+  let tabId = base
+  for (let suffix = 2; held(tabId); suffix++) {
+    tabId = `${base}-${suffix}`
+  }
+  return tabId
 }
 
 export function setAgentSessionTabVisibility(
@@ -196,12 +209,9 @@ function seedFromVisibleSessions(
   }
   const tabIds = new Map<string, string>()
   const taken = new Set<string>()
+  const held = (tabId: string): boolean => taken.has(tabId)
   const assign = (sessionId: string, candidates: readonly string[]): void => {
-    const fallback = `${structuredAgentSessionTabId(sessionId)}-reopened`
-    let tabId = candidates.find((candidate) => !taken.has(candidate)) ?? fallback
-    for (let suffix = 2; taken.has(tabId); suffix++) {
-      tabId = `${fallback}-${suffix}`
-    }
+    const tabId = candidates.find((candidate) => !held(candidate)) ?? reopenedTabId(sessionId, held)
     taken.add(tabId)
     tabIds.set(sessionId, tabId)
   }
