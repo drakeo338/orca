@@ -123,36 +123,37 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
 
 export function hostStub(): StructuredAgentSessionHost {
   reset(hostCalls)
-  Object.assign(hostCalls, {
-    attach: vi.fn(async () => ({
-      ok: true,
-      replayed: false,
+  const attach = vi.fn(async (..._args: unknown[]) => ({
+    ok: true,
+    replayed: false,
+    fence: 1,
+    cursor: { epoch: 'epoch-a', sequence: 0 },
+    value: {
+      sessionId: SESSION,
       fence: 1,
-      cursor: { epoch: 'epoch-a', sequence: 0 },
-      value: {
+      page: {
         sessionId: SESSION,
-        fence: 1,
-        page: {
-          sessionId: SESSION,
-          epoch: 'epoch-a',
-          direction: 'tail',
-          items: [],
-          removedItemIds: [],
-          submissions: [],
-          window: {
-            oldest: null,
-            newest: null,
-            nextCursor: { epoch: 'epoch-a', sequence: 0 }
-          },
-          liveCursor: { epoch: 'epoch-a', sequence: 0 },
-          hasOlder: false,
-          hasNewer: false
+        epoch: 'epoch-a',
+        direction: 'tail',
+        items: [],
+        removedItemIds: [],
+        submissions: [],
+        window: {
+          oldest: null,
+          newest: null,
+          nextCursor: { epoch: 'epoch-a', sequence: 0 }
         },
-        unconfirmedClientMessageIds: []
-      }
-    })),
+        liveCursor: { epoch: 'epoch-a', sequence: 0 },
+        hasOlder: false,
+        hasNewer: false
+      },
+      unconfirmedClientMessageIds: []
+    }
+  }))
+  Object.assign(hostCalls, {
+    attach,
     // A create whose attach succeeded answers the attach; the failed-start answer is the host's.
-    create: vi.fn((...args: unknown[]) => hostCalls.attach(...args)),
+    create: vi.fn((...args: unknown[]) => attach(...args)),
     rewind: vi.fn(async () => ({ ok: true, value: { itemId: 'chosen', epoch: 'next' } })),
     send: vi.fn(async () => ({
       ok: true,

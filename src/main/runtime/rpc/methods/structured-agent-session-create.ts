@@ -125,9 +125,15 @@ export async function commitStructuredAgentSessionCreate(args: {
   caller: StructuredAgentSessionCaller
   prepared: PreparedStructuredAgentSessionCreate
   activate: boolean
+  /** A chat surface gets a readable conversation even when its agent failed to start, and restarts
+   *  it by sending; an in-process launch needs a running agent, so a failed start stays a refusal. */
+  answer: 'conversation' | 'running-agent'
 }): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const { prepared } = args
-  const result = await prepared.host.create(args.caller, prepared.attachParams)
+  const result =
+    args.answer === 'conversation'
+      ? await prepared.host.create(args.caller, prepared.attachParams)
+      : await prepared.host.attach(args.caller, prepared.attachParams)
   if (!result.ok || !prepared.tab) {
     return result
   }
@@ -173,6 +179,7 @@ export async function createStructuredAgentSessionForWorktree(args: {
     runtime: args.runtime,
     caller: args.caller,
     prepared,
-    activate: args.activate
+    activate: args.activate,
+    answer: 'running-agent'
   })
 }

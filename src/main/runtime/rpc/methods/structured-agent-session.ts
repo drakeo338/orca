@@ -177,7 +177,8 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
         runtime: ctx.runtime,
         caller: callerFor(ctx),
         prepared,
-        activate: true
+        activate: true,
+        answer: 'conversation'
       })
     }
   }),
