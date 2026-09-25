@@ -82,6 +82,21 @@ function providerIdFor(
   return undefined
 }
 
+// Not `Map.groupBy`: the relay runs this core on Node 18, which lacks it.
+function groupedBy<T, K>(items: readonly T[], keyOf: (item: T) => K): Map<K, T[]> {
+  const groups = new Map<K, T[]>()
+  for (const item of items) {
+    const key = keyOf(item)
+    const group = groups.get(key)
+    if (group) {
+      group.push(item)
+    } else {
+      groups.set(key, [item])
+    }
+  }
+  return groups
+}
+
 function isOnOwnershipCycle(
   start: AgentChildWorkInput,
   byId: ReadonlyMap<AgentChildWorkId, AgentChildWorkInput>
@@ -118,7 +133,7 @@ export function projectAgentChildWorkViews(
   aliases: readonly AgentChildWorkViewAlias[]
 ): AgentChildWorkView[] {
   const byId = new Map(records.map((record) => [record.childWorkId, record]))
-  const aliasesByChild = Map.groupBy(aliases, (alias) => alias.childWorkId)
+  const aliasesByChild = groupedBy(aliases, (alias) => alias.childWorkId)
   return records.map((record) => {
     const providerId = providerIdFor(record, aliasesByChild.get(record.childWorkId) ?? [])
     const owner = resolvedOwner(record, byId)
@@ -156,7 +171,7 @@ export function agentChildWorkOwnedLiveness(
   views: readonly AgentChildWorkOwnershipView[],
   ownerId: AgentChildWorkId
 ): AgentChildWorkLiveness {
-  const owned = Map.groupBy(views, (view) => view.parentChildWorkId)
+  const owned = groupedBy(views, (view) => view.parentChildWorkId)
   const seen = new Set<AgentChildWorkId>([ownerId])
   const frontier = [ownerId]
   const liveDescendants: AgentChildWorkOwnershipView[] = []
