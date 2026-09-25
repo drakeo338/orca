@@ -60,13 +60,16 @@ export async function importAdoptedTranscript(
   params: AgentSessionAttachParams,
   attached: AttachedJournal,
   record: AgentSessionRecord,
-  prepared: JournalReplacementItem[] | null
+  prepared: JournalReplacementItem[] | null,
+  ownsJournal: boolean
 ): Promise<void> {
   try {
     await applyAdoptedTranscript(params, attached, record, prepared)
   } catch (error) {
-    // Publication has not taken ownership of this provisional journal yet.
-    await agentSessionJournalCloseRetries.closeOrRetain(attached.journal)
+    // A journal the attach opened for itself has no other owner; the conversation's stays open.
+    if (ownsJournal) {
+      await agentSessionJournalCloseRetries.closeOrRetain(attached.journal)
+    }
     throw error
   }
 }
