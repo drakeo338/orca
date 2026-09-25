@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import type { Tab, TabGroup, TabGroupLayoutNode } from '../../../../shared/tab-types'
+import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import { resolveFloatingWorkspaceSurfaceModel } from './floating-workspace-surface-model'
 
 const FLOATING = FLOATING_TERMINAL_WORKTREE_ID
@@ -31,6 +32,7 @@ function makeState(overrides: {
   groups?: TabGroup[]
   layout?: TabGroupLayoutNode
   focusedGroupId?: string
+  terminalTabs?: TerminalTab[]
 }): Parameters<typeof resolveFloatingWorkspaceSurfaceModel>[0] {
   const unifiedTabsByWorktree: Record<string, Tab[]> = {}
   const groupsByWorktree: Record<string, TabGroup[]> = {}
@@ -48,7 +50,29 @@ function makeState(overrides: {
   if (overrides.focusedGroupId) {
     activeGroupIdByWorktree[FLOATING] = overrides.focusedGroupId
   }
-  return { unifiedTabsByWorktree, groupsByWorktree, layoutByWorktree, activeGroupIdByWorktree }
+  const terminalTabs =
+    overrides.terminalTabs ??
+    (overrides.tabs ?? [])
+      .filter((tab) => tab.contentType === 'terminal')
+      .map((tab) => ({
+        id: tab.entityId,
+        ptyId: null,
+        worktreeId: FLOATING,
+        title: tab.label,
+        customTitle: null,
+        color: null,
+        sortOrder: tab.sortOrder,
+        createdAt: tab.createdAt
+      }))
+  return {
+    unifiedTabsByWorktree,
+    groupsByWorktree,
+    layoutByWorktree,
+    activeGroupIdByWorktree,
+    tabsByWorktree: { [FLOATING]: terminalTabs },
+    browserTabsByWorktree: {},
+    openFiles: []
+  }
 }
 
 describe('resolveFloatingWorkspaceSurfaceModel', () => {
@@ -75,6 +99,41 @@ describe('resolveFloatingWorkspaceSurfaceModel', () => {
         })
       )
     ).toEqual({ kind: 'workspace', layout: LEAF, focusedGroupId: 'group-2' })
+  })
+
+  it('keeps the workspace mounted when the focused split is empty', () => {
+    const layout: TabGroupLayoutNode = {
+      type: 'split',
+      direction: 'horizontal',
+      first: { type: 'leaf', groupId: 'group-1' },
+      second: { type: 'leaf', groupId: 'group-2' }
+    }
+    expect(
+      resolveFloatingWorkspaceSurfaceModel(
+        makeState({
+          tabs: [makeTab('t1', 'group-1')],
+          groups: [
+            makeGroup('group-1', { activeTabId: 't1', tabOrder: ['t1'] }),
+            makeGroup('group-2')
+          ],
+          layout,
+          focusedGroupId: 'group-2'
+        })
+      )
+    ).toEqual({ kind: 'workspace', layout, focusedGroupId: 'group-2' })
+  })
+
+  it('shows the empty state when every unified tab has lost its backing entity', () => {
+    expect(
+      resolveFloatingWorkspaceSurfaceModel(
+        makeState({
+          tabs: [makeTab('t1', 'group-1')],
+          groups: [makeGroup('group-1', { activeTabId: 't1', tabOrder: ['t1'] })],
+          layout: LEAF,
+          terminalTabs: []
+        })
+      )
+    ).toEqual({ kind: 'empty' })
   })
 
   it('falls back from a stale focused id to the group with an active tab', () => {

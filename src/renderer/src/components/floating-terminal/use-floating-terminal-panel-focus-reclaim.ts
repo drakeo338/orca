@@ -14,7 +14,7 @@ type FloatingTerminalPanelFocusReclaimInput = Pick<
   FloatingTerminalPanelLocalState,
   'panelRef' | 'shortcutFocusFrameRef' | 'shortcutFocusTimeoutRef' | 'pendingReclaimArmByFileIdRef'
 > &
-  Pick<FloatingWorkspaceChromeModel, 'visibleFloatingItemCount'> &
+  Pick<FloatingWorkspaceChromeModel, 'hasVisibleFloatingTabs'> &
   Pick<FloatingTerminalPanelStoreState, 'floatingFiles'>
 
 export function useFloatingTerminalPanelFocusReclaim({
@@ -22,7 +22,7 @@ export function useFloatingTerminalPanelFocusReclaim({
   shortcutFocusFrameRef,
   shortcutFocusTimeoutRef,
   pendingReclaimArmByFileIdRef,
-  visibleFloatingItemCount,
+  hasVisibleFloatingTabs,
   floatingFiles
 }: FloatingTerminalPanelFocusReclaimInput) {
   const reclaimIntentArmed = useSyncExternalStore(
@@ -106,14 +106,14 @@ export function useFloatingTerminalPanelFocusReclaim({
   }, [floatingFiles, pendingReclaimArmByFileIdRef])
 
   useEffect(() => {
-    if (visibleFloatingItemCount > 0) {
+    if (hasVisibleFloatingTabs) {
       clearFloatingPanelReclaimIntent()
       return
     }
     if (reclaimIntentArmed && consumeFloatingPanelReclaimIntent()) {
       focusPanelForShortcutsAfterClose()
     }
-  }, [focusPanelForShortcutsAfterClose, reclaimIntentArmed, visibleFloatingItemCount])
+  }, [focusPanelForShortcutsAfterClose, hasVisibleFloatingTabs, reclaimIntentArmed])
 
   return { focusPanelForShortcuts, setPanelNode, reportFloatingFocusFromTarget }
 }

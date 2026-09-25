@@ -207,10 +207,9 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(mocks.createTab).toHaveBeenCalledWith(
       FLOATING_TERMINAL_WORKTREE_ID,
       'floating-group',
-      undefined,
-      { activate: false }
+      undefined
     )
-    expect(mocks.activateTab).toHaveBeenCalledWith('created-tab')
+    expect(mocks.activateTab).not.toHaveBeenCalled()
   })
 
   it('routes titlebar Cmd+Shift+O to the floating markdown picker', async () => {
@@ -304,10 +303,9 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(mocks.createTab).toHaveBeenCalledWith(
       FLOATING_TERMINAL_WORKTREE_ID,
       'floating-group',
-      undefined,
-      { activate: false }
+      undefined
     )
-    expect(mocks.activateTab).toHaveBeenCalledWith('created-tab')
+    expect(mocks.activateTab).not.toHaveBeenCalled()
   })
 
   it('resets focused floating terminal double-tap detection on window blur', async () => {

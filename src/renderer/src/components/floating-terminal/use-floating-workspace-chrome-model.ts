@@ -60,18 +60,7 @@ export function useFloatingWorkspaceChromeModel() {
             ? 'simulator'
             : 'editor'
 
-  const simulatorItemCount = useMemo(
-    () => groupTabs.filter((tab) => tab.contentType === 'simulator').length,
-    [groupTabs]
-  )
-  const visibleFloatingItemCount =
-    terminalItems.length +
-    model.browserItems.length +
-    model.editorItems.length +
-    model.agentSessionItems.length +
-    simulatorItemCount
-  const hasVisibleFloatingTabs = visibleFloatingItemCount > 0
-  const activeClosableTab = hasVisibleFloatingTabs ? activeTab : null
+  const hasVisibleFloatingTabs = surface.kind === 'workspace'
 
   // Visible-id order for tab-cycling shortcuts: strip order restricted to entries whose entity
   // still resolves, so a shortcut never lands on a tab the strip is not showing.
@@ -95,6 +84,15 @@ export function useFloatingWorkspaceChromeModel() {
       }),
     [groupTabs, model.browserItems, model.editorItems, model.tabBarOrder, terminalItems]
   )
+  const activeClosableTab =
+    activeTab &&
+    visibleFloatingTabOrder.includes(
+      activeTab.contentType === 'terminal' || activeTab.contentType === 'browser'
+        ? activeTab.entityId
+        : activeTab.id
+    )
+      ? activeTab
+      : null
 
   return {
     surface,
@@ -111,7 +109,6 @@ export function useFloatingWorkspaceChromeModel() {
     activeTabType,
     activeClosableTab,
     hasVisibleFloatingTabs,
-    visibleFloatingItemCount,
     visibleFloatingTabOrder
   }
 }

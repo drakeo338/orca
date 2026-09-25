@@ -8,7 +8,13 @@ export type FloatingWorkspaceSurfaceModel =
 
 type FloatingWorkspaceSurfaceState = Pick<
   AppState,
-  'unifiedTabsByWorktree' | 'groupsByWorktree' | 'layoutByWorktree' | 'activeGroupIdByWorktree'
+  | 'unifiedTabsByWorktree'
+  | 'groupsByWorktree'
+  | 'layoutByWorktree'
+  | 'activeGroupIdByWorktree'
+  | 'tabsByWorktree'
+  | 'browserTabsByWorktree'
+  | 'openFiles'
 >
 
 /**
@@ -25,6 +31,28 @@ export function resolveFloatingWorkspaceSurfaceModel(
   const tabs = state.unifiedTabsByWorktree[FLOATING_TERMINAL_WORKTREE_ID]
   const layout = state.layoutByWorktree[FLOATING_TERMINAL_WORKTREE_ID]
   if (!tabs || tabs.length === 0 || !layout) {
+    return { kind: 'empty' }
+  }
+  const terminalIds = new Set(
+    (state.tabsByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? []).map((tab) => tab.id)
+  )
+  const browserIds = new Set(
+    (state.browserTabsByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? []).map((tab) => tab.id)
+  )
+  const fileIds = new Set(state.openFiles.map((file) => file.id))
+  const hasVisibleTab = tabs.some((tab) => {
+    if (tab.contentType === 'terminal') {
+      return terminalIds.has(tab.entityId)
+    }
+    if (tab.contentType === 'browser') {
+      return browserIds.has(tab.entityId)
+    }
+    if (tab.contentType === 'agent-session' || tab.contentType === 'simulator') {
+      return true
+    }
+    return fileIds.has(tab.entityId)
+  })
+  if (!hasVisibleTab) {
     return { kind: 'empty' }
   }
   const groups = state.groupsByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? []

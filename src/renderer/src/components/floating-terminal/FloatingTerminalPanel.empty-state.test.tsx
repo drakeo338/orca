@@ -278,6 +278,33 @@ describe('FloatingTerminalPanel close behavior', () => {
     )
   })
 
+  it('keeps the split surface mounted when its focused group has no tabs', async () => {
+    setFloatingTabs([makeTab({ id: 'tab-1' })])
+    const state = storeBox.state as FloatingPanelStoreState
+    state.groupsByWorktree[FLOATING_TERMINAL_WORKTREE_ID].push({
+      id: 'empty-group',
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+      activeTabId: null,
+      tabOrder: []
+    })
+    state.activeGroupIdByWorktree[FLOATING_TERMINAL_WORKTREE_ID] = 'empty-group'
+    state.layoutByWorktree[FLOATING_TERMINAL_WORKTREE_ID] = {
+      type: 'split',
+      direction: 'horizontal',
+      first: { type: 'leaf', groupId: 'floating-group' },
+      second: { type: 'leaf', groupId: 'empty-group' }
+    }
+
+    const element = await renderPanel(true)
+
+    expect(() => findByTypeName(element, 'FloatingTerminalEmptyState')).toThrow(
+      'FloatingTerminalEmptyState not found'
+    )
+    expect(findByTypeName(element, 'TabGroupSplitNodeTree').props.focusedGroupId).toBe(
+      'empty-group'
+    )
+  })
+
   it('minimizes the empty floating workspace from the empty state', async () => {
     const onOpenChange = vi.fn()
     const element = await renderPanel(true, onOpenChange)
