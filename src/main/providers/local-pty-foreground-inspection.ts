@@ -13,7 +13,8 @@ import {
   ptyAgentForegroundContextPaths,
   ptyLastRecognizedForeground,
   ptyProcesses,
-  ptyShellName
+  ptyShellName,
+  ptyShellPath
 } from './local-pty-provider-state'
 import { resolveStableForegroundProcess } from './stable-foreground-process'
 import {
@@ -265,7 +266,7 @@ export async function confirmLocalPtyShellForeground(id: string): Promise<boolea
   }
   const confirmed = await confirmShellForegroundProcess(
     proc.pid,
-    ptyShellName.get(id),
+    ptyShellPath.get(id),
     process.platform === 'win32'
       ? { readWindowsPtyJobProcessIds: () => readWindowsPtyJobProcessIds(proc) }
       : {}

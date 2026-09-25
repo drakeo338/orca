@@ -39,6 +39,8 @@ export const ptyAgentSessionIds = new Set<string>()
 export const ptyShutdownOperations = new Map<string, PtyShutdownOperation>()
 export const pendingLocalPtySpawns = new Map<string, Set<PendingLocalPtySpawn>>()
 export const ptyShellName = new Map<string, string>()
+// Why: the shell proof must tell Git Bash's `bin\bash.exe` launcher from `usr\bin\bash.exe`; the name alone cannot.
+export const ptyShellPath = new Map<string, string>()
 export const ptyAgentForegroundContextPaths = new Map<string, string[]>()
 // Why: remember the last recognized agent foreground so a degraded scan doesn't report the shell and look like an exit.
 // `pid` anchors the identity to the row that proved it (null when ambiguous);
@@ -124,6 +126,7 @@ export function clearPtyState(id: string): void {
   ptyIncarnations.delete(id)
   ptyAgentSessionIds.delete(id)
   ptyShellName.delete(id)
+  ptyShellPath.delete(id)
   ptyAgentForegroundContextPaths.delete(id)
   ptyLastRecognizedForeground.delete(id)
   ptyTerminalHandle.delete(id)

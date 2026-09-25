@@ -3,17 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { resolveForegroundMock } = vi.hoisted(() => ({ resolveForegroundMock: vi.fn() }))
 
+const { confirmShellForegroundMock } = vi.hoisted(() => ({
+  confirmShellForegroundMock: vi.fn()
+}))
+
 vi.mock('./agent-foreground-process', () => ({
   resolveAgentForegroundProcessWithAvailability: resolveForegroundMock,
-  confirmShellForegroundProcess: vi.fn()
+  confirmShellForegroundProcess: confirmShellForegroundMock
 }))
 import { isRetiredPtyMaster } from '../pty/node-pty-master-fd-retirement'
 import {
+  confirmLocalPtyShellForeground,
   hasLocalPtyChildProcesses,
   inspectLocalPtyChildProcesses
 } from './local-pty-foreground-inspection'
 import { LocalPtyProvider } from './local-pty-provider'
-import { ptyProcesses, ptyShellName } from './local-pty-provider-state'
+import { ptyProcesses, ptyShellName, ptyShellPath } from './local-pty-provider-state'
 import { inspectPtyProviderProcess } from './pty-process-inspection'
 
 const POSIX_SHELL = '/bin/sh'
@@ -76,6 +81,19 @@ beforeEach(() => {
 afterEach(() => {
   ptyProcesses.clear()
   ptyShellName.clear()
+  ptyShellPath.clear()
+})
+
+describe('confirmLocalPtyShellForeground', () => {
+  it('proves against the spawned shell path, which tells the Git Bash launcher apart', async () => {
+    const launcher = 'C:\\Program Files\\Git\\bin\\bash.exe'
+    registerPane('pty-git-bash', 'bash.exe', 'bash.exe')
+    ptyShellPath.set('pty-git-bash', launcher)
+    confirmShellForegroundMock.mockResolvedValueOnce(true)
+
+    await expect(confirmLocalPtyShellForeground('pty-git-bash')).resolves.toBe(true)
+    expect(confirmShellForegroundMock).toHaveBeenCalledWith(4242, launcher, expect.any(Object))
+  })
 })
 
 // Windows has no master fd to retire, and `WindowsTerminal.process` answers from the spawn name.

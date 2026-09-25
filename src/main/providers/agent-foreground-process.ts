@@ -14,6 +14,11 @@ import {
 } from './windows-agent-foreground-process'
 import { isShellProcess } from '../../shared/shell-process-detection'
 import { selectForegroundProcessCandidate } from '../../shared/foreground-process-selection'
+import { isGitForWindowsBashLauncherPath } from '../git-bash'
+import {
+  readWindowsProcessIdentityTableFresh,
+  type WindowsProcessIdentityRow
+} from '../windows/windows-process-table'
 
 export type { AgentForegroundResolutionOptions } from './windows-agent-foreground-process'
 export {
@@ -44,6 +49,7 @@ type ShellForegroundConfirmationOptions = {
     | ReadonlySet<number>
     | null
     | Promise<ReadonlySet<number> | null>
+  readWindowsProcessIdentityTable?: () => Promise<WindowsProcessIdentityRow[]>
 }
 
 function commandExecutable(command: string): string {
@@ -59,6 +65,28 @@ function executableBasename(command: string): string {
   return commandExecutable(command).split(/[\\/]/).pop()?.toLowerCase() ?? ''
 }
 
+/** The job holds the shell alone: just its pid, or a Git Bash launcher plus the bash it waits on. */
+async function isWindowsShellAloneInJob(
+  shellPid: number,
+  spawnedShellPath: string,
+  processIds: ReadonlySet<number> | null | undefined,
+  readIdentityTable: () => Promise<WindowsProcessIdentityRow[]>
+): Promise<boolean> {
+  if (!processIds?.has(shellPid)) {
+    return false
+  }
+  if (processIds.size === 1) {
+    return true
+  }
+  if (processIds.size !== 2 || !isGitForWindowsBashLauncherPath(spawnedShellPath)) {
+    return false
+  }
+  const childPid = [...processIds].find((pid) => pid !== shellPid)
+  // Why: commands typed at the prompt are children of the MSYS bash, never of the launcher.
+  const child = (await readIdentityTable()).find((row) => row.pid === childPid)
+  return child?.ppid === shellPid && child.name.toLowerCase() === 'bash.exe'
+}
+
 export async function confirmShellForegroundProcess(
   shellPid: number | null | undefined,
   spawnedShellProcess: string | null | undefined,
@@ -69,10 +97,14 @@ export async function confirmShellForegroundProcess(
   }
   if (process.platform === 'win32') {
     try {
-      const processIds = await options.readWindowsPtyJobProcessIds?.()
-      return processIds?.size === 1 && processIds.has(shellPid)
+      return await isWindowsShellAloneInJob(
+        shellPid,
+        spawnedShellProcess,
+        await options.readWindowsPtyJobProcessIds?.(),
+        options.readWindowsProcessIdentityTable ?? readWindowsProcessIdentityTableFresh
+      )
     } catch {
-      // Unavailable job inspection is missing proof, never a thrown confirmation.
+      // Unavailable job or process-table inspection is missing proof, never a thrown confirmation.
       return false
     }
   }

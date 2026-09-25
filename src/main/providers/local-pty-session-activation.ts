@@ -24,6 +24,7 @@ import {
   ptyProcesses,
   ptyReportsChildExitStatus,
   ptyShellName,
+  ptyShellPath,
   ptyTerminalHandle,
   ptyTerminationMode,
   ptyWorktreeId,
@@ -59,6 +60,7 @@ export function activateLocalPtySession(args: {
     ptyAgentSessionIds.add(id)
   }
   ptyShellName.set(id, getSpawnedShellName(plan.shellPath))
+  ptyShellPath.set(id, plan.shellPath)
   if (env.ORCA_TERMINAL_HANDLE) {
     ptyTerminalHandle.set(id, env.ORCA_TERMINAL_HANDLE)
   }
