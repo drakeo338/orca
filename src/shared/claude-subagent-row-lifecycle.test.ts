@@ -348,6 +348,33 @@ describe('claude subagent sidebar row lifecycle', () => {
     expect(nextStop?.payload.state).toBe('done')
   })
 
+  it('settles done when a teammate is rate-limited before the lead stops (captured order)', () => {
+    claudeEvent({ hook_event_name: 'UserPromptSubmit', prompt: 'spawn the helper' })
+    claudeEvent({
+      hook_event_name: 'SubagentStart',
+      agent_id: 'ahelper-27f64cea4c5b8ded',
+      agent_type: 'helper'
+    })
+    claudeEvent({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'toolu_sleep1' })
+
+    const failed = claudeEvent(rateLimitedStopFailure('ahelper-27f64cea4c5b8ded', 'helper'))
+    expect(failed?.payload.state).toBe('working')
+    expect(failed?.payload.subagents).toEqual([
+      expect.objectContaining({ id: 'ahelper-27f64cea4c5b8ded', state: 'idle' })
+    ])
+
+    claudeEvent({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'toolu_sleep1' })
+    const leadStop = claudeEvent({
+      hook_event_name: 'Stop',
+      last_assistant_message: 'LEAD_DONE',
+      background_tasks: [
+        { id: 'txq288jxw', type: 'teammate', status: 'running', description: 'helper task' }
+      ]
+    })
+    expect(leadStop?.payload.state).toBe('done')
+    expect(leadStop?.payload.lastAssistantMessage).toBe('LEAD_DONE')
+  })
+
   it('removes a rate-limited one-shot background child that outlived the lead turn', () => {
     claudeEvent({ hook_event_name: 'UserPromptSubmit', prompt: 'research in background' })
     claudeEvent({
