@@ -1929,8 +1929,7 @@
         "4725b0e931": "Scan Quick Open trop volumineux (",
         "b227d88520": "{{value0}} fichiers trouvés",
         "995be8ea22": "Copier",
-        "cf144856dc": "Copied",
-        "344f8a48dd": "sur l'hôte exécutant le scan Quick Open pour activer un listage rapide respectant .gitignore :"
+        "cf144856dc": "Copied"
       },
       "SelectedTextCopyMenu": {
         "9b40d7b018": "Copier"
@@ -17182,6 +17181,9 @@
             "failed": "Le chat n'a pas pu démarrer.",
             "unknown": "La connexion au chat n'a pas pu être confirmée.",
             "retry": "Réessayer"
+          },
+          "NativeChatStructuredSessionStatus": {
+            "starting": "{{value0}} est encore en cours de démarrage. Les messages attendent qu'il soit prêt ; fermez ce chat pour y renoncer."
           }
         }
       },
