@@ -12,7 +12,9 @@ import {
   type AgentSessionOwnerProbe
 } from '../../shared/agent-session-lease-adjudication'
 import type {
+  AgentSessionDeathEvidence,
   AgentSessionHandoffStage,
+  AgentSessionLease,
   AgentSessionRecord
 } from '../../shared/agent-session-record'
 import { adjudicateRestartedAgentSessionHandoff } from './agent-session-restart-handoff-adjudication'
@@ -78,7 +80,7 @@ export function applyAgentSessionRestartAdjudication(args: {
       unreconciled: false,
       lastRenewedAt: args.now,
       handoffOperationId: null,
-      deathEvidence: adjudication.evidence,
+      deathEvidence: restartEvictionEvidence(record.lease, adjudication.evidence),
       settlementRetryRequired: true,
       settlementRetryId: agentSessionRestartEvictionSettlementId(record.lease, adjudication)
     })
@@ -93,4 +95,20 @@ export function applyAgentSessionRestartAdjudication(args: {
     unreconciled: false,
     lastRenewedAt: args.now
   })
+}
+
+/** A native owner a restart proves gone ended with the run that held it, however the proof came:
+ *  that is what earns its cut-off turn the restart note. A witnessed exit keeps its own kind. */
+function restartEvictionEvidence(
+  lease: AgentSessionLease,
+  evidence: AgentSessionDeathEvidence
+): AgentSessionDeathEvidence {
+  if (
+    lease.runtimeKind !== 'native' ||
+    evidence.kind === 'exit-observed' ||
+    evidence.kind === 'previous-app-run'
+  ) {
+    return evidence
+  }
+  return { ...evidence, kind: 'previous-app-run', detail: `${evidence.detail} after restart` }
 }

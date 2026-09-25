@@ -26,7 +26,11 @@ describe('proven-dead agent session eviction settlement', () => {
       handoffStage: null,
       settlementRetryRequired: true,
       settlementRetryId: 'restart-eviction:session-alpha-1:8',
-      deathEvidence: { kind: 'pid-absent', detail: 'recorded pid absent on host' }
+      // A native owner a restart proves gone ended with the run that held it.
+      deathEvidence: {
+        kind: 'previous-app-run',
+        detail: 'recorded pid absent on host after restart'
+      }
     })
   })
 

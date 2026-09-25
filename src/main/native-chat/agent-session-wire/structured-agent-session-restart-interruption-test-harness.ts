@@ -17,6 +17,7 @@ import {
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { restartedAgentSessionHostRun } from '../../runtime/agent-session-host-run.test-fixture'
+import type { AgentSessionHostRun } from '../../runtime/agent-session-host-run'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import { StructuredAgentSessionResumeAdmission } from './structured-agent-session-restart-resume-runner'
@@ -126,16 +127,22 @@ async function crash(host: StructuredAgentSessionHost): Promise<void> {
 /** The next app run over the same profile: a new host run, so the old one's leases are its dead. */
 export async function relaunchAfter(
   how: 'quit' | 'crash',
-  deps: Partial<StructuredAgentSessionHostDeps> = {}
+  deps: Partial<StructuredAgentSessionHostDeps> = {},
+  run: {
+    hostRun?: AgentSessionHostRun
+    beforeOpen?: (storeDirectory: string) => Promise<void>
+  } = {}
 ): Promise<StructuredAgentSessionHost> {
   const previous = hostTestState()
   await (how === 'quit'
     ? previous.host.flushAllStreamedEvents({ trigger: 'quit' })
     : crash(previous.host))
+  const directory = join(previous.root, 'store')
+  await run.beforeOpen?.(directory)
   const store = await AgentSessionRecordStore.open({
-    directory: join(previous.root, 'store'),
+    directory,
     hostId: 'local',
-    hostRun: await restartedAgentSessionHostRun()
+    hostRun: run.hostRun ?? (await restartedAgentSessionHostRun())
   })
   const host = new StructuredAgentSessionHost({
     store,

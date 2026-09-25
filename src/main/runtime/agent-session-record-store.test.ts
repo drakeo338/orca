@@ -637,7 +637,11 @@ describe('restart reconciliation', () => {
     expect(lease).toMatchObject({
       claimStatus: 'released',
       handoffStage: null,
-      deathEvidence: { kind: 'pid-absent' }
+      // A native owner a restart proves gone ended with the run that held it.
+      deathEvidence: {
+        kind: 'previous-app-run',
+        detail: 'recorded pid absent on host after restart'
+      }
     })
     const reacquired = await reopened.reserveOwner(
       reserveRequest({

@@ -1,7 +1,7 @@
 // Why a lease owner is known to be gone. Persisted on the lease, so every kind is permanent.
 
-/** `previous-app-run`: a native owner is a child of the app run that spawned it, so a restart
- *  records its death without a process probe. */
+/** `previous-app-run`: a restart found a native owner gone with the app run that spawned it —
+ *  assumed without a probe, or `detail` names the probe that proved it. */
 export type AgentSessionDeathEvidenceKind =
   | 'exit-observed'
   | 'pid-absent'
