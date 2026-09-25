@@ -28,9 +28,10 @@ extension ProxyProbe {
       if let rule { page.web.configuration.userContentController.add(rule) }
       else { record("content-blocker", "compile returned nil"); return }
     } catch { record("content-blocker", String(describing: error)); return }
+    record("content-blocker-compiled", true)
     record("content-blocker-load", await page.load("http://localhost:\(origin)/?policy=1"))
     page.blockLiteralNavigation = true
-    for host in ["127.0.0.1", "[::1]"] {
+    for host in ["127.0.0.1", "[::1]", "[::ffff:127.0.0.1]"] {
       let script = """
         const host = '\(host):\(origin)';
         const fetchResult = await fetch('http://'+host+'/fetch?policy=1', {signal:AbortSignal.timeout(4000)}).then(r=>r.text()).catch(e=>'error:'+e.name);

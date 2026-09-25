@@ -9,6 +9,9 @@ import sys
 import tempfile
 import time
 
+from cleanup import cleanup
+from observations import validate
+
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE = Path(__file__).resolve().parent
 ENV = {**os.environ, "ORCA_BACKGROUND_LAUNCH": "1", "SIMCTL_CHILD_ORCA_BACKGROUND_LAUNCH": "1"}
@@ -48,11 +51,14 @@ def main():
             str(SOURCE / "ProxyProbe.swift"), str(SOURCE / "LoopbackRelay.swift"),
             str(SOURCE / "PolicyProbe.swift"), "-o", str(app / "ProxyProbe"))
     command("codesign", "--force", "--sign", "-", str(app))
+    fixture_script = artifacts / "fixture.cjs"
+    command(str(ROOT / "node_modules/.bin/esbuild"), str(SOURCE / "fixture.ts"),
+            "--bundle", "--platform=node", "--format=cjs", "--outfile=" + str(fixture_script))
     device = None
     fixture = None
     try:
         with (artifacts / "fixture.log").open("w") as log:
-            fixture = subprocess.Popen(["pnpm", "dlx", "--allow-build", "esbuild", "tsx@4.22.4", str(SOURCE / "fixture.ts"), str(artifacts)],
+            fixture = subprocess.Popen(["node", str(fixture_script), str(artifacts)],
                                        cwd=ROOT, env=ENV, stdout=log, stderr=log, start_new_session=True)
         for _ in range(120):
             if (artifacts / "ports.json").exists():
@@ -85,19 +91,13 @@ def main():
                     command("xcrun", "simctl", "launch", device, metadata["CFBundleIdentifier"])
                     lifecycle_tested = True
                 if results[-1]["case"] == "complete":
+                    validate(results, [json.loads(line) for line in (artifacts / "network.jsonl").read_text().splitlines()])
                     print(json.dumps(results, indent=2))
                     return
             time.sleep(1)
         raise RuntimeError("Native probe did not complete within 150 seconds; see artifacts")
     finally:
-        if device:
-            command("xcrun", "simctl", "shutdown", device)
-            command("xcrun", "simctl", "delete", device)
-        if fixture and fixture.poll() is None:
-            import signal
-            os.killpg(fixture.pid, signal.SIGTERM)
-            fixture.wait(timeout=10)
-        (artifacts / "cleanup.json").write_text(json.dumps({"ownedSimulatorDeleted": bool(device), "fixtureExited": fixture is None or fixture.poll() is not None}))
+        cleanup(artifacts, device, fixture, command, sys.exc_info()[1])
 
 
 if __name__ == "__main__":
