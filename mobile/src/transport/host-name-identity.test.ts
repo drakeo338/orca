@@ -104,6 +104,25 @@ describe('host name identity', () => {
       const hosts = await loadHosts()
       expect(hosts[0]?.personalName).toBeUndefined()
     })
+
+    it('drops only an identity value this build cannot read, never the paired host', async () => {
+      // A newer build's platform, or an empty string, as a rolled-back app would find them.
+      storedHostsRaw = JSON.stringify([
+        { ...GENERATED_HOST, lastKnownHostPlatform: 'plan9', lastKnownMachineName: 'Studio' },
+        { ...TYPED_HOST, personalName: '', lastKnownMachineName: '' }
+      ])
+      const loaded = await loadHosts()
+      expect(loaded.map(({ id }) => id)).toEqual([GENERATED_HOST.id, TYPED_HOST.id])
+      expect(loaded[0]?.lastKnownHostPlatform).toBeUndefined()
+      expect(loaded[0]?.lastKnownMachineName).toBe('Studio')
+      // The next write persists the list it parsed, so a dropped record would be gone for good.
+      await updateHostNameAndEndpoint(TYPED_HOST.id, { endpoint: 'ws://10.0.0.9:6768' })
+      const records: Record<string, unknown>[] = JSON.parse(storedHostsRaw)
+      expect(records.map(({ id }) => id)).toEqual([GENERATED_HOST.id, TYPED_HOST.id])
+      expect(records[0]).not.toHaveProperty('lastKnownHostPlatform')
+      expect(records[1]).not.toHaveProperty('lastKnownMachineName')
+      expect(records[1]?.personalName).toBe('Windows-Low Spec')
+    })
   })
 
   describe('updateHostDescriptor', () => {

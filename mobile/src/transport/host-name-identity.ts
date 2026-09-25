@@ -5,6 +5,7 @@ import type { StoredHostProfile } from './types'
  * The rules that keep a stored host's `name` equal to
  * `personalName ?? lastKnownMachineName ?? "Host N"`. Pure: host-store applies them inside its
  * serialized mutation pass, so the resolved name and its sources are always written together.
+ * One exception: see `withReportedDescriptor`.
  */
 
 type HostNameIdentity = Pick<
@@ -82,6 +83,7 @@ export function withPersonalName(
  * Applies what the desktop reported; returns `current` itself when nothing changed. An answered
  * status is authoritative, so an omitted half clears its last-known value, and an unoverridden
  * row adopts a newly reported machine name as its display name.
+ * Exception: an OS reported without a machine name keeps the previously adopted name as `name`.
  */
 export function withReportedDescriptor(
   current: StoredHostProfile,

@@ -387,6 +387,31 @@ describe('host messages', () => {
     expect(read.ok && read.message.type === 'init' ? read.message.host : null).toEqual(host)
   })
 
+  it('drops a name-identity value this page cannot read instead of refusing the init', () => {
+    const read = readHost(
+      client({
+        type: 'init',
+        sessionId: 's1',
+        buildId: 'b1',
+        connection: CONNECTION,
+        grants: GRANTS,
+        host: {
+          id: 'host-a',
+          name: 'Studio',
+          personalName: '',
+          lastKnownMachineName: 'Studio',
+          lastKnownHostPlatform: 'plan9',
+          endpoint: 'ws://host-a',
+          lastConnected: 0
+        }
+      })
+    )
+    const host = read.ok && read.message.type === 'init' ? read.message.host : null
+    expect(host).toMatchObject({ id: 'host-a', name: 'Studio', lastKnownMachineName: 'Studio' })
+    expect(host?.personalName).toBeUndefined()
+    expect(host?.lastKnownHostPlatform).toBeUndefined()
+  })
+
   const refused = [
     [
       'an init without a build id',
