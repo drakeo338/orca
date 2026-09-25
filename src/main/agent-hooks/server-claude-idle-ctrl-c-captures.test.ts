@@ -130,12 +130,15 @@ describe('an idle-prompt Ctrl+C with a background shell and a background agent (
       expect(killedRecord).not.toHaveProperty('agent_ids')
 
       // The inference mirrors the CLI: agents retired, shell kept, the settled main agent's own
-      // verdict untouched — no fabricated cancellation, no `interrupted` flag.
+      // verdict and reply untouched — no fabricated cancellation, no `interrupted` flag.
+      expect(row(server)).toMatchObject({ lastAssistantMessage: 'STARTED', toolName: 'Agent' })
       expect(pressCtrlC(server)).toBe(true)
       expect(row(server)).toMatchObject({
         state: 'working',
         workingMode: 'monitoring',
-        mainAgent: { state: 'done' }
+        mainAgent: { state: 'done' },
+        lastAssistantMessage: 'STARTED',
+        toolName: 'Agent'
       })
       expect(row(server).subagents).toBeUndefined()
       expect(row(server).interrupted).toBeUndefined()
@@ -196,7 +199,11 @@ describe('an idle-prompt Ctrl+C with a background shell and a background agent (
       })
 
       expect(pressCtrlC(server)).toBe(true)
-      expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+      expect(row(server)).toMatchObject({
+        state: 'done',
+        mainAgent: { state: 'done' },
+        lastAssistantMessage: 'STARTED'
+      })
       expect(row(server).workingMode).toBeUndefined()
       expect(row(server).subagents).toBeUndefined()
       expect(row(server).interrupted).toBeUndefined()

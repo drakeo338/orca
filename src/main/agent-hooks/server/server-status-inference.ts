@@ -194,6 +194,16 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
     // Why: the keypress ends no turn, so the main agent fact (verdict, clock) passes through as-is.
     const mainAgent = stopped ? stopped.mainAgent : payload.mainAgent
     const turnCompletedAt = stopped ? stopped.turnCompletedAt : payload.turnCompletedAt
+    // Why: only child-derived fields change; the settled turn's reply and tool stay on the row.
+    const {
+      state: _state,
+      workingMode: _workingMode,
+      subagents: _subagents,
+      interrupted: _interrupted,
+      turnCompletedAt: _turnCompletedAt,
+      mainAgent: _mainAgent,
+      ...unchanged
+    } = payload
     const inferred = this.applyNormalizedStatus({
       paneKey: existing.paneKey,
       tabId: existing.tabId,
@@ -205,11 +215,9 @@ export abstract class AgentHookServerStatusInference extends AgentHookServerRowO
         ? { claudeRunningNonAgentTask: existing.claudeRunningNonAgentTask }
         : {}),
       payload: {
+        ...unchanged,
         state,
         ...(workingMode ? { workingMode } : {}),
-        prompt: payload.prompt,
-        agentType: payload.agentType,
-        ...(payload.model ? { model: payload.model } : {}),
         ...(subagents ? { subagents } : {}),
         ...(state === 'done' && mainAgentTurnInterrupted(mainAgent) ? { interrupted: true } : {}),
         ...(turnCompletedAt !== undefined ? { turnCompletedAt } : {}),

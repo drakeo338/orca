@@ -418,7 +418,8 @@ describe('a relayed idle-prompt Ctrl+C with a background shell and a background 
     expect(row(pane.desktop)).toMatchObject({
       state: 'working',
       workingMode: 'monitoring',
-      mainAgent: { state: 'done' }
+      mainAgent: { state: 'done' },
+      lastAssistantMessage: 'STARTED'
     })
     expect(row(pane.desktop).subagents).toBeUndefined()
     expect(row(pane.desktop).interrupted).toBeUndefined()
