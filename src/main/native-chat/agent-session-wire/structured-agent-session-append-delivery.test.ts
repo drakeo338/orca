@@ -192,6 +192,11 @@ describe('an open chat receives each row once', () => {
   it('when the provider frame that wrote it also publishes', async () => {
     const pane = liveReader()
     const sink = providerSink()
+    const journal = host['sessions'].get(SESSION)?.journal
+    if (!journal) {
+      throw new Error('the attached chat has no journal')
+    }
+    const readSince = vi.spyOn(journal, 'readSince')
 
     sink.appendItem(
       { provider: 'orca', clientMessageId: 'streamed' },
@@ -201,6 +206,8 @@ describe('an open chat receives each row once', () => {
     await host.flushStreamedEvents(SESSION)
 
     expect(pane.received().statuses).toEqual(['streamed row'])
+    // The frame's publish finds the reader caught up and reads no rows: streaming stays one read.
+    expect(readSince).toHaveBeenCalledOnce()
   })
 
   it('when a writer publishes the row it appended', async () => {
