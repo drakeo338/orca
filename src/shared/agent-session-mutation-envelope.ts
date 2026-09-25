@@ -146,7 +146,10 @@ function refuseUnlessWriterAdmitted(lease: AgentSessionLease): AgentSessionWireR
   if (lease.handoffStage !== null) {
     return {
       code: 'agent_session_conflict',
-      message: `The session is mid-handoff (${lease.handoffStage}).`
+      message:
+        lease.handoffStage === 'new-owner-proving'
+          ? 'The chat is still starting.'
+          : "Orca has not yet confirmed that this chat's previous agent process stopped. Reopen the chat to check again."
     }
   }
   return {
