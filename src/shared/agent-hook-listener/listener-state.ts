@@ -58,11 +58,12 @@ export type HookListenerState = {
   grokActiveTurnByPaneKey: Map<string, GrokActiveTurn>
   /** The Grok main agent's own state as last published, so its clock keeps continuity across events. */
   grokMainAgentStatusByPaneKey: Map<string, AgentMainAgentStatus>
-  /** Grok's background-task inventory per pane (task id -> kind), as Grok last reported it: a turn
-   *  end carrying `backgroundTasks` restates it whole, SubagentStart/SubagentStop and a child's
-   *  SessionEnd adjust the subagent entries, and a session boundary clears it. Kept because Grok's
-   *  own cancel hook (`stop_cancelled`) carries no inventory (measured, 1.0.41:
-   *  src/shared/__fixtures__/grok-cancel-subagent-dialog-hooks.jsonl). */
+  /** Grok's background-task inventory per pane (task id -> kind): a turn end carrying
+   *  `backgroundTasks` restates it whole; a shell's BackgroundTaskStarted result or a SubagentStart
+   *  adds an entry, and its own task_complete, SubagentStop or child SessionEnd drops it; a session
+   *  boundary or pane close clears it. Kept because Grok's own cancel hook (`stop_cancelled`)
+   *  carries no inventory and a cancel suppresses the follow-up turn whose `stop` would restate it
+   *  (measured, 1.0.41: src/shared/__fixtures__/grok-cancel-subagent-dialog-hooks.jsonl). */
   grokBackgroundTasksByPaneKey: Map<string, Map<string, AgentChildWorkKind>>
   /** Muse child-session filter and session-log cursor per pane. */
   musePaneStateByPaneKey: Map<string, MusePaneState>

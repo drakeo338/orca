@@ -180,4 +180,65 @@ describe('a Grok cancel never hides a running task', () => {
       server.stop()
     }
   })
+
+  // Grok 1.0.41: a shell started in the turn that gets cancelled is in no `stop` inventory yet,
+  // survives the cancel, and its end wakes no follow-up turn; only its own start and end hooks
+  // bracket it. Shapes copied from the captured PostToolUse (hook 7) and task_complete (hook 18).
+  it('folds a shell the cancelled turn itself started, and settles on its task_complete', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production' })
+    try {
+      await postGrokHook(server, {
+        hookEventName: 'user_prompt_submit',
+        promptId: 'prompt-1',
+        prompt: 'start a background shell then run a command'
+      })
+      const started = {
+        type: 'BackgroundTaskStarted',
+        task_id: 'task-7',
+        task_type: 'bash',
+        status: 'running',
+        command: 'sleep 375'
+      }
+      await postGrokHook(server, {
+        hookEventName: 'post_tool_use',
+        toolName: 'run_terminal_command',
+        toolUseId: 'call-1',
+        toolInput: { command: 'sleep 375', background: true },
+        toolResult: started,
+        hook_event_name: 'PostToolUse',
+        tool_name: 'run_terminal_command',
+        tool_response: started
+      })
+      expect(row(server)).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+      expect(row(server).workingMode).toBeUndefined()
+
+      await postGrokHook(server, {
+        hookEventName: 'stop_cancelled',
+        promptId: 'prompt-1',
+        reason: 'user_interrupt',
+        cancelledBy: 'user',
+        cancelTrigger: 'ctrl_c'
+      })
+      expect(row(server)).toMatchObject({
+        state: 'working',
+        workingMode: 'monitoring',
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+
+      await postGrokHook(server, {
+        hookEventName: 'notification',
+        notificationType: 'task_complete',
+        message: 'Background task completed: task-7',
+        level: 'info'
+      })
+      expect(row(server)).toMatchObject({
+        state: 'done',
+        interrupted: true,
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+    } finally {
+      server.stop()
+    }
+  })
 })

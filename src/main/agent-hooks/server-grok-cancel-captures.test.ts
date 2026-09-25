@@ -61,6 +61,15 @@ async function replay(server: AgentHookServer, indices: number[]): Promise<void>
   }
 }
 
+function shellTaskId(payload: Record<string, unknown>): string {
+  const tasks = payload.backgroundTasks
+  const shell = Array.isArray(tasks) ? tasks.find((task) => task?.type === 'shell') : undefined
+  if (typeof shell?.id !== 'string') {
+    throw new Error('the capture lists no shell task')
+  }
+  return shell.id
+}
+
 /** The renderer's part of a cancel: capture the row as the baseline and ask the server to infer
  *  the interrupt, exactly as it would after the settle window. */
 function pressCancelKey(server: AgentHookServer, intent: 'plain-escape' | 'ctrl-c'): boolean {
@@ -142,7 +151,7 @@ describe('a Grok cancel with a background shell and subagent (captured)', () => 
         mainAgent: { state: 'done', outcome: 'cancellation' }
       })
 
-      // The task_complete notification (hook 18) proves nothing about the rest of the inventory.
+      // The child's own task_complete (hook 18) names a task the pane's inventory never held.
       await replay(server, [18])
       expect(row(server)).toMatchObject({ state: 'working' })
 
@@ -162,6 +171,48 @@ describe('a Grok cancel with a background shell and subagent (captured)', () => 
       // The main session's own end settles the pane whatever the inventory says.
       await replay(server, [20])
       expect(row(server)).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
+    } finally {
+      server.stop()
+    }
+  })
+
+  // Why: a cancel arms Grok's wake barrier, so the surviving shell's end runs no follow-up turn
+  // and no `stop`; its own task_complete Notification is the only hook that says it is gone.
+  it("the surviving shell's own task_complete settles the cancelled row", async () => {
+    const server = await startServer()
+    try {
+      await replay(
+        server,
+        Array.from({ length: 20 }, (_, index) => index)
+      )
+      expect(row(server)).toMatchObject({
+        state: 'working',
+        workingMode: 'monitoring',
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+
+      // Grok's task_complete for the main session's shell: the captured child notification's
+      // shape (hook 18), re-addressed to the main session and the shell hook 8 listed.
+      const main = hookAt(records, 17).payload
+      const shellId = shellTaskId(hookAt(records, 8).payload)
+      await post(server, {
+        ...hookAt(records, 18),
+        payload: {
+          ...hookAt(records, 18).payload,
+          sessionId: main.sessionId,
+          session_id: main.session_id,
+          transcriptPath: main.transcriptPath,
+          transcript_path: main.transcript_path,
+          message: `Background task completed: ${shellId}`
+        }
+      })
+      expect(row(server)).toMatchObject({
+        state: 'done',
+        interrupted: true,
+        mainAgent: { state: 'done', outcome: 'cancellation' }
+      })
+      expect(row(server).workingMode).toBeUndefined()
+      expect(row(server).providerSession?.id).toBe(main.session_id)
     } finally {
       server.stop()
     }

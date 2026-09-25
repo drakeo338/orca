@@ -9,6 +9,8 @@ import {
   grokChildWorkLivenessAfterTurnEnd,
   grokIdentityField,
   normalizeGrokSubagentLifecycleEvent,
+  normalizeGrokTaskCompleteNotification,
+  recordGrokBackgroundTaskStarted,
   restateGrokTaskInventory
 } from './grok-task-inventory'
 import { normalizeGrokPromptId } from '../listener-limits'
@@ -104,6 +106,9 @@ export function normalizeGrokEvent(
   if (isGrokEvent(eventName, 'user_prompt_submit')) {
     recordGrokTurn(state, paneKey, hookPayload)
   }
+  if (isGrokEvent(eventName, 'post_tool_use')) {
+    recordGrokBackgroundTaskStarted(state, paneKey, hookPayload)
+  }
 
   const notificationMessage = readString(hookPayload, 'message')
   const notificationType = getGrokNotificationType(hookPayload)
@@ -137,8 +142,7 @@ export function normalizeGrokEvent(
     isGrokEvent(eventName, 'notification') &&
     isGrokEvent(notificationType, 'task_complete')
   ) {
-    // Why: one task finishing does not prove that every finite task and follow-up turn settled.
-    return null
+    return normalizeGrokTaskCompleteNotification(state, paneKey, hookPayload)
   } else if (
     isGrokEvent(eventName, 'notification') &&
     isGrokRoutinePermissionPromptNotification(
