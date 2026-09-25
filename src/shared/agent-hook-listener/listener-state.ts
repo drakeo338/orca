@@ -1,6 +1,9 @@
-import type { AgentMainAgentStatus } from '../agent-status-types'
 import type { AgentChildWorkKind } from '../agent-status-child-work'
-import type { ClaudeLeadTurnState, CodexLeadTurnState } from './main-agent-turn-state'
+import type {
+  ClaudeLeadTurnState,
+  CodexLeadTurnState,
+  GrokMainAgentTurnState
+} from './main-agent-turn-state'
 
 export type { ClaudeLeadTurnState, CodexLeadTurnState } from './main-agent-turn-state'
 import {
@@ -57,7 +60,7 @@ export type HookListenerState = {
   /** Newest Grok turn per pane, used to reject end reports that arrive after a replacement prompt. */
   grokActiveTurnByPaneKey: Map<string, GrokActiveTurn>
   /** The Grok main agent's own state as last published, so its clock keeps continuity across events. */
-  grokMainAgentStatusByPaneKey: Map<string, AgentMainAgentStatus>
+  grokMainAgentStatusByPaneKey: Map<string, GrokMainAgentTurnState>
   /** Grok's background-task inventory per pane (task id -> kind): a turn end carrying
    *  `backgroundTasks` restates it whole; a shell's BackgroundTaskStarted result or a SubagentStart
    *  adds an entry, and its own task_complete, SubagentStop or child SessionEnd drops it; a session

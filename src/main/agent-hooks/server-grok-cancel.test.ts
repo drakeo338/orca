@@ -242,3 +242,31 @@ describe('a Grok cancel never hides a running task', () => {
     }
   })
 })
+
+describe('a plain Grok stop a task holds open', () => {
+  it('earns its turn stamp at the idle restatement and pairs the all-clear with it', async () => {
+    const server = new AgentHookServer()
+    await server.start({ env: 'production' })
+    try {
+      await startTaskThenSettle(server)
+      expect(row(server).turnCompletedAt).toBeUndefined()
+
+      await postGrokHook(server, { hookEventName: 'notification', notificationType: 'idle_prompt' })
+      expect(row(server)).toMatchObject({ state: 'working', workingMode: 'monitoring' })
+      const turnCompletedAt = row(server).turnCompletedAt
+      expect(turnCompletedAt).toEqual(expect.any(Number))
+      expect(turnCompletedAt).toBe(row(server).mainAgent?.stateStartedAt)
+
+      await postGrokHook(server, {
+        hookEventName: 'notification',
+        notificationType: 'task_complete',
+        message: 'Background task completed: task-1',
+        level: 'info'
+      })
+      expect(row(server)).toMatchObject({ state: 'done', turnCompletedAt })
+      expect(row(server).interrupted).toBeUndefined()
+    } finally {
+      server.stop()
+    }
+  })
+})

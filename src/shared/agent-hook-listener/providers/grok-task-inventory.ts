@@ -148,11 +148,12 @@ function dropGrokFinishedTask(
   if (inventory.size === 0) {
     state.grokBackgroundTasksByPaneKey.delete(paneKey)
   }
-  const mainAgent = state.grokMainAgentStatusByPaneKey.get(paneKey)
+  const record = state.grokMainAgentStatusByPaneKey.get(paneKey)
   // Why: a live lead turn already owns the row; only a row the inventory holds open re-derives.
-  if (mainAgent?.state !== 'done') {
+  if (record?.state !== 'done') {
     return null
   }
+  const { turnCompletedAt, ...mainAgent } = record
   const resolution = foldAgentLeadStatus({
     leadState: 'done',
     childWorkLiveness: grokChildWorkLivenessAfterTurnEnd(state, paneKey, hookPayload)
@@ -169,6 +170,8 @@ function dropGrokFinishedTask(
     lastAssistantMessageIsToolOutput: snapshot.lastAssistantMessageIsToolOutput,
     ...(resolution.workingMode ? { workingMode: resolution.workingMode } : {}),
     ...(mainAgent.outcome === 'cancellation' ? { interrupted: true } : {}),
+    // Why: the turn already announced at the idle that stamped it; this restatement pairs with that.
+    ...(turnCompletedAt !== undefined ? { turnCompletedAt } : {}),
     mainAgent
   })
 }

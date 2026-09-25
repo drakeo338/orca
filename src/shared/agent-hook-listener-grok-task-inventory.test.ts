@@ -4,7 +4,7 @@
 // grok-background-completion-hooks.jsonl.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeHookPayload } from './agent-hook-listener'
 import {
   createHookListenerState,
@@ -54,6 +54,10 @@ describe('Grok background-task inventory between stop reports', () => {
 
   beforeEach(() => {
     state = createHookListenerState()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   function normalize(payload: Record<string, unknown>) {
@@ -145,6 +149,31 @@ describe('Grok background-task inventory between stop reports', () => {
         reason: 'user_interrupt'
       })
     ).toMatchObject({ state: 'done', interrupted: true })
+  })
+
+  it('stamps the held-open turn at idle with its stop time, and a re-delivered stop keeps it', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+    normalize({ hookEventName: 'user_prompt_submit', sessionId: 's-1', promptId: 'p1' })
+    const stop = {
+      hookEventName: 'stop',
+      sessionId: 's-1',
+      promptId: 'p1',
+      reason: 'end_turn',
+      backgroundTasks: [{ id: 'task-1', type: 'shell', status: 'running' }]
+    }
+    vi.setSystemTime(2_000)
+    expect(normalize(stop)?.turnCompletedAt).toBeUndefined()
+    vi.setSystemTime(62_000)
+    expect(
+      normalize({
+        hookEventName: 'notification',
+        sessionId: 's-1',
+        notificationType: 'idle_prompt'
+      })
+    ).toMatchObject({ state: 'working', turnCompletedAt: 2_000 })
+    vi.setSystemTime(62_250)
+    expect(normalize(stop)?.turnCompletedAt).toBe(2_000)
   })
 
   // Why: Grok may run no follow-up turn after a completion (a cancel, a goal loop, auto-wake off),

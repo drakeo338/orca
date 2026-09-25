@@ -1,10 +1,16 @@
 import {
   normalizeAgentStatusPayload,
+  type AgentMainAgentStatus,
   type ParsedAgentStatusPayload
 } from '../../agent-status-types'
 import { isAskUserQuestionTool } from '../../agent-question-answered-intent'
-import { continueMainAgentStatus, foldAgentLeadStatus } from '../../agent-lead-status-fold'
+import {
+  continueMainAgentStatus,
+  foldAgentLeadStatus,
+  isAgentStatusHeldOpenByChildWork
+} from '../../agent-lead-status-fold'
 import { clearPaneTurnCacheState, type HookListenerState } from '../listener-state'
+import type { GrokMainAgentTurnState } from '../main-agent-turn-state'
 import {
   grokChildWorkLivenessAfterTurnEnd,
   grokIdentityField,
@@ -70,6 +76,25 @@ function grokTurnEndApplies(
     active.promptId === promptId &&
     (!active.sessionId || !sessionId || active.sessionId === sessionId)
   )
+}
+
+/** The finished turn's stamp, earned when Grok goes idle while child work still holds the row open
+ *  — not at its `stop`: Grok wakes itself when that work ends, and the woken turn is the one that
+ *  announces. A cancel earns none. It is the done run's own clock, so every later restatement of
+ *  that turn carries the same value. */
+function grokTurnCompletedAt(
+  previous: GrokMainAgentTurnState | undefined,
+  mainAgent: AgentMainAgentStatus,
+  idleHeldOpen: boolean
+): number | undefined {
+  if (mainAgent.state !== 'done' || mainAgent.outcome === 'cancellation') {
+    return undefined
+  }
+  if (idleHeldOpen) {
+    return mainAgent.stateStartedAt
+  }
+  // Why: only a done record holds a stamp, so a new turn (any non-done state) has already dropped it.
+  return previous?.turnCompletedAt
 }
 
 function isGrokSessionBoundary(eventName: unknown, hookPayload: Record<string, unknown>): boolean {
@@ -200,7 +225,17 @@ export function normalizeGrokEvent(
     { state: leadState, outcome: mainAgentOutcome },
     Date.now()
   )
-  state.grokMainAgentStatusByPaneKey.set(paneKey, mainAgent)
+  const turnCompletedAt = sessionBoundary
+    ? undefined
+    : grokTurnCompletedAt(
+        previousMainAgent,
+        mainAgent,
+        isIdlePrompt && isAgentStatusHeldOpenByChildWork({ state: stateName, mainAgent })
+      )
+  state.grokMainAgentStatusByPaneKey.set(paneKey, {
+    ...mainAgent,
+    ...(turnCompletedAt !== undefined ? { turnCompletedAt } : {})
+  })
 
   const snapshot = resolveToolState(
     state,
@@ -229,6 +264,7 @@ export function normalizeGrokEvent(
     // Why: derived from the main agent, so any later restatement that settles a cancelled turn still reads interrupted.
     ...(mainAgent.outcome === 'cancellation' ? { interrupted: true } : {}),
     ...(sessionBoundary ? { sessionBoundary: true } : {}),
+    ...(turnCompletedAt !== undefined ? { turnCompletedAt } : {}),
     mainAgent
   })
 }
