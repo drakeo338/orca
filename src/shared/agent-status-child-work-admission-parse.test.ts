@@ -160,6 +160,7 @@ const ERASURE: [keyof typeof GOOD, string, unknown][] = [
   ['totalTokens', 'a negative count', -1],
   ['totalTokens', 'a fractional count', 1.5],
   ['totalTokens', 'NaN', Number.NaN],
+  ['totalTokens', 'a count past the safe integers', 2 ** 60],
   ['providerTiming', 'a negative time', { startedAt: -1 }],
   ['providerTiming', 'an unknown key', { startedAt: 3, extra: 1 }],
   ['parentChildWorkId', 'an empty id', ''],
@@ -178,6 +179,19 @@ describe('a malformed fact never erases what the record knows', () => {
       childWorkId: 'child-1'
     })
     expect(store.getChild('child-1')).toMatchObject({ ...GOOD, observedAt: 20 })
+  })
+
+  it('admits a first sighting whose facts are all malformed, with none of them', () => {
+    const { store, admission } = setup()
+    const request = carrying('residency', 'detached')
+    Reflect.set(request, 'totalTokens', -1)
+    Reflect.set(request, 'parentChildWorkId', 'child-1')
+    Reflect.set(request, 'name', '\u2028')
+    expect(admission.announce(request)).toMatchObject({ accepted: true, created: true })
+    const child = store.getChild('child-1')
+    for (const field of ['residency', 'totalTokens', 'parentChildWorkId', 'name']) {
+      expect(child).not.toHaveProperty(field)
+    }
   })
 
   it('reads a malformed operation as the child doing nothing it can name', () => {
