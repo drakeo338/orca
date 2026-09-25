@@ -1826,8 +1826,7 @@
         "4725b0e931": "クイックオープンスキャンが大きすぎます (",
         "b227d88520": "{{value0}} ファイルが見つかりました",
         "995be8ea22": "コピー",
-        "cf144856dc": "コピーしました",
-        "344f8a48dd": "をクイックオープンのスキャンを実行するホストで実行すると、gitignore を考慮した高速な一覧表示が有効になります:"
+        "cf144856dc": "コピーしました"
       },
       "SelectedTextCopyMenu": {
         "9b40d7b018": "コピー"
@@ -14914,11 +14913,9 @@
           "missingIpykernelTitle": "ipykernelをインストールしますか?",
           "missingIpykernel": "「{{env}}」を使用してセルを実行するには、ipykernel パッケージが必要です。",
           "copyCommand": "コマンドをコピー",
-          "chooseAnother": "別のものを選択してください",
           "install": "インストール",
           "kernelStartFailed": "カーネルの起動に失敗しました。",
           "noPython": "このコンピュータでは Python が見つかりませんでした。 [python.org](https://www.python.org/downloads/) からインストールし、セルを再度実行します。",
-          "installFailed": "ipykernel のインストールに失敗しました。 `{{command}}` を自分で実行するか、`{{venvCommand}}` を使用してこのプロジェクトの仮想環境を作成し、それをカーネルとして選択します。",
           "kernelDied": "カーネルが死亡しました。",
           "localOnly": "ノートブックセルは、このコンピュータ上のファイルに対してのみ実行できます。",
           "pythonOnly": "Orca で実行できるのは Python ノートブックのみです。"
@@ -17086,6 +17083,9 @@
             "failed": "チャットを開始できませんでした。",
             "unknown": "チャット接続が確認できませんでした。",
             "retry": "再試行"
+          },
+          "NativeChatStructuredSessionStatus": {
+            "starting": "{{value0}} はまだ起動中です。準備ができるまでメッセージは待機します。中止するには、このチャットを閉じてください。"
           }
         }
       },
@@ -17412,6 +17412,7 @@
       "scrollMessageToTop": "このメッセージを一番上までスクロールします",
       "loadingEarlier": "読み込み中…",
       "loadEarlier": "以前のメッセージをロードする",
+      "loadingEarlierMessages": "以前のメッセージを読み込み中…",
       "question": {
         "step": "ステップ {{value0}}",
         "other": "他の…",

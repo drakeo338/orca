@@ -1826,8 +1826,7 @@
         "4725b0e931": "Quick Open 스캔이 너무 큼(",
         "b227d88520": "{{value0}} 파일을 찾았습니다.",
         "995be8ea22": "복사",
-        "cf144856dc": "복사됨",
-        "344f8a48dd": "on the host running the Quick Open scan to enable fast, gitignore-aware listing:"
+        "cf144856dc": "복사됨"
       },
       "SelectedTextCopyMenu": {
         "9b40d7b018": "복사"
@@ -11853,7 +11852,7 @@
           "allowPublishingDescription": "URL이 있는 사람은 누구나 열 수 있는 링크로 HTML 및 Markdown 파일을 게시하세요. 기존 링크는 아티팩트에서 삭제할 때까지 유지됩니다.",
           "howToDescriptionDisabled": "HTML 또는 Markdown 파일을 공개 링크로 게시하려면 위에서 아티팩트 공유를 활성화하세요.",
           "allowPublishingSearchDescription": "Orca가 HTML 및 Markdown 파일을 공개 링크로 게시하도록 허용합니다.",
-          "keywordArtifacts": "인공물",
+          "keywordArtifacts": "아티팩트",
           "keywordShare": "공유",
           "keywordPublish": "출판하다",
           "keywordPublic": "공공의",
@@ -14916,11 +14915,9 @@
           "missingIpykernelTitle": "ipykernel을 설치하시겠습니까?",
           "missingIpykernel": "'{{env}}'으로 셀을 실행하려면 ipykernel 패키지가 필요합니다.",
           "copyCommand": "복사 명령",
-          "chooseAnother": "다른 것을 선택하세요",
           "install": "설치",
           "kernelStartFailed": "커널을 시작하지 못했습니다.",
           "noPython": "이 컴퓨터에서는 Python을 찾을 수 없습니다. [python.org](https://www.python.org/downloads/)에서 설치한 후 셀을 다시 실행하세요.",
-          "installFailed": "ipykernel 설치에 실패했습니다. `{{command}}`을 직접 실행하거나 `{{venvCommand}}`을 사용하여 이 프로젝트에 대한 가상 환경을 만들고 이를 커널로 선택하세요.",
           "kernelDied": "커널이 죽었습니다.",
           "localOnly": "노트북 셀은 이 컴퓨터의 파일에 대해서만 실행할 수 있습니다.",
           "pythonOnly": "Orca에서는 Python 노트북만 실행할 수 있습니다."
@@ -17088,6 +17085,9 @@
             "failed": "채팅을 시작할 수 없습니다.",
             "unknown": "채팅 연결을 확인할 수 없습니다.",
             "retry": "다시 시도"
+          },
+          "NativeChatStructuredSessionStatus": {
+            "starting": "{{value0}}이(가) 아직 시작 중입니다. 준비될 때까지 메시지는 대기합니다. 중단하려면 이 채팅을 닫으세요."
           }
         }
       },
@@ -17414,6 +17414,7 @@
       "scrollMessageToTop": "이 메시지를 맨 위로 스크롤",
       "loadingEarlier": "로드 중…",
       "loadEarlier": "이전 메시지 로드",
+      "loadingEarlierMessages": "이전 메시지 로드 중…",
       "question": {
         "step": "{{value0}} 단계",
         "other": "다른…",

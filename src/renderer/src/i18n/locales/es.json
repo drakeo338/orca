@@ -1595,8 +1595,7 @@
         "4725b0e931": "El escaneo de apertura rápida es demasiado grande (",
         "b227d88520": "{{value0}} archivos encontrados",
         "995be8ea22": "Copiar",
-        "cf144856dc": "Copiado",
-        "344f8a48dd": "on the host running the Quick Open scan to enable fast, gitignore-aware listing:"
+        "cf144856dc": "Copiado"
       },
       "SelectedTextCopyMenu": {
         "9b40d7b018": "Copiar"
@@ -14649,6 +14648,13 @@
           "update": "Actualizar el contenido compartido"
         }
       },
+      "native": {
+        "chat": {
+          "NativeChatStructuredSessionStatus": {
+            "starting": "{{value0}} todavía se está iniciando. Los mensajes esperan hasta que esté listo; cierra este chat para abandonarlo."
+          }
+        }
+      },
       "ComposerParentWorktreePicker": {
         "label": "Worktree padre",
         "noParent": "Sin worktree padre",
@@ -14814,6 +14820,7 @@
       "scrollMessageToTop": "Desplazar este mensaje hacia arriba",
       "loadingEarlier": "Cargando…",
       "loadEarlier": "Cargar mensajes anteriores",
+      "loadingEarlierMessages": "Cargando mensajes anteriores…",
       "question": {
         "step": "Paso {{value0}}",
         "other": "Otro…",

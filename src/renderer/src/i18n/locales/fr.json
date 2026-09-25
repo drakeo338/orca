@@ -1929,8 +1929,7 @@
         "4725b0e931": "Scan Quick Open trop volumineux (",
         "b227d88520": "{{value0}} fichiers trouvés",
         "995be8ea22": "Copier",
-        "cf144856dc": "Copied",
-        "344f8a48dd": "sur l'hôte exécutant le scan Quick Open pour activer un listage rapide respectant .gitignore :"
+        "cf144856dc": "Copied"
       },
       "SelectedTextCopyMenu": {
         "9b40d7b018": "Copier"
@@ -15017,11 +15016,9 @@
           "missingIpykernelTitle": "Installer ipykernel ?",
           "missingIpykernel": "L'exécution de cellules avec '{{env}}' nécessite le package ipykernel.",
           "copyCommand": "Commande Copier",
-          "chooseAnother": "Choisissez-en un autre",
           "install": "Installer",
           "kernelStartFailed": "Le noyau n'a pas pu démarrer.",
           "noPython": "Python n'a pas été trouvé sur cet ordinateur. Installez-le depuis [python.org](https://www.python.org/downloads/), puis exécutez à nouveau la cellule.",
-          "installFailed": "L'installation d'ipykernel a échoué. Exécutez `{{command}}` vous-même ou créez un environnement virtuel pour ce projet avec `{{venvCommand}}` et choisissez-le comme noyau.",
           "kernelDied": "Le noyau est mort.",
           "localOnly": "Les cellules du bloc-notes ne peuvent s'exécuter que pour les fichiers de cet ordinateur.",
           "pythonOnly": "Seuls les notebooks Python peuvent s'exécuter dans Orca."
@@ -17178,6 +17175,9 @@
             "failed": "Le chat n'a pas pu démarrer.",
             "unknown": "La connexion au chat n'a pas pu être confirmée.",
             "retry": "Réessayer"
+          },
+          "NativeChatStructuredSessionStatus": {
+            "starting": "{{value0}} est encore en cours de démarrage. Les messages attendent qu'il soit prêt ; fermez ce chat pour y renoncer."
           }
         }
       },
@@ -17476,6 +17476,7 @@
       "scrollMessageToTop": "Revenir au début du message",
       "loadingEarlier": "Chargement…",
       "loadEarlier": "Charger les messages précédents",
+      "loadingEarlierMessages": "Chargement des messages précédents…",
       "question": {
         "step": "Étape {{value0}}",
         "other": "Autre…",
