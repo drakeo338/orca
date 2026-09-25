@@ -7,11 +7,11 @@
 // restored thread), and every reading of those rewrites as "the work is done" dropped chats that
 // were owed a resume.
 //
-// An offer ends only by the user's own actions. The one this predicate can see — a newer message
-// of theirs in that chat — is reported back as `superseded` so the caller DELETES the record
-// rather than filtering it forever. What remains are structural checks that are not about work at
-// all: the record still exists and this build supports it, the lease is free, and the conversation
-// has not forked.
+// An offer ends only by the user's own actions. The ones this predicate can see — a newer message
+// of theirs in that chat, or the conversation forked — are reported back as `superseded` so the
+// caller DELETES the record rather than filtering it forever. What remains are structural checks
+// that are not about work at all: the record still exists and this build supports it, and the
+// lease is free.
 
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
@@ -65,8 +65,8 @@ export type StructuredAgentSessionResumeFailure = StructuredAgentSessionResumeCa
 
 export type StructuredAgentSessionResumableSet = {
   candidates: StructuredAgentSessionResumeCandidate[]
-  /** Markers the user's own newer message has withdrawn. Every ending deletes: the caller retires
-   *  these from the durable record rather than re-filtering them on every read forever. */
+  /** Markers the chat has provably moved past — a newer user message, or a forked conversation.
+   *  Every ending deletes: the caller retires these rather than re-filtering them forever. */
   superseded: AgentSessionResumeMarker[]
 }
 
@@ -102,10 +102,15 @@ export function structuredAgentSessionResumableSet(
     if (input.leaseState !== 'may-be-held' && !isResumableStructuredAgentSessionRecord(record)) {
       continue
     }
-    // A conversation that FORKED since teardown is not the one we marked. Compared by identity
-    // root, because a resume legitimately advances Claude's leaf and that is not a fork.
+    // A conversation that FORKED since teardown is not the one we marked, and can never be again:
+    // deleted like a newer message, so it cannot sit unseen forever. Compared by identity root,
+    // because a resume legitimately advances Claude's leaf and that is not a fork.
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
-    if (!head || agentSessionProviderHandleRoot(head.handle) !== marker.providerHandleRoot) {
+    if (!head) {
+      continue
+    }
+    if (agentSessionProviderHandleRoot(head.handle) !== marker.providerHandleRoot) {
+      superseded.push(marker)
       continue
     }
     // The user moving on is the one thing that withdraws the offer. Anything the provider does on

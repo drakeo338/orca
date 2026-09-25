@@ -396,16 +396,20 @@ describe('the resumable set', () => {
     expect(candidates).toHaveLength(1)
   })
 
-  it('refuses a Claude session that forked to a different identity root', () => {
-    expect(
-      structuredAgentSessionResumableSet({
-        markers: [marker({ providerHandleRoot: CLAUDE_ROOT })],
-        getRecord: () => claudeRecord(null, 'prov-session-2'),
-        supportsRecord: () => true,
-        latestPrompt: () => '',
-        latestUserItemId: () => null
-      }).candidates
-    ).toEqual([])
+  // A fork can never become the marked conversation again, so the record is deleted, not kept
+  // unseen forever.
+  it('withdraws and reports for deletion a Claude session that forked to a different root', () => {
+    const forked = marker({ providerHandleRoot: CLAUDE_ROOT })
+    const set = structuredAgentSessionResumableSet({
+      markers: [forked],
+      getRecord: () => claudeRecord(null, 'prov-session-2'),
+      supportsRecord: () => true,
+      latestPrompt: () => '',
+      latestUserItemId: () => null
+    })
+
+    expect(set.candidates).toEqual([])
+    expect(set.superseded).toEqual([forked])
   })
 
   // An offer has no expiry: it ends only by the user's own actions, however old it is.

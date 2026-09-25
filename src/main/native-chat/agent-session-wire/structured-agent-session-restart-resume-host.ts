@@ -1,5 +1,6 @@
-// Restart offers are durable per-session records. Listing is read-only; only an explicit action
-// reserves records, and only a completed action removes them — or files what went wrong.
+// Restart offers are durable per-session records. Listing reserves nothing and removes only offers
+// the chat has provably moved past; an explicit action reserves records, and only a completed
+// action removes them — or files what went wrong.
 
 import { randomUUID } from 'node:crypto'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
