@@ -21,15 +21,11 @@ import {
   STRUCTURED_CHILD_WORK_PROVENANCE,
   type AgentChildWorkEvidenceScope
 } from './agent-status-child-work-evidence-resolution'
-import { normalizeOptionalField } from './agent-status-field-normalization'
 
 /** Live children admitted per session, sized to the provider trackers' own retention. */
 export const STRUCTURED_CHILD_WORK_MAX_LIVE = 256
 /** A child's first run, matching the provider roster's first attempt. */
 const FIRST_GENERATION = 1
-/** The record codec's label bound. */
-const CHILD_WORK_LABEL_MAX_LENGTH = 512
-const LABEL_SCAN_MAX_LENGTH = CHILD_WORK_LABEL_MAX_LENGTH * 4
 
 export type AgentChildWorkReconcileOutcome = {
   admitted: number
@@ -55,20 +51,6 @@ function counted(
   } else {
     ctx.outcome.rejected.push({ handleId, reason: result.reason })
   }
-}
-
-/** Labels are one-line text: the record codec refuses raw provider text, and a refused label
- *  would cost the child its whole update. */
-function childWorkLabel(value: string | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined
-  }
-  let text = ''
-  for (const char of value.slice(0, LABEL_SCAN_MAX_LENGTH)) {
-    const code = char.charCodeAt(0)
-    text += code <= 0x1f || code === 0x7f ? ' ' : char
-  }
-  return normalizeOptionalField(text, CHILD_WORK_LABEL_MAX_LENGTH)
 }
 
 /** An `open` operation ends on its own edge; a `reported` one lasts until the next report. */
@@ -103,8 +85,8 @@ export function agentChildWorkRunVerdict(
 }
 
 /** `prior` is the record when this evidence continues its current run; a new run starts bare.
- *  Labels, tokens, owner and the last message are admission's to retain, so only this edge's
- *  own facts go in. */
+ *  Admission folds provider text and keeps what an edge leaves unsaid (labels and tokens always,
+ *  owner and last message within a run), so only this edge's own raw facts go in. */
 function liveFields(
   ctx: AgentChildWorkEvidenceContext,
   child: AgentChildWorkLiveObservation,
@@ -116,17 +98,14 @@ function liveFields(
   const at = existing ? Math.max(observedAt, existing.observedAt) : observedAt
   const owner =
     child.ownerId === undefined ? undefined : resolveAgentChildWorkOwner(ctx, child.ownerId)
-  const name = childWorkLabel(child.name)
-  const description = childWorkLabel(child.description)
-  const agentType = childWorkLabel(child.agentType)
   const operation = nextOperation(child.operation, prior?.operation)
   return {
     kind: child.kind,
     state: child.state,
     membership: 'live',
-    ...(name !== undefined ? { name } : {}),
-    ...(description !== undefined ? { description } : {}),
-    ...(agentType !== undefined ? { agentType } : {}),
+    ...(child.name !== undefined ? { name: child.name } : {}),
+    ...(child.description !== undefined ? { description: child.description } : {}),
+    ...(child.agentType !== undefined ? { agentType: child.agentType } : {}),
     ...(child.totalTokens !== undefined ? { totalTokens: child.totalTokens } : {}),
     ...(owner !== undefined ? { parentChildWorkId: owner } : {}),
     residency: child.residency,

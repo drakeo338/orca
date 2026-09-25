@@ -295,7 +295,7 @@ describe('structured child-work reconciliation', () => {
     expect(only(store).operation).toBeUndefined()
   })
 
-  it('folds raw provider labels to one line before admission', () => {
+  it('hands raw provider labels to admission, which folds them to one line', () => {
     const { store, apply } = harness()
     const result = apply(
       live(child('task-a', { description: 'Audit\nthe\ttests\u0007 ', name: ' reviewer\n' }))
