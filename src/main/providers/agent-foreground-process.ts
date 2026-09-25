@@ -14,7 +14,7 @@ import {
 } from './windows-agent-foreground-process'
 import { isShellProcess } from '../../shared/shell-process-detection'
 import { selectForegroundProcessCandidate } from '../../shared/foreground-process-selection'
-import { isGitForWindowsBashLauncherPath } from '../git-bash'
+import { isWindowsShellAloneInJob } from './windows-shell-alone-in-job'
 import {
   readWindowsProcessIdentityTableFresh,
   type WindowsProcessIdentityRow
@@ -63,28 +63,6 @@ function commandExecutable(command: string): string {
 
 function executableBasename(command: string): string {
   return commandExecutable(command).split(/[\\/]/).pop()?.toLowerCase() ?? ''
-}
-
-/** The job holds the shell alone: just its pid, or a Git Bash launcher plus the bash it waits on. */
-async function isWindowsShellAloneInJob(
-  shellPid: number,
-  spawnedShellPath: string,
-  processIds: ReadonlySet<number> | null | undefined,
-  readIdentityTable: () => Promise<WindowsProcessIdentityRow[]>
-): Promise<boolean> {
-  if (!processIds?.has(shellPid)) {
-    return false
-  }
-  if (processIds.size === 1) {
-    return true
-  }
-  if (processIds.size !== 2 || !isGitForWindowsBashLauncherPath(spawnedShellPath)) {
-    return false
-  }
-  const childPid = [...processIds].find((pid) => pid !== shellPid)
-  // Why: commands typed at the prompt are children of the MSYS bash, never of the launcher.
-  const child = (await readIdentityTable()).find((row) => row.pid === childPid)
-  return child?.ppid === shellPid && child.name.toLowerCase() === 'bash.exe'
 }
 
 export async function confirmShellForegroundProcess(
