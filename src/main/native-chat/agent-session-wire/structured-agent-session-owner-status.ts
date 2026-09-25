@@ -21,10 +21,7 @@ export function structuredAgentSessionOwnerStatus(
     }
   }
   return {
-    owner:
-      record.lease.claimStatus === 'live' && record.lease.ownerProcess
-        ? record.lease.runtimeKind
-        : 'none',
+    owner: record.lease.claimStatus === 'live' && record.lease.ownerProcess ? 'native' : 'none',
     direction: stage ? 'to-native' : null,
     phase: stage ? 'switching' : 'idle',
     stage,

@@ -607,13 +607,14 @@ describe('restart', () => {
     expect(listRecords).toHaveBeenCalledTimes(restoreReads)
   })
 
-  it('clears stale TUI recovery at restart, and reacquires the native owner when a surface holds it', async () => {
+  it('clears a stale conflicted recovery at restart, and reacquires the native owner when a surface holds it', async () => {
     await attach()
     await store.transitionHandoff(SESSION, (record) => ({
       ...record,
       lease: {
         ...record.lease,
-        runtimeKind: 'tui',
+        // How a terminal owner an older build recorded loads.
+        claimStatus: 'conflicted',
         handoffStage: 'manual-recovery'
       }
     }))

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { evaluateAgentSessionAcquisition } from '../../shared/agent-session-lease-adjudication'
-import { isAgentSessionRecord } from '../../shared/agent-session-record'
+import { isPersistedAgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionLeaseFixture } from '../../shared/agent-session-record.test-fixture'
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import {
@@ -313,7 +313,7 @@ describe('recovery from the committed backup', () => {
     // A `live` lease means a provider handle proven at exactly lease.runtimeFence. Recovery that
     // rewrote the fence broke that, so the record failed validation, was quarantined on the next
     // load, and dropped straight back to the same backup.
-    expect(isAgentSessionRecord(record)).toBe(true)
+    expect(isPersistedAgentSessionRecord(record)).toBe(true)
   })
 
   it('carries ownership evidence forward verbatim', async () => {

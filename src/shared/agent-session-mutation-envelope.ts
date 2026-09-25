@@ -134,7 +134,7 @@ export function admitAgentSessionMutation(input: {
 /** Why the single admission oracle said no, mapped to what the client can do
  *  about it. The predicate itself is never re-implemented here. */
 function refuseUnlessWriterAdmitted(lease: AgentSessionLease): AgentSessionWireRefusal | null {
-  if (lease.runtimeKind === 'native' && agentSessionLeaseAdmitsWriter(lease)) {
+  if (agentSessionLeaseAdmitsWriter(lease)) {
     return null
   }
   if (lease.unreconciled) {
