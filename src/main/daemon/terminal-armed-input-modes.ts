@@ -2,25 +2,27 @@
 // are left out because bash, zsh and PowerShell arm them at their own prompts.
 // `?66` is DECNKM, not `ESC =`: zle's smkx (`ESC[?1h ESC=`) stays untracked.
 const TRACKED_PRIVATE_MODES = new Set([9, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 1016, 66])
+// The one mode a terminal host arms for itself: ConPTY sends ?1004h at pane start and after RIS.
+const HOST_ARMABLE_MODE = 1004
 // Why one key per screen: kitty flags are per screen, so ownership must be too.
 type ModeKey = number | 'kitty-main' | 'kitty-alt'
-// host: armed before any marker (ConPTY's ?1004h) or by a prompt a 133;C proved;
-// its private modes survive the ground. Kitty flags never do: fish pops its own
-// before running a command and re-pushes at the next prompt. prompt: armed after 133;A/D, unproven until C. command:
-// armed after C. stale: left past a 133;D by a command or an unproven prompt.
+// host: HOST_ARMABLE_MODE armed before any marker or by a prompt a 133;C proved; the ground keeps it.
+// prompt: armed outside a command, unproven until C.
+// command: armed after C; still on at 133;D, it triggers the ground.
+// stale: anything else still on; the ground clears it without it ever triggering.
 type ModeOwner = 'host' | 'prompt' | 'command' | 'stale'
 // Matches xterm.js's eviction limit, so the model drops the same entries.
 const KITTY_STACK_LIMIT = 16
 
 /**
  * Who armed each tracked input mode. A command that ends with a mode it armed
- * still on leaves that mode to the recovery barrier's ground; the host's modes
- * are re-asserted after it.
+ * still on leaves that mode to the recovery barrier's ground, which keeps only
+ * host-owned focus reporting.
  */
 export class TerminalArmedInputModes {
   // Keys are exactly the armed modes.
   private readonly owners = new Map<ModeKey, ModeOwner>()
-  // Who an enable arriving now belongs to. Without a 133;C nothing is ever a command's.
+  // Who an enable arriving now belongs to ('host' = before any marker). Without a 133;C nothing is a command's.
   private enableOwner: 'host' | 'prompt' | 'command' = 'host'
   // Mirrors xterm.js's kitty state: current flags, the other screen's flags, and a stack per screen.
   private kittyFlags = 0
@@ -29,6 +31,10 @@ export class TerminalArmedInputModes {
   private kittyMainStack: number[] = []
   private kittyAltStack: number[] = []
   private onAlternateScreen = false
+
+  get hostOwnsFocusReporting(): boolean {
+    return this.owners.get(HOST_ARMABLE_MODE) === 'host'
+  }
 
   applyPrivateMode(param: number, enabled: boolean): void {
     if (TRACKED_PRIVATE_MODES.has(param)) {
@@ -80,7 +86,7 @@ export class TerminalArmedInputModes {
       this.owners.delete(this.kittyKey())
     } else if (this.kittyFlags !== before) {
       // Why no host stickiness: new flags are a new writer's, not a repeat.
-      this.owners.set(this.kittyKey(), this.enableOwner)
+      this.owners.set(this.kittyKey(), this.ownerForEnable(this.kittyKey()))
     }
   }
 
@@ -88,7 +94,7 @@ export class TerminalArmedInputModes {
   markCommandStart(): void {
     for (const [key, owner] of this.owners) {
       if (owner === 'prompt') {
-        this.owners.set(key, 'host')
+        this.owners.set(key, key === HOST_ARMABLE_MODE ? 'host' : 'stale')
       }
     }
     this.enableOwner = 'command'
@@ -112,28 +118,10 @@ export class TerminalArmedInputModes {
     return left
   }
 
-  hostPrivateModes(): number[] {
-    const modes: number[] = []
-    for (const [key, owner] of this.owners) {
-      if (owner === 'host' && typeof key === 'number') {
-        modes.push(key)
-      }
-    }
-    return modes
-  }
-
-  /** After a ground: re-arms `modes` as the host's; returns the bytes. */
-  reassertHostModes(modes: readonly number[]): string {
-    for (const mode of modes) {
-      this.owners.set(mode, 'host')
-    }
-    return modes.length > 0 ? `\x1b[?${modes.join(';')}h` : ''
-  }
-
-  /** `ESC c`: modes go off but host ownership stands (ConPTY re-arms ?1004h itself). */
+  /** `ESC c`: modes go off but host focus ownership stands (ConPTY re-sends ?1004h). */
   reset(): void {
     for (const [key, owner] of this.owners) {
-      if (owner !== 'host' || typeof key !== 'number') {
+      if (owner !== 'host') {
         this.owners.delete(key)
       }
     }
@@ -154,7 +142,7 @@ export class TerminalArmedInputModes {
     if (this.kittyFlags === 0) {
       this.owners.delete(this.kittyKey())
     } else if (!this.owners.has(this.kittyKey())) {
-      this.owners.set(this.kittyKey(), this.enableOwner)
+      this.owners.set(this.kittyKey(), this.ownerForEnable(this.kittyKey()))
     }
   }
 
@@ -163,7 +151,11 @@ export class TerminalArmedInputModes {
       this.owners.delete(key)
     } else if (this.owners.get(key) !== 'host') {
       // Host arming is sticky: a program re-sending the host's enable is a wire no-op.
-      this.owners.set(key, this.enableOwner)
+      this.owners.set(key, this.ownerForEnable(key))
     }
+  }
+
+  private ownerForEnable(key: ModeKey): ModeOwner {
+    return this.enableOwner === 'host' && key !== HOST_ARMABLE_MODE ? 'prompt' : this.enableOwner
   }
 }

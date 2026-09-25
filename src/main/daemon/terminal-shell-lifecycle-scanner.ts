@@ -1,4 +1,4 @@
-import { PROCESS_BOUNDARY_GROUND } from '../../shared/terminal-mode-reset-profiles'
+import { buildProcessBoundaryGround } from '../../shared/terminal-mode-reset-profiles'
 import type { TerminalOwner } from '../../shared/terminal-owner'
 import { TerminalArmedInputModes } from './terminal-armed-input-modes'
 
@@ -80,12 +80,13 @@ export class TerminalShellLifecycleScanner {
     return true
   }
 
-  /** Scans the process-boundary ground plus a re-assert of the host's input modes,
-   *  which never counts as a new owner; returns the bytes to inject. */
+  /** Scans and returns the process-boundary ground for the current host ownership. */
   groundProcessBoundary(): string {
-    const hostModes = this.inputModes.hostPrivateModes()
-    this.scan(PROCESS_BOUNDARY_GROUND)
-    return `${PROCESS_BOUNDARY_GROUND}${this.inputModes.reassertHostModes(hostModes)}`
+    const ground = buildProcessBoundaryGround({
+      keepFocusReporting: this.inputModes.hostOwnsFocusReporting
+    })
+    this.scan(ground)
+    return ground
   }
 
   seedOwner(owner: TerminalOwner | undefined, opts: { alternateScreen?: boolean } = {}): void {

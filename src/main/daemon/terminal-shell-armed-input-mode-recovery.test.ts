@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { PROCESS_BOUNDARY_GROUND } from '../../shared/terminal-mode-reset-profiles'
+import {
+  buildProcessBoundaryGround,
+  PROCESS_BOUNDARY_GROUND
+} from '../../shared/terminal-mode-reset-profiles'
 import { Session } from './session'
 import { TerminalShellLifecycleScanner } from './terminal-shell-lifecycle-scanner'
 import type { SubprocessHandle } from './session-subprocess-handle'
@@ -10,6 +13,7 @@ import type { SubprocessHandle } from './session-subprocess-handle'
 const COMMAND_START = '\x1b]133;C\x07'
 const COMMAND_DONE = '\x1b]133;D;1\x07'
 const PROMPT_START = '\x1b]133;A\x07'
+const HOST_FOCUS_GROUND = buildProcessBoundaryGround({ keepFocusReporting: true })
 
 function triggers(scanner: TerminalShellLifecycleScanner, chunk: string): boolean {
   return scanner.scan(chunk).uncleanDeathTriggerEnd !== undefined
@@ -57,10 +61,10 @@ describe('armed input modes arm the unclean-death trigger', () => {
   })
 
   it('treats modes the prompt armed before the command started as shell-owned', () => {
-    // Synthetic fish-style prompt (no fish transcript on this host): the shell
-    // arms focus and kitty at its prompt and leaves them armed across commands.
+    // fish's sequence (src/tty_handoff.rs; no recorded transcript): under tmux it arms
+    // focus, sets kitty flags with `=5u` at the prompt and clears them with `=0u` before a command.
     const scanner = new TerminalShellLifecycleScanner()
-    const prompt = '\x1b[?1004h\x1b[>5u$ '
+    const prompt = '\x1b[?1004h\x1b[=5u$ \x1b[=0u'
 
     expect(triggers(scanner, `${prompt}${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
     expect(triggers(scanner, `${prompt}${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
@@ -90,11 +94,18 @@ describe('armed input modes arm the unclean-death trigger', () => {
 
   it('bounds the kitty stack so the ground can always clear it', () => {
     const scanner = new TerminalShellLifecycleScanner()
-    // Uncapped, 101 pushes outlast the ground's pop-99, so a later pop would restore flags 5.
-    scanner.scan(`${COMMAND_START}${'\x1b[>5u'.repeat(101)}RUN`)
+    // Uncapped, 250 pushes outlast the ground's two pop-99s, so a later pop would restore flags 5.
+    scanner.scan(`${COMMAND_START}${'\x1b[>5u'.repeat(250)}RUN`)
     scanner.scan(PROCESS_BOUNDARY_GROUND)
 
     expect(triggers(scanner, `\x1b[?1000h\x1b[?1000l\x1b[<uRUN${COMMAND_DONE}`)).toBe(false)
+  })
+
+  it('drops main-screen kitty flags that a bare ?1049l swaps out', () => {
+    const scanner = new TerminalShellLifecycleScanner()
+
+    // xterm swaps in the (empty) alt-screen flags even with no matching ?1049h.
+    expect(triggers(scanner, `${COMMAND_START}\x1b[>1u\x1b[?1049lRUN${COMMAND_DONE}`)).toBe(false)
   })
 
   it('stays inert for the ground: it clears the armed set without re-arming', () => {
@@ -108,15 +119,15 @@ describe('armed input modes arm the unclean-death trigger', () => {
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })
 
-  it('re-asserts only the host private modes after the ground, without a new owner', () => {
+  it('keeps host focus through the ground and clears the rest, without a new owner', () => {
     const scanner = new TerminalShellLifecycleScanner()
     scanner.seedOwner('shell')
     const prompt = `\x1b[?1004h\x1b[>5u$ ${COMMAND_START}`
     expect(triggers(scanner, `${prompt}\x1b[?1003h\x1b[>1uRUN${COMMAND_DONE}`)).toBe(true)
     const generation = scanner.generation
 
-    // Kitty flags are never re-asserted: the ground clears them and the next prompt re-pushes its own.
-    expect(scanner.groundProcessBoundary()).toBe(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`)
+    // Kitty flags are never the host's: the ground clears them and the next prompt sets its own.
+    expect(scanner.groundProcessBoundary()).toBe(HOST_FOCUS_GROUND)
     expect(scanner.generation).toBe(generation)
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })
@@ -216,7 +227,7 @@ describe('host-armed modes survive and command-armed modes do not', () => {
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
   })
 
-  it('keeps host focus through a mid-command RIS that ConPTY answers by re-arming it', async () => {
+  it('keeps host focus through a mid-command RIS that ConPTY answers by re-sending it', async () => {
     const { snapshot, records } = await runSteps([
       { data: `\x1b[?1004h${PROMPT_START}PS> ${COMMAND_START}` },
       {
@@ -226,10 +237,7 @@ describe('host-armed modes survive and command-armed modes do not', () => {
     ])
 
     expect(
-      records.some(
-        (record) =>
-          record.kind === 'output' && record.data.includes(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`)
-      )
+      records.some((record) => record.kind === 'output' && record.data.includes(HOST_FOCUS_GROUND))
     ).toBe(true)
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
     expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
@@ -250,16 +258,16 @@ describe('host-armed modes survive and command-armed modes do not', () => {
   })
 })
 
-describe("prompt-armed modes are the host's only once a 133;C proves the prompt ended", () => {
+describe("prompt-armed focus is the host's only once a 133;C proves the prompt ended", () => {
   it.each([
-    ['re-asserts them after a C', `${COMMAND_START}\x1b[?1003hRUN`, '\x1b[?1004h'],
-    ['grounds them without a C', '\x1b[?1049hTUI', '']
-  ])('%s', (_label, command, reasserted) => {
+    ['keeps it after a C', `${COMMAND_START}\x1b[?1003hRUN`, HOST_FOCUS_GROUND],
+    ['grounds it without a C', '\x1b[?1049hTUI', PROCESS_BOUNDARY_GROUND]
+  ])('%s', (_label, command, ground) => {
     const scanner = new TerminalShellLifecycleScanner()
     const events = scanner.scan(`${PROMPT_START}\x1b[?1004h$ ${command}${COMMAND_DONE}`)
 
     expect(events.uncleanDeathTriggerEnd).toBeDefined()
-    expect(scanner.groundProcessBoundary()).toBe(`${PROCESS_BOUNDARY_GROUND}${reasserted}`)
+    expect(scanner.groundProcessBoundary()).toBe(ground)
   })
 })
 
@@ -297,17 +305,14 @@ describe('Session grounds a proven normal-buffer death', () => {
     session.dispose()
 
     expect(
-      records.some(
-        (record) =>
-          record.kind === 'output' && record.data.includes(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`)
-      )
+      records.some((record) => record.kind === 'output' && record.data.includes(HOST_FOCUS_GROUND))
     ).toBe(true)
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
     expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
     expect(snapshot?.terminalOwner).toBe('shell')
   })
 
-  it('turns off a mode a program leaked past a refuted proof instead of re-arming it', async () => {
+  it('turns off a mode a program leaked past a refuted proof at the next ground', async () => {
     let confirmed = false
     const sub = createSubprocess(true)
     sub.confirmShellForeground.mockImplementation(async () => confirmed)
@@ -331,12 +336,7 @@ describe('Session grounds a proven normal-buffer death', () => {
     session.dispose()
 
     expect(
-      records.some(
-        (record) =>
-          record.kind === 'output' &&
-          record.data.includes(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`) &&
-          !record.data.includes('\x1b[?1004;1003h')
-      )
+      records.some((record) => record.kind === 'output' && record.data.includes(HOST_FOCUS_GROUND))
     ).toBe(true)
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
     expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
