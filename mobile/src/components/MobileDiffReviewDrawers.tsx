@@ -82,7 +82,10 @@ function useSendActions(controller: ReturnType<typeof useMobileDiffReviewControl
       {
         label: 'New Agent Session',
         icon: Plus,
-        disabled: comments.length === 0,
+        disabled: comments.length === 0 || controller.agentLaunchAvailability !== 'available',
+        ...(controller.agentLaunchAvailability === 'update-required'
+          ? { hint: 'Update Orca on your computer' }
+          : {}),
         skipAutoClose: true,
         onPress: () => void controller.createTerminalAndSend(comments)
       },

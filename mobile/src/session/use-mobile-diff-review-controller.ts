@@ -27,11 +27,14 @@ import type {
   SendSheetState
 } from './mobile-diff-review-screen-model'
 import { useMobileDiffReviewInteractions } from './use-mobile-diff-review-interactions'
+import { resolveMobileAgentLaunchAvailability } from './mobile-agent-launch-availability'
 import { useMobilePrSidebarController } from './use-mobile-pr-sidebar-controller'
 
 type ControllerInput = {
   client: RpcClient | null
   connState: ConnectionState
+  hostCapabilities: readonly string[]
+  hostStatusPending: boolean
   hostId: string
   worktreeId: string
   name: string
@@ -46,6 +49,8 @@ export function useMobileDiffReviewController(input: ControllerInput) {
   const {
     client,
     connState,
+    hostCapabilities,
+    hostStatusPending,
     hostId,
     worktreeId,
     name,
@@ -227,6 +232,7 @@ export function useMobileDiffReviewController(input: ControllerInput) {
   const interactions = useMobileDiffReviewInteractions({
     client,
     connState,
+    hostCapabilities,
     hostId,
     worktreeId,
     screenState,
@@ -258,6 +264,10 @@ export function useMobileDiffReviewController(input: ControllerInput) {
   return {
     ...interactions,
     ...prSidebar,
+    agentLaunchAvailability: resolveMobileAgentLaunchAvailability(
+      hostCapabilities,
+      hostStatusPending
+    ),
     // Exposed so the screen can thread the RPC client + worktree into the PR
     // sidebar's lazy check-detail fetches (U5) and mutation actions (U6).
     client,

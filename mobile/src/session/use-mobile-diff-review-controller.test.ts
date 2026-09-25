@@ -43,6 +43,8 @@ describe('useMobileDiffReviewController', () => {
     const controller = useMobileDiffReviewController({
       client,
       connState,
+      hostCapabilities: [],
+      hostStatusPending: false,
       hostId: 'host-1',
       worktreeId: 'wt-1',
       name: 'review',

@@ -6,11 +6,8 @@ import { useClipboardWriter } from '../platform/clipboard'
 import { triggerSuccess } from '../platform/haptics'
 import { formatDiffComments, formatMobileDiffReviewPrompt } from './mobile-diff-comments'
 import { clearSentMobileDiffComments, markMobileDiffCommentsSent } from './mobile-diff-comment-edit'
-import {
-  reviewTerminalCreateRun,
-  reviewTerminalListRead,
-  reviewTerminalSendRun
-} from './mobile-review-terminal-operations'
+import { reviewTerminalListRead, reviewTerminalSendRun } from './mobile-review-terminal-operations'
+import { launchAgentWithPrompt } from './pr-ai-triage-launch'
 import { interpretOrThrowRefusalMessage } from '../transport/rpc-refusal-message'
 import { healMobileNativeChatStaleInput } from './mobile-native-chat-stale-input'
 import type { ReviewScreenState, SendSheetState } from './mobile-diff-review-screen-model'
@@ -18,6 +15,7 @@ import type { ReviewScreenState, SendSheetState } from './mobile-diff-review-scr
 type SendActionsInput = {
   client: RpcClient | null
   connState: ConnectionState
+  hostCapabilities: readonly string[]
   worktreeId: string
   screenState: ReviewScreenState
   setActionError: Dispatch<SetStateAction<string | null>>
@@ -35,6 +33,7 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
   const {
     client,
     connState,
+    hostCapabilities,
     worktreeId,
     screenState,
     setActionError,
@@ -117,20 +116,32 @@ export function useMobileDiffReviewSendActions(input: SendActionsInput) {
       if (!client || connState !== 'connected') {
         throw new Error('Waiting for desktop...')
       }
-      const response = await reviewTerminalCreateRun.request(client, {
-        worktree: `id:${worktreeId}`,
-        activate: false,
-        select: true,
-        navigation: 'caller'
+      // The desktop asks which agent to use; the review screen has no picker, so this takes the
+      // desktop's own default resolution with no saved recipe.
+      const result = await launchAgentWithPrompt({
+        client,
+        hostCapabilities,
+        worktreeId,
+        prompt: formatMobileDiffReviewPrompt(comments),
+        actionId: null,
+        launchSource: 'notes_send'
       })
-      let created
-      created = interpretOrThrowRefusalMessage(
-        () => reviewTerminalCreateRun.interpret(response),
-        'Failed to create terminal'
-      )
-      await sendPromptToTerminal(created.terminal, comments)
+      if (result.kind === 'not-started' || result.kind === 'unconfirmed') {
+        throw new Error(result.message)
+      }
+      setSendSheet(null)
+      if (result.kind === 'prompt-not-sent') {
+        // Notes stay unsent so Copy Notes and a later send still carry them.
+        setActionError(
+          "The agent started, but the notes weren't sent. Use Copy Notes to paste them."
+        )
+        return
+      }
+      await markNotesSent(comments)
+      triggerSuccess()
+      setActionError(result.warning ?? 'Review notes sent')
     },
-    [client, connState, sendPromptToTerminal, worktreeId]
+    [client, connState, hostCapabilities, markNotesSent, setActionError, setSendSheet, worktreeId]
   )
 
   const openSendSheet = useCallback(async () => {

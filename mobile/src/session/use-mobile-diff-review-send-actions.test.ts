@@ -11,6 +11,21 @@ import {
 } from './mobile-native-chat-stale-input'
 import { useMobileDiffReviewSendActions } from './use-mobile-diff-review-send-actions'
 
+// A connected client whose only behaviour is the scripted `sendRequest`.
+function requestPortRpcClient(sendRequest: RpcClient['sendRequest']): RpcClient {
+  return {
+    sendRequest,
+    subscribe: () => () => {},
+    updateTerminalSubscriptionViewport: () => {},
+    getState: () => 'connected',
+    getReconnectAttempt: () => 0,
+    getLastConnectedAt: () => null,
+    onStateChange: () => () => {},
+    notifyForeground: () => {},
+    close: () => {}
+  }
+}
+
 type SendActions = ReturnType<typeof useMobileDiffReviewSendActions>
 
 vi.mock('../platform/haptics', () => ({ triggerSuccess: vi.fn() }))
@@ -36,6 +51,40 @@ const COMMENT: DiffComment = {
   body: 'rename this',
   createdAt: 1,
   side: 'modified'
+}
+
+const LAUNCH_CAPABILITIES = [
+  'agent.launch.v2',
+  'agent.launch.replay.v1',
+  'agent.launch.replay-required.v1'
+]
+
+// Answers the agent loader's reads and the launch, by method.
+function launchClient(promptOutcome: 'handed-to-terminal' | 'not-delivered') {
+  const reply = (result: unknown) => ({
+    id: 'rpc',
+    ok: true as const,
+    result,
+    _meta: { runtimeId: 'r' }
+  })
+  const sendRequest = vi.fn(async (method: string, _params?: unknown) => {
+    if (method === 'repo.list') {
+      return reply({ repos: [{ id: 'wt-1' }] })
+    }
+    if (method === 'settings.get') {
+      return reply({ settings: { defaultTuiAgent: 'codex' } })
+    }
+    if (method === 'preflight.detectAgents') {
+      return reply(['codex'])
+    }
+    return reply({
+      outcome: { kind: 'terminal', handle: 'term-1' },
+      worktreeId: 'wt-1',
+      receipt: { mode: 'terminal', preferred: 'terminal', reason: 'user_default', detail: 'd' },
+      prompt: { delivery: 'submit', outcome: promptOutcome }
+    })
+  })
+  return { client: requestPortRpcClient(sendRequest), sendRequest }
 }
 
 const READY: ReviewScreenState = {
@@ -73,6 +122,7 @@ describe('useMobileDiffReviewSendActions', () => {
     actions = useMobileDiffReviewSendActions({
       client: mountedClient,
       connState: 'connected',
+      hostCapabilities: LAUNCH_CAPABILITIES,
       worktreeId: 'wt-1',
       screenState: READY,
       setActionError,
@@ -238,5 +288,34 @@ describe('useMobileDiffReviewSendActions', () => {
 
     expect((error as Error).message).toBe('pane gone')
     expect(saveCommentsAndReviewState).not.toHaveBeenCalled()
+  })
+
+  it('starts a new agent with the notes through the host and marks them sent', async () => {
+    const { client, sendRequest } = launchClient('handed-to-terminal')
+    await mount(client)
+    await act(async () => {
+      await actions?.createTerminalAndSend([COMMENT])
+    })
+    const launch = sendRequest.mock.calls.find(([method]) => method === 'agent.launchReplay')
+    expect(launch?.[1]).toMatchObject({
+      agent: 'codex',
+      target: { kind: 'existing', worktree: 'id:wt-1' },
+      prompt: { delivery: 'submit' },
+      launchSource: 'notes_send'
+    })
+    expect(sendRequest.mock.calls.some(([method]) => method === 'terminal.send')).toBe(false)
+    expect(saveCommentsAndReviewState).toHaveBeenCalledOnce()
+    expect(setActionError).toHaveBeenLastCalledWith('Review notes sent')
+  })
+
+  it('keeps the notes unsent when the agent started without them', async () => {
+    await mount(launchClient('not-delivered').client)
+    await act(async () => {
+      await actions?.createTerminalAndSend([COMMENT])
+    })
+    expect(saveCommentsAndReviewState).not.toHaveBeenCalled()
+    expect(setActionError).toHaveBeenLastCalledWith(
+      "The agent started, but the notes weren't sent. Use Copy Notes to paste them."
+    )
   })
 })
