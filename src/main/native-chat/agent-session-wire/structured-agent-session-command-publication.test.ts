@@ -65,23 +65,25 @@ it('delivers catalog changes through existing frames without resending them on o
     let commands: AgentSessionSlashCommand[] | undefined = [
       { name: 'loaded', kind: 'command', kindUnspecified: true }
     ]
-    const subscribers = new AgentSessionSubscribers({ readCommands: () => commands })
+    const subscribers = new AgentSessionSubscribers({
+      readFence: () => 7,
+      readCommands: () => commands
+    })
     const close = subscribers.open({
       id: 'one',
       sessionId,
       journal,
-      fence: 7,
       emit: coalescer.push
     })
     expect(state.commands).toEqual(commands)
     for (let i = 0; i < 25; i++) {
-      subscribers.backgroundTasks(sessionId, null, 7)
+      subscribers.backgroundTasks(sessionId, null)
     }
     coalescer.flush()
     expect(events.filter((event) => 'commands' in event)).toHaveLength(1)
     commands = []
     subscribers.publish(sessionId, journal)
-    subscribers.backgroundTasks(sessionId, null, 7)
+    subscribers.backgroundTasks(sessionId, null)
     coalescer.flush()
     expect(state.commands).toEqual([])
     expect(events.filter((event) => 'commands' in event)).toHaveLength(2)
@@ -96,12 +98,11 @@ it('delivers catalog changes through existing frames without resending them on o
       sessionId,
       journal,
       cursor: journal.cursor(),
-      fence: 8,
       emit: coalescer.push
     })
     coalescer.flush()
     expect(state.commands).toEqual(commands)
-    subscribers.reset(sessionId, journal, 'epoch_changed', 8)
+    subscribers.reset(sessionId, journal, 'epoch_changed')
     expect(state.commands).toEqual(commands)
     commands = undefined
     subscribers.open({
@@ -109,7 +110,6 @@ it('delivers catalog changes through existing frames without resending them on o
       sessionId,
       journal,
       cursor: journal.cursor(),
-      fence: 9,
       emit: coalescer.push
     })
     coalescer.flush()

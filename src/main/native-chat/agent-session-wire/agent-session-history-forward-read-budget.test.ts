@@ -105,11 +105,10 @@ describe('forward history SQL read budget', () => {
     const journal = await seedJournal(count)
     const { returnedRows, parse } = observeForwardReads()
     const events: AgentSessionSubscribeEvent[] = []
-    new AgentSessionSubscribers().open({
+    new AgentSessionSubscribers({ readFence: () => 1 }).open({
       id: 'reader',
       sessionId: identity.sessionId,
       journal,
-      fence: 1,
       cursor: { epoch: journal.epoch, sequence: 1 },
       emit: (event) => events.push(event)
     })
@@ -126,11 +125,10 @@ describe('forward history SQL read budget', () => {
     const journal = await seedJournal(2_000)
     const render = vi.spyOn(journalReducer, 'renderJournalState')
     const events: AgentSessionSubscribeEvent[] = []
-    new AgentSessionSubscribers().open({
+    new AgentSessionSubscribers({ readFence: () => 1 }).open({
       id: 'reader',
       sessionId: identity.sessionId,
       journal,
-      fence: 1,
       cursor: { epoch: journal.epoch, sequence: 1 },
       emit: (event) => events.push(event)
     })
