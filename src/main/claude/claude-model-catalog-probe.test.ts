@@ -83,7 +83,7 @@ describe('claude model catalog probe', () => {
         id: 'sonnet',
         label: 'Sonnet',
         isDefault: true,
-        defaultEffort: 'low',
+        // The spec's `defaultThinkingLevel` is not what Claude runs; naming it would label the effort.
         efforts: [{ value: 'low', label: 'Low' }]
       }
     ])

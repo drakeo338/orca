@@ -59,7 +59,8 @@ export function createClaudeModelCatalogProbe(
         label: model.label,
         ...(model.description ? { description: model.description } : {}),
         isDefault: model.isDefault === true,
-        ...(model.defaultThinkingLevel ? { defaultEffort: model.defaultThinkingLevel } : {}),
+        // No defaultEffort: the listing's thinking default is the commit-message generator's
+        // choice, not the effort Claude runs, and a live session's listing never names one.
         efforts: (model.thinkingLevels ?? []).map((level) => ({
           value: level.id,
           label: level.label
