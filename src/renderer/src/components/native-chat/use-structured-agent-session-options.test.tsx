@@ -72,6 +72,7 @@ type RenderProps = {
   launchSeedOptions?: Record<string, string>
   heldOptions?: Record<string, string>
   worktree?: string
+  agent?: 'claude' | 'codex'
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
@@ -86,7 +87,7 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
   return renderHook(
     (props: RenderProps) =>
       useStructuredAgentSessionOptions({
-        agent: 'codex',
+        agent: props.agent ?? 'codex',
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         transportEnabled: props.transportEnabled,
@@ -303,6 +304,30 @@ describe('useStructuredAgentSessionOptions', () => {
       await waitFor(() =>
         expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-hosted')
       )
+      unmount()
+    })
+
+    it('names no listed default for a new Claude chat, whose own settings pick the model', async () => {
+      answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+      const claude = { ...PROVISIONAL, agent: 'claude' as const, worktree: 'id:wt-1' }
+      const { result, rerender, unmount } = renderOptions(
+        claude,
+        mutateWith(async () => null).mutate
+      )
+      await waitFor(() => {
+        const model = descriptor(result.current.optionSnapshot, 'model')
+        expect(
+          model?.kind.type === 'select' && model.kind.choices.some((c) => c.value === 'gpt-hosted')
+        ).toBe(true)
+      })
+      expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
+      // Nothing to withhold, so the read names no workspace for the host to inspect.
+      expect(mocks.call).toHaveBeenCalledWith(LOCAL_TARGET, 'agentSession.modelCatalog', {
+        agent: 'claude',
+        sessionId: 'session-1'
+      })
+      rerender({ ...claude, launchSeedOptions: SEED })
+      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')
       unmount()
     })
 

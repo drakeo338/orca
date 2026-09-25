@@ -61,12 +61,7 @@ describe('workspaceMayOverrideDefaultModel', () => {
     expect(await mayOverride('codex', worktree, join(worktree, '.codex'))).toBe(false)
   })
 
-  it('counts a Claude project setting only when it names a model', async () => {
-    const worktree = join(root, 'claude-wt')
-    write(join(worktree, '.git'), 'gitdir: /elsewhere')
-    write(join(worktree, '.claude', 'settings.json'), '{"permissions":{"allow":[]}}')
-    expect(await mayOverride('claude', worktree)).toBe(false)
-    write(join(worktree, '.claude', 'settings.local.json'), '{"model":"sonnet"}')
-    expect(await mayOverride('claude', worktree)).toBe(true)
+  it('never vouches for a Claude default, whose user settings can pick the model', async () => {
+    expect(await mayOverride('claude', join(root, 'anywhere'))).toBe(true)
   })
 })
