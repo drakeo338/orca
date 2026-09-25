@@ -430,6 +430,7 @@ describe('renderer crash diagnostics', () => {
       now.mockReturnValue(1_060_000)
       const tick = setIntervalMock.mock.calls[0][0] as () => void
       tick()
+      now.mockRestore()
 
       const latest = memoryCalls().at(-1)!
       expect(latest.data).toMatchObject({
@@ -439,7 +440,6 @@ describe('renderer crash diagnostics', () => {
         // 254 − (150 heap + 1 malloced + 29 Blink) as measured when 254 was read.
         outsideHeapMB: 74
       })
-      now.mockRestore()
     })
 
     it('arms the leak census on footprint even when the heap ratio never trips', async () => {

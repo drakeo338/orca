@@ -112,10 +112,11 @@ function refreshProcessFootprint(): void {
     if (generation !== processFootprintReadGeneration) {
       return
     }
+    // Why first: a throw below must not wedge every later refresh.
+    processFootprintReadInFlight = false
     lastFootprintReading = footprint
       ? { footprint, readAtMs: Date.now(), heapAccountedBytes: readHeapAccountedBytes() }
       : null
-    processFootprintReadInFlight = false
   }
   try {
     void read().then(
@@ -128,7 +129,12 @@ function refreshProcessFootprint(): void {
 }
 
 function readHeapAccountedBytes(): number | undefined {
-  const memory = readHeapMetrics()
+  let memory: HeapMetrics | undefined
+  try {
+    memory = readHeapMetrics()
+  } catch {
+    return undefined
+  }
   return memory
     ? (memory.usedJSHeapSize ?? 0) + (memory.mallocedBytes ?? 0) + (memory.blinkAllocatedBytes ?? 0)
     : undefined
