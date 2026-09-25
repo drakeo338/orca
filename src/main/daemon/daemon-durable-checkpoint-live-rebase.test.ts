@@ -117,7 +117,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo,
-      pendingRecords: [{ kind: 'output', data: newOutput }]
+      pendingRecords: [{ kind: 'output', data: newOutput }],
+      isFirstTake: false
     })
 
     expectNoDeadTuiModes(durable)
@@ -131,7 +132,12 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const { restoreInfo, live } = poisonedColdRestore()
     const liveSnapshot = { ...live.getSnapshot(), outputSequence: 3 }
 
-    const durable = await buildDurableCheckpointSnapshot({ liveSnapshot, restoreInfo })
+    const durable = await buildDurableCheckpointSnapshot({
+      liveSnapshot,
+      restoreInfo,
+      pendingRecords: [],
+      isFirstTake: false
+    })
 
     expectNoDeadTuiModes(durable)
     expect(durable.outputSequence).toBe(3)
@@ -156,7 +162,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo,
-      pendingRecords: [{ kind: 'output', data: tui }]
+      pendingRecords: [{ kind: 'output', data: tui }],
+      isFirstTake: false
     })
 
     expect(durable.snapshotAnsi).toBe(liveSnapshot.snapshotAnsi)
@@ -177,7 +184,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo: null,
-      pendingRecords: [{ kind: 'output', data: `${stream}\x1b[?1049h\x1b[?1003h` }]
+      pendingRecords: [{ kind: 'output', data: `${stream}\x1b[?1049h\x1b[?1003h` }],
+      isFirstTake: false
     })
 
     expect(durable.terminalOwner).toBe('shell')
@@ -200,7 +208,12 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const replayWrite = vi.spyOn(ColdRestoreReplayWriter.prototype, 'write')
 
     try {
-      const durable = await buildDurableCheckpointSnapshot({ liveSnapshot, restoreInfo })
+      const durable = await buildDurableCheckpointSnapshot({
+        liveSnapshot,
+        restoreInfo,
+        pendingRecords: [],
+        isFirstTake: false
+      })
 
       expect(replayWrite).not.toHaveBeenCalled()
       expect(durable.snapshotAnsi).toBe(restoreInfo.snapshotAnsi)
@@ -226,7 +239,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo,
-      pendingRecords: [{ kind: 'output', data: newLines }]
+      pendingRecords: [{ kind: 'output', data: newLines }],
+      isFirstTake: false
     })
 
     expect(durable.scrollbackLines).toBe(DAEMON_RESTORE_SCROLLBACK_ROWS)
@@ -248,7 +262,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const committed = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo,
-      pendingRecords: [{ kind: 'output', data: pending }]
+      pendingRecords: [{ kind: 'output', data: pending }],
+      isFirstTake: false
     })
 
     const bounded = await boundSnapshot(committed, 2_000)
@@ -291,7 +306,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot: live.getSnapshot(),
       restoreInfo,
-      pendingRecords: [{ kind: 'resize', cols: 100, rows: 24 }]
+      pendingRecords: [{ kind: 'resize', cols: 100, rows: 24 }],
+      isFirstTake: false
     })
 
     const oldRow = replayedRows(durable).findIndex((row) => row.startsWith('OLD_LINK'))
@@ -313,7 +329,9 @@ describe('durable checkpoint rebased on the live snapshot', () => {
 
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot: live.getSnapshot(),
-      restoreInfo
+      restoreInfo,
+      pendingRecords: [],
+      isFirstTake: false
     })
 
     const rows = replayedRows(durable)
@@ -348,7 +366,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
       const durable = await buildDurableCheckpointSnapshot({
         liveSnapshot: live.getSnapshot(),
         restoreInfo,
-        pendingRecords: [{ kind: 'output', data: pending }]
+        pendingRecords: [{ kind: 'output', data: pending }],
+        isFirstTake: false
       })
 
       expect(durable.snapshotAnsi).toContain('\x1b]8;;https://old.example')
@@ -366,7 +385,9 @@ describe('durable checkpoint rebased on the live snapshot', () => {
 
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot: live.getSnapshot(),
-      restoreInfo
+      restoreInfo,
+      pendingRecords: [],
+      isFirstTake: false
     })
 
     expect(joinedCells(durable)).toBe(expected)
@@ -379,7 +400,8 @@ describe('durable checkpoint rebased on the live snapshot', () => {
     const durable = await buildDurableCheckpointSnapshot({
       liveSnapshot: live.getSnapshot(),
       restoreInfo,
-      pendingRecords: [{ kind: 'resize', cols: 100, rows: 24 }]
+      pendingRecords: [{ kind: 'resize', cols: 100, rows: 24 }],
+      isFirstTake: false
     })
 
     // Measured seam loss: the live window reflows its orphaned continuation to

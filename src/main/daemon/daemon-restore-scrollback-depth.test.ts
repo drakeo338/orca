@@ -148,7 +148,9 @@ describe('STA-4091 previously recoverable restore depth', () => {
         const restoreInfo = await reader.detectColdRestore('restore-depth')
         const durable = await buildDurableCheckpointSnapshot({
           liveSnapshot,
-          restoreInfo
+          restoreInfo,
+          pendingRecords: [],
+          isFirstTake: false
         })
         expect(await manager.checkpoint('restore-depth', durable)).toBe('committed')
 
@@ -176,7 +178,8 @@ describe('STA-4091 previously recoverable restore depth', () => {
           restoreInfo: null,
           pendingRecords: [
             { kind: 'output', data: numberedOutput(DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT) }
-          ]
+          ],
+          isFirstTake: false
         })
         expect(snapshotText(durable)).toContain(OLDEST_WRITTEN_LINE)
         expect(snapshotText(durable)).toContain(PREVIOUSLY_RECOVERABLE_LINE)
@@ -202,7 +205,9 @@ describe('STA-4091 previously recoverable restore depth', () => {
         live.writeSync(numberedOutput(DESKTOP_TERMINAL_SCROLLBACK_ROWS_DEFAULT))
         const durable = await buildDurableCheckpointSnapshot({
           liveSnapshot: { ...live.getSnapshot(), outputSequence: 9 },
-          restoreInfo
+          restoreInfo,
+          pendingRecords: [],
+          isFirstTake: false
         })
         expect(durable.outputSequence).toBe(9)
         expect(durable.scrollbackAnsi).toBe('')
@@ -240,7 +245,8 @@ describe('STA-4091 previously recoverable restore depth', () => {
       const durable = await buildDurableCheckpointSnapshot({
         liveSnapshot,
         restoreInfo,
-        pendingRecords: [{ kind: 'output', data: '\x1b[?1049hLIVE-TUI' }]
+        pendingRecords: [{ kind: 'output', data: '\x1b[?1049hLIVE-TUI' }],
+        isFirstTake: false
       })
 
       expect(durable.modes.alternateScreen).toBe(true)
@@ -268,7 +274,8 @@ describe('STA-4091 previously recoverable restore depth', () => {
       const durable = await buildDurableCheckpointSnapshot({
         liveSnapshot,
         restoreInfo: null,
-        pendingRecords: [{ kind: 'resize', cols: 0, rows: 24 }]
+        pendingRecords: [{ kind: 'resize', cols: 0, rows: 24 }],
+        isFirstTake: false
       })
       expect(durable).toBe(liveSnapshot)
     })

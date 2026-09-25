@@ -18,16 +18,11 @@ const OLDER_ROWS_SEAM = `${RESET_GRAPHIC_RENDITION}\x1b]8;;\x1b\\`
 export async function buildDurableCheckpointSnapshot(opts: {
   liveSnapshot: TerminalSnapshot
   restoreInfo: ColdRestoreInfo | null
-  pendingRecords?: readonly PendingOutputRecord[]
+  pendingRecords: readonly PendingOutputRecord[]
   /** Records span the live session's whole life, so restoreInfo is the base it was seeded from. */
-  isFirstTake?: boolean
+  isFirstTake: boolean
 }): Promise<TerminalSnapshot> {
-  const { liveSnapshot, restoreInfo } = opts
-  const pendingRecords = opts.pendingRecords ?? []
-  if (liveSnapshot.scrollbackLines > DAEMON_RESTORE_SCROLLBACK_ROWS) {
-    // Why: live alone is deeper than restore depth, so disk rows cannot contribute.
-    return await boundSnapshot(liveSnapshot, DAEMON_RESTORE_SCROLLBACK_ROWS)
-  }
+  const { liveSnapshot, restoreInfo, pendingRecords } = opts
   if (!restoreInfo && pendingRecords.length === 0) {
     return liveSnapshot
   }
@@ -47,9 +42,6 @@ export async function buildDurableCheckpointSnapshot(opts: {
   })
   const replay = new ColdRestoreReplayWriter(emulator)
   try {
-    // Why not seed the live window when there is no disk history: pending records
-    // are the raw stream. Replaying them on top of the already-truncated live
-    // snapshot would duplicate the newest rows and evict the older recoverable ones.
     if (restoreInfo) {
       // Why the seed on a first fold: live got exactly those bytes, so both copies' rows line up
       // even when the base was a dead TUI's alt screen.
