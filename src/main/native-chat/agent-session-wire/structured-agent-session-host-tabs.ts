@@ -7,17 +7,21 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
  * recovery bookkeeping must never gate closing a chat.
  */
 export function setStructuredAgentSessionTabVisibility(
-  store: { setSessionTabVisibility: (sessionId: string, visible: boolean) => Promise<void> },
-  recovery: { dismiss: (sessionIds: readonly string[]) => Promise<number> },
+  host: {
+    deps: {
+      store: { setSessionTabVisibility: (sessionId: string, visible: boolean) => Promise<void> }
+    }
+    restartResume: { dismiss: (sessionIds: readonly string[]) => Promise<number> }
+  },
   sessionId: string,
   visible: boolean
 ): Promise<void> {
   if (!visible) {
-    void recovery.dismiss([sessionId]).catch(() => {
+    void host.restartResume.dismiss([sessionId]).catch(() => {
       console.warn('[structured-agent-session] forgetting recovery records on chat close failed')
     })
   }
-  return store.setSessionTabVisibility(sessionId, visible)
+  return host.deps.store.setSessionTabVisibility(sessionId, visible)
 }
 
 export type StructuredAgentSessionTab = {

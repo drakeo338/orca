@@ -8,9 +8,9 @@
 // already asked for must finish: stopping the child mid-answer strands the open turn marker.
 //
 // So the clock arms when the last holder leaves, every journal write while it is armed starts it
-// again, and a tick that finds a turn, prompt, or live background task still owed re-arms instead
-// of evicting. A submission with no turn is settled by the eviction itself, so it does not keep a
-// child alive forever. Quit still stops every child at once.
+// again, and a tick that finds work still owed — a turn running, or a message sent but not yet
+// taken by the provider — re-arms instead of evicting. The child goes only after a full window
+// with no holder and no owed work. Quit still stops every child at once.
 
 export const STRUCTURED_AGENT_SESSION_RELEASE_GRACE_MS = 30 * 60_000
 

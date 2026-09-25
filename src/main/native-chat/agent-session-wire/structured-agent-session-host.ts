@@ -31,10 +31,7 @@ import type {
   StructuredAgentSessionHoldOptions
 } from './structured-agent-session-holds'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
-import {
-  listStructuredAgentSessionTabs,
-  setStructuredAgentSessionTabVisibility
-} from './structured-agent-session-host-tabs'
+import * as sessionTabs from './structured-agent-session-host-tabs'
 import {
   structuredAgentSessionMutationDelegates,
   settleStructuredAgentSessionLateDispatch,
@@ -217,11 +214,11 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
-  listSessionTabs = () => listStructuredAgentSessionTabs(this.sessions)
+  listSessionTabs = () => sessionTabs.listStructuredAgentSessionTabs(this.sessions)
   getPersistedVisibleSessionTabIndex = () => this.deps.store.getVisibleSessionTabIndex()
 
   setSessionTabVisibility = (sessionId: string, visible: boolean): Promise<void> =>
-    setStructuredAgentSessionTabVisibility(this.deps.store, this.restartResume, sessionId, visible)
+    sessionTabs.setStructuredAgentSessionTabVisibility(this, sessionId, visible)
 
   reconcileRestartLeases = async (): Promise<void> => {
     const refusal = await this.reconcileLeases('startup')

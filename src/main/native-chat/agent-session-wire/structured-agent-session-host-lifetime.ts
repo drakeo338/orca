@@ -5,6 +5,7 @@
 // bookkeeping that decides when to run it than buried among the twenty other things a session can
 // do.
 
+import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
 import {
   evictStructuredAgentSession,
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
@@ -21,7 +22,6 @@ import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-ses
 import { resumeHeldStructuredAgentSession } from './structured-agent-session-hold-resume'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
-import { structuredAgentSessionHasOwedWork } from './structured-agent-session-shown-work'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -196,14 +196,14 @@ export function createStructuredAgentSessionHolds(
     },
     evict: close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),
+    // A send pending while the child is still starting is held for that start; evicting would
+    // refuse it. Any other pending send may wait on an echo that never comes, so eviction retires it.
     hasOwedWork: (sessionId) => {
       const session = context.sessions.get(sessionId)
       return session
-        ? structuredAgentSessionHasOwedWork(
-            session.journal.snapshot(),
-            context.deps.adapter.backgroundTaskState?.(sessionId)?.tasks,
-            session.fence
-          )
+        ? activeStructuredAgentSessionTurnId(session.journal.snapshot().items) !== null ||
+            (session.providerChildPhase === 'starting' &&
+              session.journal.pendingSubmissions().length > 0)
         : false
     },
     onError: (error) => context.deps.onEventSinkError?.(error),
