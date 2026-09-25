@@ -64,6 +64,21 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
+  it('keeps treating the chat as its launch after the launch record is deleted on publish', () => {
+    mocks.launchLifecycle = 'pending'
+    const { rerender } = render(sessionView())
+    expect(mocks.controllerProps).toMatchObject({ launching: true })
+    mocks.launchLifecycle = null
+    rerender(sessionView())
+    expect(mocks.controllerProps).toMatchObject({ launching: true, transportEnabled: true })
+  })
+
+  it('does not treat a reopened chat as a launch', () => {
+    mocks.launchLifecycle = null
+    render(sessionView())
+    expect(mocks.controllerProps).toMatchObject({ launching: false })
+  })
+
   it.each([
     ['failed', 'Chat could not be started.'],
     ['visibility-unknown', 'Chat connection could not be confirmed.']
