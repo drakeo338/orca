@@ -1,5 +1,6 @@
 import {
   BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
+  BROWSER_CLIENT_MOBILE_LEASE_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
 import { BrowserClientPageMetadataParams } from '../../../../shared/browser-client-page-metadata-protocol'
@@ -25,7 +26,15 @@ export const BROWSER_CLIENT_HOST_METHODS = [
       { runtime, connectionId, pairedDeviceId, clientKind, clientCapabilities, signal },
       emit
     ) => {
-      if (clientKind !== 'runtime' || !connectionId || !pairedDeviceId) {
+      if (
+        (clientKind !== 'runtime' &&
+          !(
+            clientKind === 'mobile' &&
+            clientCapabilities?.includes(BROWSER_CLIENT_MOBILE_LEASE_RUNTIME_CAPABILITY)
+          )) ||
+        !connectionId ||
+        !pairedDeviceId
+      ) {
         throw new Error('authenticated_browser_client_host_required')
       }
       if (!clientCapabilities?.includes(BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY)) {
@@ -38,6 +47,15 @@ export const BROWSER_CLIENT_HOST_METHODS = [
         )
       }
 
+      if (
+        clientKind === 'mobile' &&
+        (params.supportedAutomationMethods === undefined ||
+          params.pageCommandProtocolVersion !== 1 ||
+          params.fileChannelProtocolVersion !== undefined)
+      ) {
+        throw new Error('browser_mobile_lease_negotiation_required')
+      }
+
       const registry = getBrowserHostLeaseRegistry(runtime)
       // Attach inventory cannot describe pages created or replaced after readiness is published.
       const pagePlacementsAtAttach = new Map(
@@ -47,6 +65,7 @@ export const BROWSER_CLIENT_HOST_METHODS = [
       )
       const handle = registry.attach({
         browserHostClientId: params.browserHostClientId,
+        clientKind,
         connectionId,
         pairedDeviceId,
         hostCapabilities: params.hostCapabilities,
@@ -173,7 +192,15 @@ export const BROWSER_CLIENT_HOST_METHODS = [
       params,
       { runtime, pairedDeviceId, connectionId, clientKind, clientCapabilities }
     ) => {
-      if (clientKind !== 'runtime' || !pairedDeviceId || !connectionId) {
+      if (
+        (clientKind !== 'runtime' &&
+          !(
+            clientKind === 'mobile' &&
+            clientCapabilities?.includes(BROWSER_CLIENT_MOBILE_LEASE_RUNTIME_CAPABILITY)
+          )) ||
+        !pairedDeviceId ||
+        !connectionId
+      ) {
         throw new Error('authenticated_browser_client_host_required')
       }
       if (!clientCapabilities?.includes(BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY)) {
@@ -205,7 +232,15 @@ export const BROWSER_CLIENT_HOST_METHODS = [
       params,
       { runtime, pairedDeviceId, connectionId, clientKind, clientCapabilities }
     ) => {
-      if (clientKind !== 'runtime' || !pairedDeviceId || !connectionId) {
+      if (
+        (clientKind !== 'runtime' &&
+          !(
+            clientKind === 'mobile' &&
+            clientCapabilities?.includes(BROWSER_CLIENT_MOBILE_LEASE_RUNTIME_CAPABILITY)
+          )) ||
+        !pairedDeviceId ||
+        !connectionId
+      ) {
         throw new Error('authenticated_browser_client_host_required')
       }
       if (

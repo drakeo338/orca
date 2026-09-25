@@ -107,7 +107,11 @@ export class BrowserHostLeaseRegistry {
     const pageInventory = snapshotBrowserHostPageInventory(input)
     assertBrowserHostReconnectNegotiation(input)
     const existing = this.leasesByClientId.get(input.browserHostClientId)
-    if (existing && existing.lease.pairedDeviceId !== input.pairedDeviceId) {
+    if (
+      existing &&
+      (existing.lease.pairedDeviceId !== input.pairedDeviceId ||
+        (existing.lease.clientKind ?? 'runtime') !== (input.clientKind ?? 'runtime'))
+    ) {
       throw new Error('browser_host_identity_conflict')
     }
     assertBrowserHostLeaseAdmission(this.leasesByClientId.values(), input, existing)
