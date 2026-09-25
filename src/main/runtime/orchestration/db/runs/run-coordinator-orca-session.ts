@@ -25,8 +25,7 @@ export function currentRunCoordinatorOrcaSessionIdSql(row: string): string {
     THEN ${row}.coordinator_orca_session_id END)`
 }
 
-/** The mailbox address the coordinator is remembered by: its handle, else its session address. */
-export function currentRunCoordinatorAddressSql(row: string): string {
-  return `COALESCE(${row}.coordinator_handle,
-    '${ORCA_SESSION_ADDRESS_PREFIX}' || ${currentRunCoordinatorOrcaSessionIdSql(row)})`
+/** The coordinator's `session:<id>` address in SQL; NULL when it has no current Orca session id. */
+export function currentRunCoordinatorSessionAddressSql(row: string): string {
+  return `('${ORCA_SESSION_ADDRESS_PREFIX}' || ${currentRunCoordinatorOrcaSessionIdSql(row)})`
 }

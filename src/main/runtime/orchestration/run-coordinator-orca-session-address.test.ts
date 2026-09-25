@@ -17,6 +17,7 @@ import { backfillStructuredWorkerOrcaSessionIds } from './db/schema/structured-w
 const CHAT_SESSION_ID = '3a5c7e9b-1d4f-4a6c-8b0e-2f4a6c8e0b14'
 const CHAT_ADDRESS = formatOrcaSessionAddress(CHAT_SESSION_ID)
 const WORKER_SESSION_ID = '4b6d8f0c-2e5a-4b7d-9c1f-3a5b7d9f1c25'
+const WORKER_ADDRESS = formatOrcaSessionAddress(WORKER_SESSION_ID)
 const PTY_PANE = 'tab_pty:66666666-6666-4666-8666-666666666666'
 
 function addressesFor(db: OrchestrationDb, runId: string): string[] {
@@ -25,6 +26,19 @@ function addressesFor(db: OrchestrationDb, runId: string): string[] {
     .all(runId)
     .map((row) => String(row.terminal_handle))
     .sort()
+}
+
+function tempDbPath(tempRoots: string[]): string {
+  const root = mkdtempSync(join(tmpdir(), 'orca-run-coordinator-orca-session-'))
+  tempRoots.push(root)
+  return join(root, 'orchestration.db')
+}
+
+/** Drops the Run's remembered addresses and reopens, so only the on-open refill can write them back. */
+function refillAfterReopen(db: OrchestrationDb, path: string, runId: string): OrchestrationDb {
+  db.db.prepare('DELETE FROM run_coordinator_handles WHERE run_id = ?').run(runId)
+  db.close()
+  return new OrchestrationDb(path)
 }
 
 /** A handle-less coordinator row; no writer records one until the caller resolver lands. */
@@ -73,9 +87,7 @@ describe('Run coordinator Orca session address', () => {
   })
 
   it('remembers an Orca session id bound by update, and again on reopen when the cache row is gone', () => {
-    const root = mkdtempSync(join(tmpdir(), 'orca-run-coordinator-orca-session-'))
-    tempRoots.push(root)
-    const path = join(root, 'orchestration.db')
+    const path = tempDbPath(tempRoots)
     db = new OrchestrationDb(path)
     db.db
       .prepare(
@@ -91,11 +103,99 @@ describe('Run coordinator Orca session address', () => {
       )
       .run(CHAT_SESSION_ID, 'run_unbound')
     expect(addressesFor(db, 'run_unbound')).toEqual([CHAT_ADDRESS])
-    db.db.prepare('DELETE FROM run_coordinator_handles WHERE run_id = ?').run('run_unbound')
-    db.close()
 
-    db = new OrchestrationDb(path)
+    db = refillAfterReopen(db, path, 'run_unbound')
     expect(addressesFor(db, 'run_unbound')).toEqual([CHAT_ADDRESS])
+  })
+
+  it('remembers a PTY coordinator written by insert, update and refill by exactly its handle', () => {
+    const path = tempDbPath(tempRoots)
+    db = new OrchestrationDb(path)
+    db.db
+      .prepare(
+        `INSERT INTO runs (id, objective, coordinator_handle, consumer_generation, legacy)
+         VALUES ('run_pty', 'pty', 'term_first', 1, 0)`
+      )
+      .run()
+    expect(addressesFor(db, 'run_pty')).toEqual(['term_first'])
+    db.db
+      .prepare(
+        `UPDATE runs SET coordinator_handle = 'term_second',
+           consumer_generation = consumer_generation + 1 WHERE id = 'run_pty'`
+      )
+      .run()
+    expect(addressesFor(db, 'run_pty')).toEqual(['term_first', 'term_second'])
+
+    db = refillAfterReopen(db, path, 'run_pty')
+    expect(addressesFor(db, 'run_pty')).toEqual(['term_second'])
+  })
+
+  it('remembers a structured-worker coordinator by its handle and its session address', () => {
+    const path = tempDbPath(tempRoots)
+    db = new OrchestrationDb(path)
+    const handle = mintStructuredWorkerHandle()
+    db.db
+      .prepare(
+        `INSERT INTO runs (
+           id, objective, coordinator_handle, coordinator_orca_session_id,
+           coordinator_orca_session_id_generation, consumer_generation, legacy
+         ) VALUES ('run_inserted', 'structured worker', ?, ?, 1, 1, 0)`
+      )
+      .run(handle, WORKER_SESSION_ID)
+    expect(addressesFor(db, 'run_inserted')).toEqual([WORKER_ADDRESS, handle].sort())
+
+    db.db
+      .prepare(
+        `INSERT INTO runs (id, objective, coordinator_handle, consumer_generation, legacy)
+         VALUES ('run_updated', 'id recorded later', ?, 1, 0)`
+      )
+      .run(handle)
+    db.db
+      .prepare(
+        `UPDATE runs SET coordinator_orca_session_id = ?,
+           coordinator_orca_session_id_generation = consumer_generation
+         WHERE id = 'run_updated'`
+      )
+      .run(WORKER_SESSION_ID)
+    expect(addressesFor(db, 'run_updated')).toEqual([WORKER_ADDRESS, handle].sort())
+
+    db = refillAfterReopen(db, path, 'run_updated')
+    expect(addressesFor(db, 'run_updated')).toEqual([WORKER_ADDRESS, handle].sort())
+    expect(db.getRunMailboxOwnerIdsForHandle(WORKER_ADDRESS)).toEqual(
+      db.getRunMailboxOwnerIdsForHandle(handle)
+    )
+  })
+
+  it('adds no session address for an Orca session id at a stale generation', () => {
+    const path = tempDbPath(tempRoots)
+    db = new OrchestrationDb(path)
+    db.db
+      .prepare(
+        `INSERT INTO runs (
+           id, objective, coordinator_handle, coordinator_orca_session_id,
+           coordinator_orca_session_id_generation, consumer_generation, legacy
+         ) VALUES ('run_stale_insert', 'stale id', 'term_stale', ?, 1, 2, 0)`
+      )
+      .run(WORKER_SESSION_ID)
+    expect(addressesFor(db, 'run_stale_insert')).toEqual(['term_stale'])
+
+    db.db
+      .prepare(
+        `INSERT INTO runs (id, objective, consumer_generation, legacy)
+         VALUES ('run_stale_update', 'written stale', 2, 0)`
+      )
+      .run()
+    db.db
+      .prepare(
+        `UPDATE runs SET coordinator_orca_session_id = ?, coordinator_orca_session_id_generation = 1
+         WHERE id = 'run_stale_update'`
+      )
+      .run(WORKER_SESSION_ID)
+    expect(addressesFor(db, 'run_stale_update')).toEqual([])
+
+    db = refillAfterReopen(db, path, 'run_stale_insert')
+    expect(addressesFor(db, 'run_stale_insert')).toEqual(['term_stale'])
+    expect(db.getRunMailboxOwnerIdsForHandle(WORKER_ADDRESS)).toEqual([])
   })
 
   it('keeps PTY coordinators remembered by handle alone', () => {
@@ -154,9 +254,9 @@ describe('Run coordinator Orca session address', () => {
       coordinator_handle: 'term_taker',
       coordinator_orca_session_id: null
     })
-    // Neither Run ever became reachable at the worker's session address.
-    expect(db.getRunMailboxOwnerIdsForHandle(formatOrcaSessionAddress(WORKER_SESSION_ID))).toEqual(
-      []
-    )
+    // A remembered address is never forgotten, so the worker's session address reaches exactly the
+    // Runs its handle does.
+    expect(db.getRunMailboxOwnerIdsForHandle(WORKER_ADDRESS)).toEqual([first.id, second.id].sort())
+    expect(db.getRunMailboxOwnerIdsForHandle(handle)).toEqual([first.id, second.id].sort())
   })
 })

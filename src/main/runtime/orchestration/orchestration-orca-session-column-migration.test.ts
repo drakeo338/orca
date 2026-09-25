@@ -228,9 +228,14 @@ describe('orchestration Orca session id column migration', () => {
       ).toEqual([{ id: rows.structuredDispatchId }])
       expect(db.getRunRaw(rows.ptyRunId)?.coordinator_orca_session_id).toBeNull()
       expect(db.getRunRaw(rows.structuredRunId)?.coordinator_orca_session_id).toBe(SESSION_ID)
-      // A handle-bearing coordinator stays remembered by its handle alone, as before v42.
+      // Every address a coordinator has: the PTY one its handle, the structured worker its handle
+      // and the session address its backfilled id gives it.
       expect(coordinatorAddresses(db.db, [rows.ptyRunId, rows.structuredRunId])).toEqual(
-        [`${rows.ptyRunId} term_coord`, `${rows.structuredRunId} ${rows.workerHandle}`].sort()
+        [
+          `${rows.ptyRunId} term_coord`,
+          `${rows.structuredRunId} ${rows.workerHandle}`,
+          `${rows.structuredRunId} ${formatOrcaSessionAddress(SESSION_ID)}`
+        ].sort()
       )
       // CREATE TRIGGER IF NOT EXISTS alone would have kept the handle-only form here.
       for (const sql of coordinatorTriggerSql(db.db)) {
@@ -378,9 +383,11 @@ describe('orchestration Orca session id column migration', () => {
       expect(readOrcaSessionId.get(rows.structuredRunId)).toEqual({
         coordinator_orca_session_id: SESSION_ID
       })
+      // The session address was remembered by the v42 open, before v41's rebind made the id stale.
       expect(coordinatorAddresses(v41, ['run_v41', rows.structuredRunId])).toEqual(
         [
           `${rows.structuredRunId} ${rows.workerHandle}`,
+          `${rows.structuredRunId} ${formatOrcaSessionAddress(SESSION_ID)}`,
           `${rows.structuredRunId} term_taker`,
           'run_v41 term_v41'
         ].sort()
