@@ -101,12 +101,7 @@ describe('structured agent session eviction', () => {
       const snapshot = vi.fn()
       ctx.beforeProviderChildStop = snapshot
       // A journal write that never settles, then a healthy sink once the child is stopped.
-      ctx.eventSink.drained = vi
-        .fn()
-        .mockReturnValueOnce(new Promise(() => {}))
-        .mockResolvedValue({
-          ok: true
-        }) as unknown as StructuredAgentSessionEvictionContext['eventSink']['drained']
+      vi.mocked(ctx.eventSink.drained).mockReturnValueOnce(new Promise<never>(() => {}))
 
       const eviction = evictStructuredAgentSession(ctx)
       await vi.advanceTimersByTimeAsync(1_000)
