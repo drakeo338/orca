@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baseline": "80e0bee23b8153f5db195a0d8c1db114f28bd336",
+  "baseline": "514ab7f868d2236663dd304a58bf7179e9bc48b5",
   "scenarios": [
     {
       "id": "b1",
@@ -9419,14 +9419,14 @@
           },
           "reply": {
             "ok": true,
-            "result": ["claude", "codex"]
+            "result": ["codex"]
           }
         },
         {
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "codex",
-            "operationId": "OPID",
+            "operationId": "1767225600000-00000000000040008000000000000001",
             "target": {
               "kind": "existing",
               "worktree": "id:repo-9::/w"
@@ -9513,14 +9513,14 @@
           },
           "reply": {
             "ok": true,
-            "result": ["claude", "codex"]
+            "result": ["codex"]
           }
         },
         {
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "codex",
-            "operationId": "OPID",
+            "operationId": "1767225600000-00000000000040008000000000000001",
             "target": {
               "kind": "existing",
               "worktree": "id:repo-9::/w"
@@ -9607,14 +9607,14 @@
           },
           "reply": {
             "ok": true,
-            "result": ["claude", "codex"]
+            "result": ["codex"]
           }
         },
         {
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "codex",
-            "operationId": "OPID",
+            "operationId": "1767225600000-00000000000040008000000000000001",
             "target": {
               "kind": "existing",
               "worktree": "id:repo-9::/w"
@@ -18868,14 +18868,14 @@
           "complete": "agent.launchReplay#1",
           "params": {
             "agent": "claude",
-            "operationId": "OPID",
+            "operationId": "1767225600000-00000000000040008000000000000001",
             "target": {
               "kind": "existing",
               "worktree": "id:workspace-1"
             },
             "prompt": {
               "delivery": "submit",
-              "text": "PROMPT"
+              "text": "You are reviewing the current worktree. Address the following mobile review notes.\n\nFile: src/app.ts\nLine: 4\nUser comment: \"needs a test\"\n\nAfter applying fixes:\n1. Summarize changed files.\n2. Run relevant tests.\n3. Tell me if anything remains risky."
             },
             "launchSource": "notes_send"
           },
