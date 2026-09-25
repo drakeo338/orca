@@ -24,6 +24,11 @@ vi.mock('@/lib/workspace-tab-commands', () => ({
   dispatchWorkspaceTabCommand: dispatchWorkspaceTabCommandMock
 }))
 
+const closeWorkspaceBrowserTabMock = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/workspace-browser-tab-close', () => ({
+  closeWorkspaceBrowserTab: closeWorkspaceBrowserTabMock
+}))
+
 vi.mock('zustand/react/shallow', () => ({
   // Why: zustand resolves the real react (unmocked in node_modules); the memo wrapper is inert here.
   useShallow: (selector: unknown) => selector
@@ -356,6 +361,41 @@ describe('FloatingTerminalPanel close behavior', () => {
       target: { kind: 'tab', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, tabId: tab.id }
     })
     expect(mocks.closeFile).not.toHaveBeenCalledWith(tab.entityId)
+  })
+
+  it('closes a browser through the shared host-aware command', async () => {
+    setFloatingTabs([makeTab({ id: 'tab-1' })])
+    attachFloatingBrowserUnifiedTab('browser-1')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: beforeEach installs the typed floating panel store fixture.
+    const state = storeBox.state as FloatingPanelStoreState
+    state.browserTabsByWorktree = {
+      [FLOATING_TERMINAL_WORKTREE_ID]: [
+        {
+          id: 'browser-1',
+          worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+          url: 'https://example.com',
+          title: 'Example',
+          loading: false,
+          faviconUrl: null,
+          canGoBack: false,
+          canGoForward: false,
+          loadError: null,
+          createdAt: 1
+        }
+      ]
+    }
+
+    const element = await renderPanel(true)
+    const tabBar = findByTypeName(element, 'TabBar')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the rendered TabBar stub supplies this close callback with a tab id.
+    ;(tabBar.props.onCloseBrowserTab as (tabId: string) => void)('tab-browser-1')
+
+    expect(closeWorkspaceBrowserTabMock).toHaveBeenCalledExactlyOnceWith(
+      FLOATING_TERMINAL_WORKTREE_ID,
+      'browser-1',
+      'tab-browser-1'
+    )
+    expect(mocks.closeBrowserTab).not.toHaveBeenCalled()
   })
 
   it('keeps simulator tabs open when closing all files', async () => {

@@ -9,7 +9,6 @@ export function useFloatingTerminalPanelStoreState() {
   const createTab = useAppStore((state) => state.createTab)
   const createBrowserTab = useAppStore((state) => state.createBrowserTab)
   const closeTab = useAppStore((state) => state.closeTab)
-  const closeBrowserTab = useAppStore((state) => state.closeBrowserTab)
   const closeFile = useAppStore((state) => state.closeFile)
   const closeUnifiedTab = useAppStore((state) => state.closeUnifiedTab)
   const markFileDirty = useAppStore((state) => state.markFileDirty)
@@ -45,7 +44,6 @@ export function useFloatingTerminalPanelStoreState() {
     createTab,
     createBrowserTab,
     closeTab,
-    closeBrowserTab,
     closeFile,
     closeUnifiedTab,
     markFileDirty,

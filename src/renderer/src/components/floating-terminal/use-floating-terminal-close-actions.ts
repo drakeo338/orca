@@ -6,9 +6,9 @@ import {
   isFloatingWorkspacePanelFocused
 } from '@/lib/floating-workspace-terminal-actions'
 import { armFloatingPanelReclaimIntent } from '@/lib/floating-workspace-focus-reclaim'
+import { closeWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-close'
 import { dispatchWorkspaceTabCommand } from '@/lib/workspace-tab-commands'
 import { useAppStore } from '@/store'
-import { destroyWorkspaceWebviews } from '@/store/slices/browser-webview-cleanup'
 import { guardPinnedTabClose, resolvePinnedTabLabel } from '@/store/pinned-tab-close-guard'
 import type { Tab } from '../../../../shared/tab-types'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
@@ -19,7 +19,7 @@ import type { FloatingTerminalPanelStoreState } from './use-floating-terminal-pa
 
 type FloatingTerminalCloseActionsInput = Pick<
   FloatingTerminalPanelStoreState,
-  'closeTab' | 'closeBrowserTab' | 'closeFile' | 'closeUnifiedTab'
+  'closeTab' | 'closeFile' | 'closeUnifiedTab'
 > &
   Pick<FloatingWorkspaceChromeModel, 'activeGroup' | 'groupTabs'> &
   Pick<FloatingTerminalPanelLocalState, 'pendingReclaimArmByFileIdRef'> &
@@ -27,7 +27,6 @@ type FloatingTerminalCloseActionsInput = Pick<
 
 export function useFloatingTerminalCloseActions({
   closeTab,
-  closeBrowserTab,
   closeFile,
   closeUnifiedTab,
   activeGroup,
@@ -57,8 +56,7 @@ export function useFloatingTerminalCloseActions({
           // Mirrors the shared workspace close: a structured chat closes by its unified tab.
           closeUnifiedTab(item.id)
         } else if (item.contentType === 'browser') {
-          destroyWorkspaceWebviews(state.browserPagesByWorkspace, item.entityId)
-          closeBrowserTab(item.entityId)
+          closeWorkspaceBrowserTab(FLOATING_TERMINAL_WORKTREE_ID, item.entityId, item.id)
         } else if (item.contentType === 'simulator') {
           closeUnifiedTab(item.id)
         } else {
@@ -74,7 +72,7 @@ export function useFloatingTerminalCloseActions({
         queueEditorCloseRequests(dirtyEditorFileIds)
       }
     },
-    [activeGroup, closeBrowserTab, closeFile, closeTab, closeUnifiedTab, queueEditorCloseRequests]
+    [activeGroup, closeFile, closeTab, closeUnifiedTab, queueEditorCloseRequests]
   )
 
   const closeFloatingItemConfirmed = useCallback(
@@ -112,8 +110,7 @@ export function useFloatingTerminalCloseActions({
         onClose: () => {
           const latest = useAppStore.getState()
           if (item.contentType === 'browser') {
-            destroyWorkspaceWebviews(latest.browserPagesByWorkspace, item.entityId)
-            closeBrowserTab(item.entityId)
+            closeWorkspaceBrowserTab(FLOATING_TERMINAL_WORKTREE_ID, item.entityId, item.id)
           } else if (item.contentType === 'simulator') {
             closeUnifiedTab(item.id)
           } else {
@@ -129,14 +126,7 @@ export function useFloatingTerminalCloseActions({
         }
       })
     },
-    [
-      closeBrowserTab,
-      closeFile,
-      closeUnifiedTab,
-      groupTabs,
-      pendingReclaimArmByFileIdRef,
-      queueEditorCloseRequests
-    ]
+    [closeFile, closeUnifiedTab, groupTabs, pendingReclaimArmByFileIdRef, queueEditorCloseRequests]
   )
 
   const closeOthers = useCallback(

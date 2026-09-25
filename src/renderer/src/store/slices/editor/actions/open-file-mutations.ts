@@ -27,7 +27,7 @@ export function createOpenFileMutations(
         // Why the scope guard: an overlay workspace (the floating panel) activates files while a
         // different workspace owns global selection; moving activeFileId would break the
         // agent-auto-ack invariant that the floating active tab never becomes global selection.
-        const scopeWorktreeId = targetWorktreeId ?? s.activeWorktreeId
+        const scopeWorktreeId = targetWorktreeId ?? worktreeId ?? s.activeWorktreeId
         return {
           ...(scopeWorktreeId === s.activeWorktreeId ? { activeFileId: fileId } : {}),
           activeFileIdByWorktree: worktreeId
@@ -36,7 +36,10 @@ export function createOpenFileMutations(
         }
       })
       const state = get()
-      const worktreeId = targetWorktreeId ?? state.activeWorktreeId
+      const worktreeId =
+        targetWorktreeId ??
+        state.openFiles.find((file) => file.id === fileId)?.worktreeId ??
+        state.activeWorktreeId
       if (!worktreeId) {
         return
       }

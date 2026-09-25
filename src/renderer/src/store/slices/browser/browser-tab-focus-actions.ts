@@ -101,7 +101,7 @@ export function createBrowserTabFocusActions(
         // Why the scope guard: an overlay workspace (the floating panel) activates browser tabs
         // while another workspace owns global selection; moving activeBrowserTabId/activeTabType
         // would break the agent-auto-ack invariant pinned in agent-auto-ack-targets.ts.
-        const scopeWorktreeId = targetWorktreeId ?? s.activeWorktreeId
+        const scopeWorktreeId = targetWorktreeId ?? browserTab.worktreeId
         return {
           ...(scopeWorktreeId === s.activeWorktreeId
             ? { activeBrowserTabId: tabId, activeTabType: 'browser' as const }

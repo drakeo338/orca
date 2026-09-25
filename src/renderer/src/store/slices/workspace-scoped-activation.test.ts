@@ -124,15 +124,16 @@ describe('workspace-scoped activation keeps floating selection off global state'
     expect(store.getState().activeTabType).toBe('browser')
   })
 
-  it('unscoped activation keeps its legacy global write', () => {
+  it('unscoped activation derives the file owner instead of moving global selection', () => {
     const store = createTestStore()
     seedFloatingOverMain(store)
 
     store.getState().setActiveFile('file-float')
 
-    // Documented difference: without a scope the legacy behavior stands. Scoped callers
-    // (the shared tab-group activation commands) must pass their workspace.
-    expect(store.getState().activeFileId).toBe('file-float')
+    expect(store.getState().activeFileId).toBeNull()
+    expect(store.getState().activeFileIdByWorktree[FLOATING_TERMINAL_WORKTREE_ID]).toBe(
+      'file-float'
+    )
   })
 
   it('terminal setActiveTab is already owner-scoped and leaves global activeTabId alone', () => {
