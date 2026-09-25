@@ -37,6 +37,8 @@ class Bundle {
   fun getBoolean(key: String) = values[key] == true
 }
 
+typealias IBinder = Binder
+
 class Binder {
   var alive = true
   var failure: RemoteException? = null
