@@ -30,7 +30,11 @@ export type StructuredAgentSessionHoldsDeps = {
     sessionId: string,
     attachOptions?: StructuredAgentSessionAttachOptions
   ) => Promise<StructuredAgentSessionResumeOutcome>
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+  /** Runs a hold's resume inside the session's serialize; it may answer without running it. */
+  serialize: (
+    sessionId: string,
+    resume: () => Promise<StructuredAgentSessionResumeOutcome>
+  ) => Promise<StructuredAgentSessionResumeOutcome>
   /** Whether evicting this session would actually free anything. */
   hasProviderChild: (sessionId: string) => boolean
   hasOwedWork: (sessionId: string) => boolean

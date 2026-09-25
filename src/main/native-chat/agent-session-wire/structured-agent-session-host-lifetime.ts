@@ -19,12 +19,18 @@ import type {
   StructuredAgentSessionHostSession
 } from './structured-agent-session-host-types'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
-import { resumeHeldStructuredAgentSession } from './structured-agent-session-hold-resume'
+import {
+  resumeHeldStructuredAgentSession,
+  type StructuredAgentSessionResumeOutcome
+} from './structured-agent-session-hold-resume'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionReadability } from './structured-agent-session-restart-restore'
-import { AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE } from '../../../shared/structured-agent-session-read-refusal'
+import {
+  AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE,
+  AGENT_SESSION_UNATTACHED_REFUSAL_CODE
+} from '../../../shared/structured-agent-session-read-refusal'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -191,6 +197,14 @@ async function openJournalBeforeAttach(
     : null
 }
 
+const CLOSED_BEFORE_RESUME: StructuredAgentSessionResumeOutcome = {
+  ok: false,
+  refusal: {
+    code: AGENT_SESSION_UNATTACHED_REFUSAL_CODE,
+    message: 'The chat was closed before its provider started.'
+  }
+}
+
 /** The holds resume through the host's own attach, inside the session's serialize: a hold's
  *  resume and a send's ensure-owner step are the same serialized attach with a different asker. */
 export function createStructuredAgentSessionHolds(
@@ -223,11 +237,17 @@ export function createStructuredAgentSessionHolds(
     // Tracked from enqueue: a quit drains a queued resume before it evicts, so no child is
     // spawned behind the eviction and orphaned. The journal opens in a turn of its own first, so
     // a read queued while the hold arrives waits on that open, not on the provider start.
-    serialize: (sessionId, task) => {
+    serialize: (sessionId, resume) => {
       const current = attachContext()
+      const isOpen = () => current.deps.store.isSessionTabVisible(sessionId)
+      // A user close hides the tab and can land between these turns; a holder leaving does not,
+      // so it still resumes. Asked only of a chat open at hold time: a tabless worker resumes.
+      const openAtHold = isOpen()
       return current.tasks.trackAttach(
         openJournalBeforeAttach(context, input.readable().ensureReadable, sessionId).then(() =>
-          current.serialize(sessionId, task)
+          current.serialize(sessionId, () =>
+            openAtHold && !isOpen() ? Promise.resolve(CLOSED_BEFORE_RESUME) : resume()
+          )
         )
       )
     },

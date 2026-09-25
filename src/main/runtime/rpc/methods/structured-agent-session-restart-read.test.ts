@@ -321,6 +321,35 @@ describe('reading a restored chat before the startup sweep', () => {
     expect(acquire).toHaveBeenCalledOnce()
   })
 
+  it('starts no provider for a chat closed while its hold was opening the journal', async () => {
+    // The hold opens the journal in a queue turn of its own, then queues its resume; a close that
+    // lands in between runs first and must leave the resume nothing to reopen or start.
+    await quitWithChat(true)
+    const dispatcher = await restart()
+    const restore = host!['restore']
+    const openJournal = restore.ensureReadable
+    const opened = Promise.withResolvers<void>()
+    const closed = Promise.withResolvers<void>()
+    vi.spyOn(restore, 'ensureReadable').mockImplementationOnce(async (sessionId) => {
+      const readability = await openJournal(sessionId)
+      opened.resolve()
+      await closed.promise
+      return readability
+    })
+
+    const hold = call(dispatcher, 'agentSession.hold', { sessionId: SESSION, holderId: 'pane' })
+    await opened.promise
+    expect(host!.hasSession(SESSION)).toBe(true)
+    await host!.setSessionTabVisibility(SESSION, false)
+    await host!.close(SESSION)
+    closed.resolve()
+
+    expect(await hold).toMatchObject({ ok: false })
+    expect(acquire).not.toHaveBeenCalled()
+    expect(host!.hasSession(SESSION)).toBe(false)
+    expect(host!.isHeld(SESSION)).toBe(false)
+  })
+
   it('opens nothing while structured chat is off', async () => {
     await quitWithChat(true)
     structuredNativeChatEnabled = false
