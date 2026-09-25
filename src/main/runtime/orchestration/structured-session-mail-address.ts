@@ -205,14 +205,16 @@ export function hasLostStructuredWorkerIdentity(
 
 /**
  * How an agent is shown a mailbox address. A structured worker's handle is only its mailbox key: it
- * reads as its session's actor, the one address that worker is taught, which routes back to it.
+ * reads as its session's address, the one address that worker is taught, which routes back to it.
  */
 export function agentVisibleOrchestrationAddress(
   address: string,
   db: OrchestrationDb | null | undefined
 ): string {
   const worker = resolveStructuredWorkerIdentity(address, db)
-  return worker ? sessionOrchestrationIdentity(worker.sessionId, db).actor : address
+  return worker && isOrcaSessionId(worker.sessionId)
+    ? formatOrcaSessionAddress(sessionOrchestrationIdentity(worker.sessionId, db).orcaSessionId)
+    : address
 }
 
 export function withAgentVisibleAddresses(
