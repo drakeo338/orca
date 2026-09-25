@@ -53,7 +53,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
       `& { $PSNativeCommandArgumentPassing = 'Legacy'; wsl.exe -d 'Ubuntu' --exec sh -c 'sh -c \\"$(printf %s ${encoded} | base64 -d)\\"' } # Runs: ${skillCommand}`
     )
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
-      'exec "$_orca_wsl_shell" -ilc \'npx skills add orchestration --global\''
+      'npx skills add orchestration --global\''
     )
   })
 
@@ -71,7 +71,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     expect(setupCommand).toContain("wsl.exe -d 'Ubuntu'")
     expect(setupCommand).not.toContain('where.exe npx')
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
-      'exec "$_orca_wsl_shell" -ilc \'npx skills add orchestration --global\''
+      'npx skills add orchestration --global\''
     )
   })
 
@@ -85,7 +85,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     const setupCommand = buildSkillSetupTerminalCommand(command, 'powershell.exe', runtime, 'win32')
 
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
-      'exec "$_orca_wsl_shell" -ilc \'npx skills update orchestration --global\''
+      'npx skills update orchestration --global\''
     )
   })
 

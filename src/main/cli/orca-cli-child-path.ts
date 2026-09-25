@@ -13,10 +13,11 @@
  * every branch behaves exactly as it did inside `buildPtyHostEnv`.
  */
 
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 import { readInheritedPath } from '../ipc/pty/host-env/path'
 import { resolvePathEnvKey } from '../pty/windows-environment-path'
 import { ensureLinuxTerminalOrcaCliShimDir } from './linux-terminal-orca-cli-shim'
+import { applyManagedWslCliEnvironment } from './wsl-managed-cli'
 
 export type OrcaCliChildPathOptions = {
   isPackaged: boolean
@@ -32,9 +33,12 @@ export function prependOrcaCliDirToChildPath(
   opts: OrcaCliChildPathOptions
 ): void {
   const platform = opts.platform ?? process.platform
+  if (platform === 'win32') {
+    applyManagedWslCliEnvironment(env, opts)
+  }
   // Why: matches node:path's `delimiter` for the running platform, but stays correct when a test
   // drives a foreign platform through the seam.
-  const pathDelimiter = platform === 'win32' ? ';' : delimiter
+  const pathDelimiter = platform === 'win32' ? ';' : ':'
   // Why: dev mode needs the launcher PATH override so `orca` resolves to the dev build instead of the production binary at /usr/local/bin/orca.
   if (!opts.isPackaged) {
     const devCliBin = join(opts.userDataPath, 'cli', 'bin')

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const shim = vi.hoisted(() => ({ ensureLinuxTerminalOrcaCliShimDir: vi.fn() }))
 vi.mock('./linux-terminal-orca-cli-shim', () => shim)
+vi.mock('./wsl-managed-cli', () => ({ applyManagedWslCliEnvironment: vi.fn() }))
 
 import { prependOrcaCliDirToChildPath } from './orca-cli-child-path'
 

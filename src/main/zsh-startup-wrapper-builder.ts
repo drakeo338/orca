@@ -27,6 +27,7 @@
  * hook restores zsh option semantics for the body at call time.
  */
 import { getPosixOmpShellWrapper } from './pty/omp-shell-wrapper'
+import { WSL_MANAGED_CLI_PATH } from '../shared/wsl-managed-cli-path'
 import { getPosixCodexShellLaunchPreflight } from './pty/codex-shell-launch-preflight'
 import {
   getZshShellReadyMarkerRegistrationBlock,
@@ -38,6 +39,7 @@ import {
 
 /** Runtime values the hook re-exports after the user's own startup files ran. */
 export type ZshWrapperRestoreSpec = {
+  managedWslCli?: boolean
   /** Orca's agent-teams shim dir back onto PATH. */
   agentTeamsPath: boolean
   /** Remote CLI bin dir onto PATH — relay hosts only. */
@@ -168,7 +170,7 @@ ${indentBlock(getZshShellReadyMarkerRegistrationBlock(spec.readyMarkerEscaped, t
   (( $+_orca_deferred_init_done )) && return 0
   builtin typeset -g _orca_deferred_init_done=1
   builtin typeset -g precmd_functions
-${permanentPrecmd}
+${permanentPrecmd}${spec.restores.managedWslCli ? `\n${indentBlock(WSL_MANAGED_CLI_PATH, '  ')}` : ''}
 ${joinBlocks([
   featureGuard('overlay', getOverlayRestoreBlocks(spec)),
   // Why no /etc/zshrc repair branch: ZDOTDIR was handed back before that file

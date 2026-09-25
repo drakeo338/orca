@@ -87,7 +87,7 @@ describe('WSL CLI PowerShell boundary', () => {
               bridgePath,
               ...bridgeArgs
             ],
-            { encoding: 'utf8', env: { ...process.env, ORCA_CLI_CWD: 'stale' } }
+            { encoding: 'utf8', windowsHide: true, env: { ...process.env, ORCA_CLI_CWD: 'stale' } }
           )
 
           expect(result.error).toBeUndefined()
@@ -109,7 +109,7 @@ describe('WSL CLI PowerShell boundary', () => {
             '-e',
             'process.exit(23)'
           ],
-          { encoding: 'utf8' }
+          { encoding: 'utf8', windowsHide: true }
         )
         expect(exitResult.error).toBeUndefined()
         expect(exitResult.status).toBe(23)

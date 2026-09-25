@@ -3,7 +3,8 @@ const BRIDGE_MANAGED_MARKER = '# Orca managed WSL CLI PowerShell bridge'
 
 export function buildWslLauncher(
   windowsLauncherPath: string,
-  bridgePath = '${XDG_DATA_HOME:-$HOME/.local/share}/orca/orca-wsl-bridge.ps1'
+  bridgePath = '${XDG_DATA_HOME:-$HOME/.local/share}/orca/orca-wsl-bridge.ps1',
+  managed?: { windowsPowerShellPath: string }
 ): string {
   const encodedTarget = Buffer.from(windowsLauncherPath, 'utf8').toString('base64')
   return `#!/usr/bin/env bash
@@ -11,15 +12,19 @@ set -euo pipefail
 ${MANAGED_MARKER}
 # ORCA_WIN_LAUNCHER_B64=${encodedTarget}
 ORCA_WIN_LAUNCHER=${quoteShell(windowsLauncherPath)}
-ORCA_BRIDGE_PS1=${quoteShell(bridgePath)}
-if command -v powershell.exe >/dev/null 2>&1; then
+ORCA_BRIDGE_PS1=${managed ? '"$(dirname -- "$0")/orca-wsl-bridge.ps1"' : quoteShell(bridgePath)}
+${
+  managed
+    ? `ORCA_POWERSHELL=$(wslpath -u ${quoteShell(managed.windowsPowerShellPath)})\nif [ ! -x "$ORCA_POWERSHELL" ]; then\n  echo "Orca WSL CLI requires Windows interop and access to $ORCA_POWERSHELL." >&2\n  exit 1\nfi`
+    : `if command -v powershell.exe >/dev/null 2>&1; then
   ORCA_POWERSHELL=powershell.exe
 elif [ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]; then
   ORCA_POWERSHELL=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 else
   echo "Orca WSL CLI requires Windows interop and could not find powershell.exe." >&2
   exit 1
-fi
+fi`
+}
 # Why: a shell can outlive a deleted worktree; keep explicit CLI selectors and
 # help usable, and repair cwd before any WSL interop tool tries to resolve it.
 ORCA_WSL_CWD=$(pwd -P 2>/dev/null) || {
@@ -32,7 +37,11 @@ exec "$ORCA_POWERSHELL" -NoProfile -ExecutionPolicy Bypass -File "$ORCA_BRIDGE_P
 `
 }
 
-export function buildWslBridgeScript(): string {
+export function buildWslBridgeScript(managed?: {
+  userDataPath: string
+  cliEntryPath?: string
+}): string {
+  const psQuote = (value: string): string => `'${value.replace(/'/g, "''")}'`
   return `${BRIDGE_MANAGED_MARKER}
 function ConvertTo-NativeCommandLineArgument {
   param([AllowEmptyString()][string]$Value)
@@ -93,10 +102,12 @@ try {
   # Why: Windows PowerShell 5.1 cannot losslessly splat strings to native argv.
   $StartInfo = [System.Diagnostics.ProcessStartInfo]::new()
   $StartInfo.FileName = $OrcaLauncher
+${managed ? `  $env:ORCA_USER_DATA_PATH = ${psQuote(managed.userDataPath)}\n` : ''}${managed?.cliEntryPath ? `  $env:ELECTRON_RUN_AS_NODE = '1'\n  $ForwardArgs = @(${psQuote(managed.cliEntryPath)}) + $ForwardArgs\n` : ''}\
   $StartInfo.Arguments = (($ForwardArgs | ForEach-Object {
     ConvertTo-NativeCommandLineArgument $_
   }) -join ' ')
   $StartInfo.UseShellExecute = $false
+${managed ? `  $StartInfo.CreateNoWindow = $true\n  $StartInfo.RedirectStandardOutput = $true\n  $StartInfo.RedirectStandardError = $true\n` : ''}\
   # Why (#16463): Push-Location moves the PowerShell provider location, not the
   # Win32 current directory, and an empty WorkingDirectory with UseShellExecute
   # disabled means "inherit the caller's". Launched from a WSL shell that is the
@@ -108,7 +119,9 @@ try {
   if ($null -eq $Process) {
     throw 'Unable to start the Orca Windows CLI launcher.'
   }
+${managed ? `  $stdoutCopy = $Process.StandardOutput.BaseStream.CopyToAsync([Console]::OpenStandardOutput())\n  $stderrCopy = $Process.StandardError.BaseStream.CopyToAsync([Console]::OpenStandardError())\n` : ''}\
   $Process.WaitForExit()
+${managed ? `  [void]$stdoutCopy.GetAwaiter().GetResult()\n  [void]$stderrCopy.GetAwaiter().GetResult()\n` : ''}\
   $exitCode = $Process.ExitCode
   $Process.Dispose()
 } catch {

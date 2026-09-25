@@ -60,6 +60,23 @@ __orca_deferred_init() {
   else
     precmd_functions=(${precmd_functions:#__orca_deferred_init})
   fi
+  if [ -n "${WSL_DISTRO_NAME:-}" ]; then
+  if [ -n "${ORCA_WSL_CLI_ERROR:-}" ]; then
+    printf 'Orca managed WSL CLI: %s\n' "$ORCA_WSL_CLI_ERROR" >&2
+    exit 1
+  fi
+  if [ -n "${ORCA_WSL_CLI_DIR:-}" ]; then
+    if [ -x "$ORCA_WSL_CLI_DIR/orca-dev" ]; then
+      export ORCA_CLI_COMMAND=orca-dev
+    elif [ -x "$ORCA_WSL_CLI_DIR/orca-ide" ]; then
+      export ORCA_CLI_COMMAND=orca-ide
+    else
+      printf 'Orca managed WSL CLI is unavailable at %s. Check WSL Windows-drive mounts and relaunch.\n' "$ORCA_WSL_CLI_DIR" >&2
+      exit 1
+    fi
+    export PATH="$ORCA_WSL_CLI_DIR${PATH:+:$PATH}"
+  fi
+  fi
   if __orca_has_feature overlay; then
     # Why: ~/.zshrc can export the user's default OpenCode config after spawn.
     __orca_restore_agent_teams_path() {
