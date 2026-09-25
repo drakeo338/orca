@@ -6,9 +6,18 @@ import type { AgentChildWorkAliasInput } from './agent-status-child-work-alias'
 import { serializeAgentChildWorkBindingKey } from './agent-status-child-work-binding'
 import type { AgentChildWorkInput } from './agent-status-child-work'
 import { createAgentStatusStore } from './agent-status-store'
+import { parseAgentStatusStoreMutation } from './agent-status-store-codec'
+import { commitAgentStatusStoreMutation } from './agent-status-store-commit'
 import type { AgentStatusStoreMutation } from './agent-status-store-contract'
 import { createCopyingAgentStatusStoreOracle } from './agent-status-store-copying-oracle.test-fixture'
-import { validateAgentStatusStoreState } from './agent-status-store-state'
+import {
+  indexAgentStatusStoreState,
+  type AgentStatusStoreIndexes
+} from './agent-status-store-indexes'
+import {
+  createEmptyAgentStatusStoreState,
+  validateAgentStatusStoreState
+} from './agent-status-store-state'
 import {
   makeStructuredAgentStatusSubject,
   serializeAgentStatusSubject,
@@ -109,6 +118,28 @@ function mutations(random: () => number) {
   return () => pick(steps)()
 }
 
+/** Every index as data: sets sorted, and each table's keys in the order the index ranks them. */
+function indexContents(indexes: AgentStatusStoreIndexes) {
+  const sets = (index: Map<string, Set<string>>) =>
+    [...index].map(([key, values]) => [key, [...values].sort()]).sort()
+  const ranked = (order: Map<string, number>) =>
+    [...order].sort((left, right) => left[1] - right[1]).map(([key]) => key)
+  return {
+    recordBytes: indexes.recordBytes,
+    childrenByParent: sets(indexes.childrenByParent),
+    factsByParent: sets(indexes.factsByParent),
+    aliasesByChild: sets(indexes.aliasesByChild),
+    aliasesByIdentity: sets(indexes.aliasesByIdentity),
+    retiredAliasesByIdentity: sets(indexes.retiredAliasesByIdentity),
+    order: {
+      children: ranked(indexes.order.children),
+      aliases: ranked(indexes.order.aliases),
+      facts: ranked(indexes.order.facts),
+      tombstones: ranked(indexes.order.tombstones)
+    }
+  }
+}
+
 describe('AgentStatusStore applied in place', () => {
   it.each([1, 7, 42, 1_234])(
     'matches the copying store decision for decision (seed %i)',
@@ -149,6 +180,27 @@ describe('AgentStatusStore applied in place', () => {
       expect(accepted).toBeGreaterThan(300)
       expect(accepted).toBeLessThan(1_450)
       expect(mostAliases).toBeGreaterThan(4)
+    },
+    60_000
+  )
+
+  it.each([3, 99])(
+    'keeps every index equal to one rebuilt from the maps, refusals included (seed %i)',
+    (seed) => {
+      const next = mutations(seeded(seed))
+      const state = createEmptyAgentStatusStoreState('epoch-a')
+      const indexes = indexAgentStatusStoreState(state)
+      for (let step = 0; step < 1_500; step += 1) {
+        const mutation = parseAgentStatusStoreMutation(next())
+        if (mutation) {
+          commitAgentStatusStoreMutation(state, indexes, mutation, state.revision + 1)
+        }
+        // The running byte total is only observable at the budget, so it is held to a rebuild.
+        expect({ step, ...indexContents(indexes) }).toEqual({
+          step,
+          ...indexContents(indexAgentStatusStoreState(state))
+        })
+      }
     },
     60_000
   )
