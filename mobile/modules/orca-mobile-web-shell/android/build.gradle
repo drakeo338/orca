@@ -12,9 +12,16 @@ useDefaultAndroidSdkVersions()
 
 android {
   namespace 'expo.modules.orcamobilewebshell'
+  buildFeatures { buildConfig true }
+  defaultConfig {
+    buildConfigField 'boolean', 'BROWSER_FIXTURE', (findProperty('orcaBrowserFixture') == 'true').toString()
+  }
 }
 
 dependencies {
+  compileOnly 'com.facebook.react:react-android'
+  // React Native already supplies this version; OkHttp owns WebSocket framing.
+  implementation 'com.squareup.okhttp3:okhttp:4.9.2'
   // Already on the APK classpath at this exact version via react-native-webview
   // (node_modules/react-native-webview/android/gradle.properties), so this adds no artifact.
   implementation 'androidx.webkit:webkit:1.14.0'
