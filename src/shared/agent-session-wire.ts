@@ -324,7 +324,7 @@ export type AgentSessionAttachResult = {
   page: AgentSessionHistoryPage
   /** Submissions the crash boundary settled as `unknown` while attaching. */
   unconfirmedClientMessageIds: string[]
-  /** The host-owned id of the tab that shows this chat. Absent from hosts that predate it. */
+  /** The id of the tab showing this chat, when it has one; a reserved create always does. */
   tabId?: string
 }
 

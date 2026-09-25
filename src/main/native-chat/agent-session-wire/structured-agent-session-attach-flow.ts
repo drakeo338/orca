@@ -179,7 +179,8 @@ export async function performAttach(
           callerKey: input.callerKey,
           operationId: params.envelope.clientOperationId,
           ...failedAcquisitionSettlement(error),
-          now: input.now()
+          now: input.now(),
+          releaseTab: params.surfaceTabId !== undefined
         })
       } catch (settlementError) {
         throw new AggregateError(
@@ -222,6 +223,7 @@ export async function performAttach(
   }
 
   const fence = record.lease.runtimeFence
+  const tabId = store.getSessionTabId(sessionId)
   return {
     ok: true,
     replayed,
@@ -232,7 +234,7 @@ export async function performAttach(
       fence,
       page: readAgentSessionHydrationPage(attached.journal, fence),
       unconfirmedClientMessageIds: attached.unconfirmedClientMessageIds,
-      ...(record.surfaceTabId ? { tabId: record.surfaceTabId } : {})
+      ...(tabId ? { tabId } : {})
     }
   }
 }
@@ -279,7 +281,8 @@ async function settleUnsupportedReservation(
         message: 'Structured session support changed before the provider could start.'
       },
       exitProof: 'processless',
-      now: input.now()
+      now: input.now(),
+      releaseTab: input.params.surfaceTabId !== undefined
     })
   } catch (error) {
     throw new AggregateError([error], 'agent session unsupported reservation settlement failed')

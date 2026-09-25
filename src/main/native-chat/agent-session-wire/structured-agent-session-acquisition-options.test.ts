@@ -574,7 +574,7 @@ describe('structured session acquisition options', () => {
   })
 })
 
-describe('the tab id a create records', () => {
+describe('the tab a create claims', () => {
   async function openStore() {
     root = await mkdtemp(join(tmpdir(), 'orca-surface-tab-id-'))
     return AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
@@ -603,30 +603,29 @@ describe('the tab id a create records', () => {
     })
   }
 
-  it('pins the id the caller reserved on the record and answers with it', async () => {
+  it('claims the id the caller reserved', async () => {
     const store = await openStore()
-    const result = await attachWith(store, 'chat-tab-1')
-
-    expect(result).toMatchObject({ ok: true, value: { tabId: 'chat-tab-1' } })
-    expect(store.getRecord(SESSION)?.surfaceTabId).toBe('chat-tab-1')
+    expect(await attachWith(store, 'chat-tab-1')).toMatchObject({
+      ok: true,
+      value: { tabId: 'chat-tab-1' }
+    })
+    expect(store.getSessionTabId(SESSION)).toBe('chat-tab-1')
   })
 
-  it('records the id clients derive when the caller reserved none', async () => {
+  it('claims nothing when the caller reserved none; the tab is given out when it is shown', async () => {
     const store = await openStore()
     const result = await attachWith(store)
-
-    // Every reader still keys by the derived id, so an unreserved chat must not record another.
-    const derived = `structured-agent-session-${SESSION}`
-    expect(result).toMatchObject({ ok: true, value: { tabId: derived } })
-    expect(store.getRecord(SESSION)?.surfaceTabId).toBe(derived)
+    expect(result.ok && result.value.tabId).toBeUndefined()
+    expect(store.getSessionTabId(SESSION)).toBeNull()
   })
 
-  it('answers a retry that names another tab with the one the record holds', async () => {
+  it('keeps the claimed id when a retry names another tab', async () => {
     const store = await openStore()
     await attachWith(store, 'chat-tab-1')
-    const retried = await attachWith(store, 'chat-tab-2')
-
-    expect(retried).toMatchObject({ ok: true, value: { tabId: 'chat-tab-1' } })
-    expect(store.getRecord(SESSION)?.surfaceTabId).toBe('chat-tab-1')
+    expect(await attachWith(store, 'chat-tab-2')).toMatchObject({
+      ok: true,
+      value: { tabId: 'chat-tab-1' }
+    })
+    expect(store.getSessionTabId(SESSION)).toBe('chat-tab-1')
   })
 })

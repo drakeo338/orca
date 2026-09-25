@@ -35,6 +35,8 @@ export type AgentSessionFailedAcquisitionSettlement = {
   outcome: Extract<AgentSessionOperationOutcome, { status: 'failed' }>
   exitProof: AgentSessionAcquisitionExitProof
   now: number
+  /** Set by a create whose reservation claimed a tab: the chat never reached one, so the claim dies. */
+  releaseTab?: boolean
 }
 
 export type AgentSessionFailedPostAcquisitionAttachmentSettlement =
@@ -56,7 +58,17 @@ export function settleFailedAgentSessionAcquisition(
   const next = settleFailedLease(record, args)
   state.records.set(args.sessionId, next)
   state.operations = settleAgentSessionOperation(state.operations, args)
+  releaseFailedCreateTab(state, args)
   return next
+}
+
+function releaseFailedCreateTab(
+  state: AgentSessionStoreState,
+  args: AgentSessionFailedAcquisitionSettlement
+): void {
+  if (args.releaseTab) {
+    state.sessionTabs?.hide(args.sessionId)
+  }
 }
 
 /** A proved native owner still is not publishable until its journal attaches. */
@@ -116,6 +128,7 @@ export function settleFailedAgentSessionPostAcquisitionAttachment(
         })
   state.records.set(args.sessionId, next)
   state.operations = settleAgentSessionOperation(state.operations, args)
+  releaseFailedCreateTab(state, args)
   return next
 }
 

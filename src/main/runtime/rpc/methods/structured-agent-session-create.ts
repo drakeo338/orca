@@ -43,7 +43,7 @@ export type PreparedStructuredAgentSessionCreate = {
  * intent, not a detail of it: without it a retry of "adopt this conversation" would replay as, or
  * conflict with, a blank create. `tabId` is covered so the declared digest spans the payload, but
  * replay keys on the attach fingerprint, so a retry naming another tab is answered with the one the
- * record holds. The canonicalizer drops `undefined`, so plain creates keep the digest they had.
+ * chat's tab holds. The canonicalizer drops `undefined`, so plain creates keep the digest they had.
  */
 export function structuredAgentSessionCreateIntentFingerprint(params: {
   envelope: AgentSessionMutationEnvelope

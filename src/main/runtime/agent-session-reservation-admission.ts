@@ -44,6 +44,7 @@ import {
   type AgentSessionReservation
 } from './agent-session-lease-transitions'
 import type { AgentSessionStoreState } from './agent-session-record-store-file'
+import { AgentSessionTabTable } from './agent-session-tab-table'
 
 export type AgentSessionReserveRequest = {
   sessionId: string
@@ -56,8 +57,8 @@ export type AgentSessionReserveRequest = {
   launchEnv?: AgentSessionLaunchEnv
   /** Initial provider options persisted before the first process is acquired. */
   options?: Readonly<Record<string, string>>
-  /** The tab id this conversation shows under. Pinned on first reservation; a later reservation of
-   *  an existing record keeps the record's own. Refused when another record already holds it. */
+  /** The tab id a create reserved for this conversation, claimed in the same transaction. A session
+   *  that already has a tab keeps it; an id another session's tab holds is refused. */
   surfaceTabId?: string
   /** Set only when this create adopts an existing provider conversation. Seeds the handle chain so
    *  the adapter resumes; without it a new record has never proved a thread and starts a fresh one. */
@@ -175,7 +176,7 @@ export function applyAgentSessionReservation(
     if (request.expectedFence !== null) {
       throw new Error('agent_session_checkpoint_stale')
     }
-    assertSurfaceTabIdUnheld(state, request)
+    claimReservedTab(state, request)
     return { record: createAgentSessionRecord(request, reservation), disposition: 'created' }
   }
   if (
@@ -196,6 +197,7 @@ export function applyAgentSessionReservation(
   if (request.expectedFence === null && !recreatable) {
     throw new Error('agent_session_conflict')
   }
+  claimReservedTab(state, request)
   const pinned = {
     ...existing,
     ...(!existing.launchArgs && request.launchArgs ? { launchArgs: [...request.launchArgs] } : {}),
@@ -244,9 +246,8 @@ function assertAdoptedConversationUnowned(
   }
 }
 
-/** A tab id names one conversation. Two records under one id would give two chats one tab, one
- *  read-state key and one notification id, so the second reservation is refused as a conflict. */
-function assertSurfaceTabIdUnheld(
+/** A tab id names one conversation, so a reserved id another session's tab holds is a conflict. */
+function claimReservedTab(
   state: AgentSessionStoreState,
   request: AgentSessionReserveRequest
 ): void {
@@ -256,11 +257,8 @@ function assertSurfaceTabIdUnheld(
   if (!isAgentSessionSurfaceTabId(request.surfaceTabId)) {
     throw new Error('agent_session_operation_invalid')
   }
-  for (const record of state.records.values()) {
-    if (record.sessionId !== request.sessionId && record.surfaceTabId === request.surfaceTabId) {
-      throw new Error('agent_session_conflict')
-    }
-  }
+  state.sessionTabs ??= new AgentSessionTabTable()
+  state.sessionTabs.show(request.sessionId, request.surfaceTabId)
 }
 
 function createAgentSessionRecord(
@@ -278,7 +276,6 @@ function createAgentSessionRecord(
     accountHome: request.accountHome,
     ...(request.options ? { options: { ...request.options } } : {}),
     ...(request.launchArgs ? { launchArgs: [...request.launchArgs] } : {}),
-    ...(request.surfaceTabId ? { surfaceTabId: request.surfaceTabId } : {}),
     createdAt: request.now,
     updatedAt: request.now,
     lease: {
