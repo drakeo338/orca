@@ -64,25 +64,38 @@ export async function restoreStructuredAgentSessionReadPhase(
     return 'readable'
   }
   return input.serialize(sessionId, async (): Promise<StructuredAgentSessionReadability> => {
-    if (input.hasSession(sessionId)) {
-      // A surface that took a hold, or read it, mid-restore already opened this one.
-      return 'readable'
-    }
-    if (!stillWanted()) {
+    if (!input.hasSession(sessionId) && !stillWanted()) {
       return 'unavailable'
     }
-    const restored = await restoreStructuredAgentSessionRead(
-      input.store,
-      input.journalRoot,
-      sessionId
-    )
-    if (typeof restored === 'string') {
-      return restored
-    }
-    input.onReadable(sessionId, restored)
-    await input.retrySettlement(sessionId, restored.params)
-    return 'readable'
+    return restoreStructuredAgentSessionReadPhaseUnderSerialize(input, sessionId)
   })
+}
+
+type StructuredAgentSessionReadPhaseDeps = Pick<
+  StructuredAgentSessionReadRestoreDeps,
+  'store' | 'journalRoot' | 'hasSession' | 'onReadable' | 'retrySettlement'
+>
+
+/** The read phase for a caller already inside the session's serialize. */
+export async function restoreStructuredAgentSessionReadPhaseUnderSerialize(
+  input: StructuredAgentSessionReadPhaseDeps,
+  sessionId: string
+): Promise<StructuredAgentSessionReadability> {
+  if (input.hasSession(sessionId)) {
+    // A surface that took a hold, or read it, mid-restore already opened this one.
+    return 'readable'
+  }
+  const restored = await restoreStructuredAgentSessionRead(
+    input.store,
+    input.journalRoot,
+    sessionId
+  )
+  if (typeof restored === 'string') {
+    return restored
+  }
+  input.onReadable(sessionId, restored)
+  await input.retrySettlement(sessionId, restored.params)
+  return 'readable'
 }
 
 /** One session's whole share of the restart restore: readable, then its handoff re-proved. */
@@ -97,6 +110,19 @@ export async function restoreOneStructuredAgentSessionRead(
       await input.restoreHandoff(sessionId)
     }
   })
+}
+
+/** The serialized half of the restore, for a caller already inside the session's serialize — a
+ *  send replaying into a session this host has closed, which needs the journal and no child. */
+export async function restoreOneStructuredAgentSessionReadUnderSerialize(
+  input: StructuredAgentSessionReadPhaseDeps &
+    Pick<StructuredAgentSessionReadRestoreDeps, 'restoreHandoff'>,
+  sessionId: string
+): Promise<void> {
+  await restoreStructuredAgentSessionReadPhaseUnderSerialize(input, sessionId)
+  if (input.hasSession(sessionId)) {
+    await input.restoreHandoff(sessionId)
+  }
 }
 
 export async function restoreStructuredAgentSessionsOnRestart(

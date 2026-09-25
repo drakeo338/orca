@@ -26,6 +26,7 @@ export type RestoredStructuredAgentSessionRead = {
   params: AgentSessionAttachParams
   fence: number
   hasProviderChild: false
+  providerChildPhase: 'ready'
   acquisitionGeneration: null
 }
 
@@ -79,6 +80,7 @@ export async function restoreStructuredAgentSessionRead(
     params,
     fence: record.lease.runtimeFence,
     hasProviderChild: false,
+    providerChildPhase: 'ready',
     acquisitionGeneration: null
   }
 }

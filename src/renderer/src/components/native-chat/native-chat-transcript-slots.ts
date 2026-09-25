@@ -19,7 +19,10 @@ import {
   nativeChatTurnFold,
   type NativeChatTurnFoldRow
 } from '../../../../shared/native-chat-turn-fold'
-import { deriveNativeChatRowContent, nativeChatRowRendersContent } from './native-chat-row-content'
+import {
+  deriveNativeChatRowContent,
+  nativeChatRowRendersContent
+} from '../../../../shared/native-chat-row-content'
 import {
   estimateNativeChatRowHeight,
   nativeChatRowContentMetrics

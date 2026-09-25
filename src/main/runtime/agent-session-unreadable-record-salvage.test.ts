@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
 import { AgentSessionRecordStore } from './agent-session-record-store'
 import { agentSessionStorePath } from './agent-session-record-store-file'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
@@ -192,6 +193,8 @@ describe('records an older build quarantined', () => {
     expect(reopened.isSessionUnreadable('session-alpha')).toBe(false)
     expect(reopened.getRecord('session-alpha')).toEqual({
       ...owned,
+      // Filled at open like any record that predates the field.
+      surfaceTabId: structuredAgentSessionTabId('session-alpha'),
       lease: { ...owned.lease, unreconciled: true }
     })
     expect(reopened.listVisibleSessionIds()).toEqual(['session-alpha'])

@@ -20,9 +20,11 @@ import {
   isAgentSessionRecord,
   type AgentSessionRecord
 } from '../../shared/agent-session-record'
+import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
 import { agentSessionStoreBackupPath as backupPath } from './agent-session-record-store-write'
 export { saveAgentSessionStore } from './agent-session-record-store-write'
 import { parseVisibleSessionIds } from './agent-session-visible-tab-index'
+import { restoreQuarantinedRecord } from './agent-session-quarantined-record-restore'
 import { serializeAgentSessionStoreState } from './agent-session-store-serialization'
 
 export const AGENT_SESSION_STORE_SCHEMA_VERSION = 2 as const
@@ -70,6 +72,28 @@ function emptyState(hostId: string): AgentSessionStoreState {
     unreadableRecords: new Map(),
     visibleSessionIds: new Set()
   }
+}
+
+/**
+ * Gives every record written before the host owned a chat's tab id the string clients derived for
+ * it, so read state, notification ids and worker rows keyed by that id stay valid on upgrade.
+ *
+ * Runs once per open, after the disk revision is taken and before the load rewrite: it is not part
+ * of parsing, because a parsed state must hash to what is on disk or every transaction would read
+ * the file as externally changed. Returns how many records it filled.
+ */
+export function backfillAgentSessionSurfaceTabIds(state: AgentSessionStoreState): number {
+  let filled = 0
+  for (const [sessionId, record] of state.records) {
+    if (record.surfaceTabId === undefined) {
+      state.records.set(sessionId, {
+        ...record,
+        surfaceTabId: structuredAgentSessionTabId(sessionId)
+      })
+      filled += 1
+    }
+  }
+  return filled
 }
 
 export function agentSessionStoreRevision(state: AgentSessionStoreState): string {
@@ -226,29 +250,6 @@ function parseState(
   }
   visibleSessionIds.ids.forEach((sessionId) => state.visibleSessionIds.add(sessionId))
   return { state, needsRewrite, visibleTabIndexFound: visibleSessionIds.present }
-}
-
-/**
- * A build that could not validate a record kept its bytes; a build that can takes it back. Never
- * over a copy the file also holds under `records`: that one is newer, readable or not.
- */
-function restoreQuarantinedRecord(
-  state: AgentSessionStoreState,
-  sessionId: string,
-  raw: unknown,
-  fileRecords: unknown
-): boolean {
-  if (
-    !isAgentSessionRecord(raw) ||
-    raw.sessionId !== sessionId ||
-    (typeof fileRecords === 'object' &&
-      fileRecords !== null &&
-      Object.hasOwn(fileRecords, sessionId))
-  ) {
-    return false
-  }
-  state.records.set(sessionId, raw)
-  return true
 }
 
 /** A record the primary retained as unreadable may still have a valid copy in the previous

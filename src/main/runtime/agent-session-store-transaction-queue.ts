@@ -7,9 +7,11 @@ import {
   loadAgentSessionStore,
   saveAgentSessionStore,
   type AgentSessionStoreState,
-  type LoadedAgentSessionStore
+  type LoadedAgentSessionStore,
+  backfillAgentSessionSurfaceTabIds
 } from './agent-session-record-store-file'
 import { withFileTransactionLock } from '../file-transaction-lock'
+import { loadProtectedAgentSessionStore } from './agent-session-record-store-security'
 import { adoptSavedTabsIntoLegacyIndex } from './agent-session-visible-tab-index'
 import type { AgentSessionHostRun } from './agent-session-host-run'
 
@@ -81,6 +83,35 @@ export class AgentSessionStoreTransactionQueue {
     this.savedTabSessionIds = options.savedTabSessionIds ?? (() => [])
   }
 
+  /** Loads the file the way a restart must see it. Every persisted lease is unreconciled until
+   *  this host adjudicates it, so a restart grants no writer on the previous process's word. */
+  static async open(
+    filePath: string,
+    hostId: string,
+    options: AgentSessionStoreOpenOptions
+  ): Promise<AgentSessionStoreTransactionQueue> {
+    const loaded = await loadProtectedAgentSessionStore(filePath, hostId)
+    const diskRevision = agentSessionStoreRevision(loaded.state)
+    // After the revision, so the file still hashes to what was read. The filled ids reach disk
+    // with this store's first transaction rather than a write here: a rewrite at open would read
+    // as an external change to any other holder of the file mid-restart.
+    const backfilled = backfillAgentSessionSurfaceTabIds(loaded.state)
+    markLoadedLeasesUnreconciled(loaded.state)
+    // Before the queue copies the flag: adopting saved tabs is a migration persisted at open.
+    adoptSavedTabsIntoLegacyIndex(loaded, options.savedTabSessionIds ?? (() => []))
+    const transactions = AgentSessionStoreTransactionQueue.fromLoadedStore(
+      filePath,
+      hostId,
+      { ...loaded, needsRewrite: loaded.needsRewrite || backfilled > 0 },
+      diskRevision,
+      options
+    )
+    if (loaded.needsRewrite && !loaded.readOnly && !loaded.recoveredFromBackup) {
+      await transactions.persistLoadedRewrite()
+    }
+    return transactions
+  }
+
   static fromLoadedStore(
     filePath: string,
     hostId: string,
@@ -88,7 +119,6 @@ export class AgentSessionStoreTransactionQueue {
     diskRevision: string,
     options: AgentSessionStoreOpenOptions
   ): AgentSessionStoreTransactionQueue {
-    adoptSavedTabsIntoLegacyIndex(loaded, options.savedTabSessionIds ?? (() => []))
     return new AgentSessionStoreTransactionQueue(
       filePath,
       hostId,
@@ -182,12 +212,13 @@ export class AgentSessionStoreTransactionQueue {
       throw new Error('agent_session_legacy_required')
     }
     markLoadedLeasesUnreconciled(loaded.state)
+    // Why: a reload replaces the state wholesale, so the ids filled at open would vanish from
+    // memory until the next open; refilling keeps every in-memory record carrying one. It does
+    // not force a save: a reload marks every lease unadjudicated, and this instance must not
+    // persist that verdict on the strength of a refill.
+    backfillAgentSessionSurfaceTabIds(loaded.state)
     this.state = loaded.state
     this.diskRevision = diskRevision
     this.needsRewrite = loaded.needsRewrite
   }
-}
-
-export function markAgentSessionStoreLeasesUnreconciled(state: AgentSessionStoreState): void {
-  markLoadedLeasesUnreconciled(state)
 }

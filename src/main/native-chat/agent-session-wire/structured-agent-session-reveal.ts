@@ -69,6 +69,10 @@ export function createStructuredAgentSessionHostRestore(
   restoreReadableSessions: (sessionIds?: readonly string[]) => Promise<void>
   revealSession: (sessionId: string) => Promise<StructuredAgentSessionReveal>
   ensureReadable: (sessionId: string) => Promise<StructuredAgentSessionReadability>
+  /** `ensureReadable` for a caller already inside the session's serialize. */
+  ensureReadableUnderSerialize: (sessionId: string) => Promise<StructuredAgentSessionReadability>
+  /** One session, for a caller already inside its serialize. */
+  restoreReadableUnderSerialize: (sessionId: string) => Promise<boolean>
 } {
   const restorer = new StructuredAgentSessionReadableRestorer({
     store: deps.store,
@@ -95,6 +99,8 @@ export function createStructuredAgentSessionHostRestore(
       revealStructuredAgentSession(deps, sessionId, wiring.hasSession, (id) =>
         restorer.restoreOne(id)
       ),
-    ensureReadable: (sessionId) => restorer.ensureReadable(sessionId)
+    ensureReadable: (sessionId) => restorer.ensureReadable(sessionId),
+    ensureReadableUnderSerialize: (sessionId) => restorer.ensureReadableUnderSerialize(sessionId),
+    restoreReadableUnderSerialize: (sessionId) => restorer.restoreOneUnderSerialize(sessionId)
   }
 }

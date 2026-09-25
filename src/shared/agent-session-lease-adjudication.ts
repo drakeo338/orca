@@ -15,6 +15,7 @@ import type {
   AgentSessionHandoffStage,
   AgentSessionLease
 } from './agent-session-record'
+import type { AgentSessionOwnerVerdict } from './agent-session-wire-refusals'
 
 export type AgentSessionIdentityMatchField = 'process-start-time' | 'spawn-token'
 
@@ -108,6 +109,19 @@ function deathEvidenceFor(
 
 function previousAppRunDeathEvidence(observedAt: number): AgentSessionDeathEvidence {
   return { kind: 'previous-app-run', detail: 'owner ended with the previous app run', observedAt }
+}
+
+/** The store releases a lease only on proven exit or eviction; anything held or mid-handoff may run. */
+export function agentSessionLeaseOwnerVerdict(lease: AgentSessionLease): AgentSessionOwnerVerdict {
+  if (agentSessionLeaseAdmitsWriter(lease)) {
+    return 'live'
+  }
+  return lease.claimStatus === 'released' &&
+    lease.handoffStage === null &&
+    lease.ownerProcess === null &&
+    lease.reservedSpawnToken === null
+    ? 'exited'
+    : 'unverifiable'
 }
 
 /** True when the recorded owner may write right now. Used by every mutating path in later parts. */

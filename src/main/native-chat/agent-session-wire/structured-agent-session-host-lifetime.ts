@@ -20,6 +20,7 @@ import type {
 } from './structured-agent-session-host-types'
 import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-session-lease-release'
 import { resumeHeldStructuredAgentSession } from './structured-agent-session-hold-resume'
+import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
 import type { StructuredAgentSessionReadability } from './structured-agent-session-restart-restore'
@@ -170,61 +171,64 @@ export async function evictOwnedStructuredAgentSessions(
   }
 }
 
-/** The first hold on a childless session: reconcile the lease, settle recovery, make it readable,
- *  then attach. */
-export async function resumeStructuredAgentSessionForHold(
-  context: StructuredAgentSessionLifetimeContext & {
-    reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
-    makeReadable: (sessionId: string) => Promise<StructuredAgentSessionReadability>
-  },
-  sessionId: string,
-  attach: Parameters<typeof resumeHeldStructuredAgentSession>[0]['attach']
-): Promise<void> {
-  const unreconciled = await context.reconcileLeases(sessionId)
-  if (unreconciled) {
-    throw new Error(unreconciled.code)
-  }
-  await context.runtimeState.resolveRecovery(sessionId)
-  // Why first: attach keeps the session's task queue for the whole provider start, so a read
-  // arriving meanwhile would wait on the child. Best effort; the attach decides the hold.
-  const readability = await context.makeReadable(sessionId).catch((error: unknown) => {
+/** Why before the attach: it keeps the session's task queue for the whole provider start, and a
+ *  read that finds the session open skips that queue. Best effort; the attach decides the resume. */
+async function openJournalBeforeAttach(
+  context: Pick<StructuredAgentSessionAttachContext, 'deps'>,
+  makeReadable: (sessionId: string) => Promise<StructuredAgentSessionReadability>,
+  sessionId: string
+): Promise<AgentSessionWireRefusal | null> {
+  const readability = await makeReadable(sessionId).catch((error: unknown) => {
     context.deps.onEventSinkError?.({ sessionId, error })
     return null
   })
-  if (readability === 'journal-unreadable') {
-    // Attach cannot open that file either; refusing here keeps it from starting a provider first.
-    throw new Error(AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE)
-  }
-  await resumeHeldStructuredAgentSession({
-    sessionId,
-    deps: context.deps,
-    now: context.now,
-    attach
-  })
+  // Attach cannot open that file either; refusing here keeps it from starting a provider first.
+  return readability === 'journal-unreadable'
+    ? {
+        code: AGENT_SESSION_JOURNAL_UNREADABLE_REFUSAL_CODE,
+        message: "This conversation's history couldn't be loaded."
+      }
+    : null
 }
 
+/** The holds resume through the host's own attach, inside the session's serialize: a hold's
+ *  resume and a send's ensure-owner step are the same serialized attach with a different asker. */
 export function createStructuredAgentSessionHolds(
-  context: StructuredAgentSessionLifetimeContext,
+  attachContext: () => StructuredAgentSessionAttachContext,
   input: {
-    reconcileLeases: (sessionId: string) => Promise<AgentSessionWireRefusal | null>
+    /** For a caller already inside the session's serialize. */
     makeReadable: (sessionId: string) => Promise<StructuredAgentSessionReadability>
-    attach: Parameters<typeof resumeHeldStructuredAgentSession>[0]['attach']
     close: (sessionId: string) => Promise<void>
   }
 ): StructuredAgentSessionHolds {
+  const context = attachContext()
   return new StructuredAgentSessionHolds({
-    resume: (sessionId) =>
-      resumeStructuredAgentSessionForHold(
-        { ...context, reconcileLeases: input.reconcileLeases, makeReadable: input.makeReadable },
+    resume: (sessionId, attachOptions) =>
+      resumeHeldStructuredAgentSession({
         sessionId,
-        input.attach
-      ),
+        context: attachContext(),
+        callerKey: attachOptions?.admitRecoveryTicket
+          ? 'trusted-local:provider-exit-recovery'
+          : 'trusted-local:surface-hold',
+        ...(attachOptions ? { attachOptions } : {}),
+        openJournal: (id) => openJournalBeforeAttach(context, input.makeReadable, id)
+      }),
+    // Tracked from enqueue: a quit drains a queued resume before it evicts, so no child is
+    // spawned behind the eviction and orphaned.
+    serialize: (sessionId, task) => {
+      const current = attachContext()
+      return current.tasks.trackAttach(current.serialize(sessionId, task))
+    },
     evict: input.close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),
-    isTurnActive: (sessionId) => {
+    // A send pending while the child is still starting is held for that start; evicting would
+    // refuse it. Any other pending send may wait on an echo that never comes, so eviction retires it.
+    hasOwedWork: (sessionId) => {
       const session = context.sessions.get(sessionId)
       return session
-        ? activeStructuredAgentSessionTurnId(session.journal.snapshot().items) !== null
+        ? activeStructuredAgentSessionTurnId(session.journal.snapshot().items) !== null ||
+            (session.providerChildPhase === 'starting' &&
+              session.journal.pendingSubmissions().length > 0)
         : false
     },
     onError: (error) => context.deps.onEventSinkError?.(error),

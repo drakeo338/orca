@@ -4,7 +4,9 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import type { RestoredStructuredAgentSessionRead } from './structured-agent-session-read-restore'
 import {
   restoreOneStructuredAgentSessionRead,
+  restoreOneStructuredAgentSessionReadUnderSerialize,
   restoreStructuredAgentSessionReadPhase,
+  restoreStructuredAgentSessionReadPhaseUnderSerialize,
   restoreStructuredAgentSessionsOnRestart,
   type StructuredAgentSessionReadability
 } from './structured-agent-session-restart-restore'
@@ -50,8 +52,7 @@ export class StructuredAgentSessionReadableRestorer {
    * answers for Claude and Codex from the record's own provider.
    */
   async restoreOne(sessionId: string): Promise<boolean> {
-    const record = this.input.store.getRecord(sessionId)
-    if (!record || !this.input.supportsRecord(record)) {
+    if (!this.supports(sessionId)) {
       return false
     }
     await restoreOneStructuredAgentSessionRead(this.input, sessionId)
@@ -71,15 +72,45 @@ export class StructuredAgentSessionReadableRestorer {
     if (this.input.hasSession(sessionId)) {
       return 'readable'
     }
+    if (!this.supports(sessionId) || !this.tabVisible(sessionId)) {
+      return 'unavailable'
+    }
+    return restoreStructuredAgentSessionReadPhase(this.input, sessionId, () =>
+      this.tabVisible(sessionId)
+    )
+  }
+
+  /** `ensureReadable` for a caller already inside the session's serialize. */
+  async ensureReadableUnderSerialize(
+    sessionId: string
+  ): Promise<StructuredAgentSessionReadability> {
+    if (this.input.hasSession(sessionId)) {
+      return 'readable'
+    }
+    if (!this.supports(sessionId) || !this.tabVisible(sessionId)) {
+      return 'unavailable'
+    }
+    return restoreStructuredAgentSessionReadPhaseUnderSerialize(this.input, sessionId)
+  }
+
+  /** `restoreOne` for a caller already inside the session's serialize. Reconciliation is skipped
+   *  on purpose: a lease this host has not adjudicated is the attach's problem, and a replay
+   *  needs only the journal. */
+  async restoreOneUnderSerialize(sessionId: string): Promise<boolean> {
+    if (!this.supports(sessionId)) {
+      return false
+    }
+    await restoreOneStructuredAgentSessionReadUnderSerialize(this.input, sessionId)
+    return this.input.hasSession(sessionId)
+  }
+
+  private supports(sessionId: string): boolean {
     const record = this.input.store.getRecord(sessionId)
-    if (!record || !this.input.supportsRecord(record)) {
-      return 'unavailable'
-    }
-    const tabVisible = (): boolean => this.input.store.isSessionTabVisible(sessionId)
-    if (!tabVisible()) {
-      return 'unavailable'
-    }
-    return restoreStructuredAgentSessionReadPhase(this.input, sessionId, tabVisible)
+    return record !== null && this.input.supportsRecord(record)
+  }
+
+  private tabVisible(sessionId: string): boolean {
+    return this.input.store.isSessionTabVisible(sessionId)
   }
 
   private async restoreReadableSessions(sessionIds?: readonly string[]): Promise<void> {
