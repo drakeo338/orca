@@ -136,9 +136,16 @@ export function useStructuredAgentSessionOutbox(args: {
       // Released here rather than in a `.finally`: the state write below is what re-runs the
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
+      // A clean answer that leaves another entry blocked says nothing about it, so its reason stays.
+      const keepsBlockedReason =
+        disposition.error === null &&
+        disposition.blockedClientMessageId !== null &&
+        disposition.blockedClientMessageId === blockedIdRef.current
       blockedIdRef.current = disposition.blockedClientMessageId
       retryWithFreshClientMessageIdRef.current = disposition.retryWithFreshClientMessageId
-      setError(disposition.error)
+      if (!keepsBlockedReason) {
+        setError(disposition.error)
+      }
       outboxRef.current = disposition.entries
       setOutbox(disposition.entries)
       writeOutbox(sessionId, disposition.entries)

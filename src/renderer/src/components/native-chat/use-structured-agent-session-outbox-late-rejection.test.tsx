@@ -176,6 +176,32 @@ describe('a send the host rejects after answering pending', () => {
     expect(sentIds()[1]).not.toBe(id)
   })
 
+  it('keeps the reason when a send still in flight answers after another entry is rejected', async () => {
+    answerEach('pending')
+    const { result, rerender } = renderOutbox()
+    act(() => expect(result.current.send('held while starting')).toBe(true))
+    await waitFor(() => expect(result.current.outbox[0]?.state).toBe('dispatching'))
+    const heldId = result.current.outbox[0]!.clientMessageId
+    let answer: (value: unknown) => void = () => {}
+    mocks.call.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    act(() => expect(result.current.send('sent behind it')).toBe(true))
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2))
+    const inFlightId = sentIds()[1]!
+
+    rerender({ submissions: [submission(heldId, 'rejected', REASON)] })
+    await waitFor(() => expect(result.current.error).toBe(REASON))
+    await act(async () => answer(sendResult(inFlightId, 'pending')))
+    await settleEffects()
+
+    expect(result.current.error).toBe(REASON)
+    expect(result.current.blockedClientMessageId).toBe(heldId)
+  })
+
   it('drops a send the user cancelled, with nothing on screen', async () => {
     answerEach('pending')
     const { result, rerender } = renderOutbox()
