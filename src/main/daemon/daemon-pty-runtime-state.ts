@@ -46,8 +46,6 @@ export type HistoryRecoveryContext = {
 export type SnapshotCheckpointResult = {
   checkpoint: HistoryCheckpointResult
   snapshot: NonNullable<TakePendingOutputResult['snapshot']> | null
-  /** The daemon's live window the checkpoint was rebased on. */
-  liveSnapshot: NonNullable<TakePendingOutputResult['snapshot']> | null
 }
 
 export type DaemonPtyAdapterOptions = {

@@ -9,7 +9,7 @@ import { getRecoveredHistorySeedSegments } from './terminal-history-seed-segment
 import { replayTerminalSnapshot } from './terminal-checkpoint-serializer'
 import { RESET_GRAPHIC_RENDITION } from '../../shared/terminal-mode-reset-profiles'
 import type { ColdRestoreInfo } from './terminal-history-cold-restore-info'
-import type { PendingOutputRecord, TerminalModes, TerminalSnapshot } from './types'
+import type { PendingOutputRecord, TerminalSnapshot } from './types'
 
 // Why: the head's serializer ends on the replay's pen and open hyperlink; the live body assumes defaults.
 const OLDER_ROWS_SEAM = `${RESET_GRAPHIC_RENDITION}\x1b]8;;\x1b\\`
@@ -20,18 +20,13 @@ export async function buildDurableCheckpointSnapshot(opts: {
   restoreInfo: ColdRestoreInfo | null
   pendingRecords?: readonly PendingOutputRecord[]
   /** Records span the live session's whole life, so restoreInfo is the base it was seeded from. */
-  pendingRecordsAreComplete?: boolean
-  scrollbackRows?: number
+  isFirstTake?: boolean
 }): Promise<TerminalSnapshot> {
   const { liveSnapshot, restoreInfo } = opts
   const pendingRecords = opts.pendingRecords ?? []
-  const depth = Math.min(
-    opts.scrollbackRows ?? DAEMON_RESTORE_SCROLLBACK_ROWS,
-    DAEMON_RESTORE_SCROLLBACK_ROWS
-  )
-  if (liveSnapshot.scrollbackLines > depth) {
-    // Why: live alone is deeper than requested, so disk rows cannot contribute.
-    return await boundLiveSnapshot(liveSnapshot, depth)
+  if (liveSnapshot.scrollbackLines > DAEMON_RESTORE_SCROLLBACK_ROWS) {
+    // Why: live alone is deeper than restore depth, so disk rows cannot contribute.
+    return await boundSnapshot(liveSnapshot, DAEMON_RESTORE_SCROLLBACK_ROWS)
   }
   if (!restoreInfo && pendingRecords.length === 0) {
     return liveSnapshot
@@ -39,7 +34,6 @@ export async function buildDurableCheckpointSnapshot(opts: {
   if (
     restoreInfo &&
     pendingRecords.length === 0 &&
-    depth === DAEMON_RESTORE_SCROLLBACK_ROWS &&
     diskCheckpointAgreesWithLive(restoreInfo, liveSnapshot)
   ) {
     return diskCheckpointWithLiveIdentity(restoreInfo, liveSnapshot)
@@ -49,7 +43,7 @@ export async function buildDurableCheckpointSnapshot(opts: {
   const emulator = new DurableHistoryReplayEmulator({
     cols: restoreInfo?.cols ?? liveSnapshot.cols,
     rows: restoreInfo?.rows ?? liveSnapshot.rows,
-    scrollback: depth
+    scrollback: DAEMON_RESTORE_SCROLLBACK_ROWS
   })
   const replay = new ColdRestoreReplayWriter(emulator)
   try {
@@ -59,17 +53,13 @@ export async function buildDurableCheckpointSnapshot(opts: {
     if (restoreInfo) {
       // Why the seed on a first fold: live got exactly those bytes, so both copies' rows line up
       // even when the base was a dead TUI's alt screen.
-      const segments = opts.pendingRecordsAreComplete
+      const segments = opts.isFirstTake
         ? getRecoveredHistorySeedSegments(restoreInfo)
         : restoreSegments(restoreInfo)
       for (const segment of segments) {
         if (!(await replay.write(segment))) {
           return liveSnapshot
         }
-      }
-      // Why normal only: persisted ranges index the base's active buffer, and only normal rows survive the rebase.
-      if (!restoreInfo.modes.alternateScreen) {
-        emulator.setRestoredOscLinks(restoreInfo.oscLinks)
       }
     }
     if (!(await replayPendingRecords(replay, pendingRecords))) {
@@ -104,21 +94,10 @@ function diskCheckpointAgreesWithLive(info: ColdRestoreInfo, live: TerminalSnaps
     info.cols === live.cols &&
     info.rows === live.rows &&
     info.rehydrateSequences === live.rehydrateSequences &&
-    TERMINAL_MODE_KEYS.every((key) => info.modes[key] === live.modes[key]) &&
+    info.modes.kittyKeyboardFlags === live.modes.kittyKeyboardFlags &&
     (!live.modes.alternateScreen || info.snapshotAnsi === live.snapshotAnsi)
   )
 }
-
-const TERMINAL_MODE_KEYS = [
-  'bracketedPaste',
-  'mouseTracking',
-  'mouseTrackingMode',
-  'sgrMouseMode',
-  'sgrMousePixelsMode',
-  'applicationCursor',
-  'alternateScreen',
-  'kittyKeyboardFlags'
-] as const satisfies readonly (keyof TerminalModes)[]
 
 function diskCheckpointWithLiveIdentity(
   info: ColdRestoreInfo,
@@ -137,13 +116,17 @@ function diskCheckpointWithLiveIdentity(
   }
 }
 
-async function boundLiveSnapshot(live: TerminalSnapshot, depth: number): Promise<TerminalSnapshot> {
-  const emulator = await replayTerminalSnapshot(live, { scrollbackRows: depth })
+/** Trims a snapshot to `scrollbackRows` of scrollback, keeping its owner and sequence. */
+export async function boundSnapshot(
+  snapshot: TerminalSnapshot,
+  scrollbackRows: number
+): Promise<TerminalSnapshot> {
+  const emulator = await replayTerminalSnapshot(snapshot, { scrollbackRows })
   try {
     return {
       ...emulator.getSnapshot(),
-      ...(live.terminalOwner ? { terminalOwner: live.terminalOwner } : {}),
-      ...(live.outputSequence !== undefined ? { outputSequence: live.outputSequence } : {})
+      ...(snapshot.terminalOwner ? { terminalOwner: snapshot.terminalOwner } : {}),
+      ...(snapshot.outputSequence !== undefined ? { outputSequence: snapshot.outputSequence } : {})
     }
   } finally {
     emulator.dispose()
@@ -167,13 +150,10 @@ function rebaseOnOlderRows(live: TerminalSnapshot, head: NormalBufferHead): Term
   // Why a screenful of newlines then home: it scrolls every older row into
   // scrollback and leaves the blank, homed screen a fresh live replay expects.
   const prefix = `${head.ansi}${OLDER_ROWS_SEAM}${'\r\n'.repeat(live.rows)}\x1b[H`
+  const scrollbackLines = live.scrollbackLines + head.rowCount
   if (live.modes.alternateScreen) {
     // Why links untouched: they index the alt screen, which older rows never enter.
-    return {
-      ...live,
-      scrollbackAnsi: prefix + live.scrollbackAnsi,
-      scrollbackLines: live.scrollbackLines + head.rowCount
-    }
+    return { ...live, scrollbackAnsi: prefix + live.scrollbackAnsi, scrollbackLines }
   }
   return {
     ...live,
@@ -182,7 +162,7 @@ function rebaseOnOlderRows(live: TerminalSnapshot, head: NormalBufferHead): Term
       ...head.oscLinks,
       ...(live.oscLinks ?? []).map((link) => ({ ...link, row: link.row + head.rowCount }))
     ],
-    scrollbackLines: live.scrollbackLines + head.rowCount
+    scrollbackLines
   }
 }
 

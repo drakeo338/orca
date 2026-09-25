@@ -63,7 +63,7 @@ export class HeadlessEmulator {
   private mouseModes = new TerminalMouseModeMirror()
   private readonly pathFlavor?: 'posix' | 'win32'
   private readonly remotePosixFileUriAuthority: boolean
-  protected restoredOscLinks: TerminalOscLinkRange[] = []
+  private restoredOscLinks: TerminalOscLinkRange[] = []
   private disposed = false
   private onQueryReply: ((reply: string) => void) | null
   private conptyDa1OverrideInstalled = false

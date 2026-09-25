@@ -37,17 +37,10 @@ export function collectHeadlessOscLinkRanges(
 /** Links in normal-buffer rows [0, endRow), whichever buffer is active. */
 export function collectNormalBufferOscLinkRanges(
   terminal: Terminal,
-  endRow: number,
-  restoredLinks: TerminalOscLinkRange[] = []
+  endRow: number
 ): TerminalOscLinkRange[] {
   const buffer = terminal.buffer.normal
-  return collectOscLinkRangesInRows(
-    terminal,
-    buffer,
-    0,
-    Math.min(endRow, buffer.length),
-    restoredLinks
-  )
+  return collectOscLinkRangesInRows(terminal, buffer, 0, Math.min(endRow, buffer.length), [])
 }
 
 function collectOscLinkRangesInRows(
