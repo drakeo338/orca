@@ -68,6 +68,20 @@ describe('a conversation delivers what its journal commits', () => {
     expect(deliver).toHaveBeenCalledWith('session-1', journal)
   })
 
+  it('delivers an epoch replacement, which readers must reload from', async () => {
+    const deliver = vi.fn()
+    const conversations = new StructuredAgentSessionConversations({
+      deliver,
+      onDeliveryError: vi.fn()
+    })
+    const journal = await openJournal('a')
+    conversations.set('session-1', session(journal))
+
+    await journal.replaceEpochItems('handle_forked', 0, [])
+
+    expect(deliver).toHaveBeenCalledExactlyOnceWith('session-1', journal)
+  })
+
   it('delivers nothing for a handle the conversation has replaced', async () => {
     const deliver = vi.fn()
     const conversations = new StructuredAgentSessionConversations({
