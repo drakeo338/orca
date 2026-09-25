@@ -77,8 +77,8 @@ export type EditorFilesSlice = {
   /** Most recently closed editor tabs per worktree (for Cmd/Ctrl+Shift+T). */
   recentlyClosedEditorTabsByWorktree: Record<string, ClosedEditorTabSnapshot[]>
   reopenClosedEditorTab: (worktreeId: string) => boolean
-  /** targetWorktreeId scopes the activation: global selection only moves when it names the
-   *  globally active workspace (mirrors setActiveTabType). Omitted keeps legacy global writes. */
+  /** Activation uses the file's workspace unless a target is supplied; global selection
+   *  moves only when that workspace is active. */
   setActiveFile: (fileId: string, targetWorktreeId?: string) => void
   reorderFiles: (fileIds: string[]) => void
   markFileDirty: (fileId: string, dirty: boolean) => void
