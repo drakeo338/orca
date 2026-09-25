@@ -42,6 +42,36 @@ const create = event(
 const snapshot = event({ type: 'automation', method: 'browser.snapshot', params: {} })
 
 describe('automation command replay', () => {
+  it('snapshots nested caller input and prevents handler mutation of replay identity', async () => {
+    const handler = vi.fn((accepted: BrowserClientHostCommandEvent) => {
+      if (accepted.command.type === 'automation') {
+        const acceptedParams = accepted.command.params
+        expect(Object.isFrozen(acceptedParams)).toBe(true)
+        expect(Object.isFrozen(acceptedParams.nested)).toBe(true)
+        if (Array.isArray(acceptedParams.nested)) {
+          expect(Object.isFrozen(acceptedParams.nested[0])).toBe(true)
+        }
+        expect(() => {
+          acceptedParams.nested = []
+        }).toThrow(TypeError)
+      }
+      return { status: 'completed' as const }
+    })
+    const dispatcher = new BrowserClientHostCommandDispatcher({ authority, handler })
+    await dispatcher.dispatch(create)
+    const params = { nested: [{ value: 'original' }] }
+    const command = event({ type: 'automation', method: 'browser.eval', params })
+    const originalWireCommand = wireCopy(command)
+    const original = dispatcher.dispatch(command)
+    params.nested[0]!.value = 'mutated'
+    await expect(original).resolves.toEqual({ status: 'completed' })
+    expect(dispatcher.dispatch(originalWireCommand)).toBe(original)
+    expect(() => dispatcher.dispatch(wireCopy(command))).toThrow(
+      'browser_host_command_sequence_conflict'
+    )
+    expect(handler).toHaveBeenCalledTimes(2)
+  })
+
   it.each(BROWSER_CLIENT_AUTOMATION_METHODS)(
     'replays completed %s exactly once',
     async (method) => {

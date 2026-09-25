@@ -124,6 +124,11 @@ export function createPageState(browserPageId: string, generation: number): Page
 function snapshotPageCommand(
   command: BrowserClientHostCommandEvent['command']
 ): BrowserClientHostCommandEvent['command'] {
+  if (command.type === 'automation') {
+    const params = structuredClone(command.params)
+    freezeAutomationParams(params)
+    return Object.freeze({ ...command, params })
+  }
   if (command.type === 'reclaimPage') {
     return Object.freeze({
       ...command,
@@ -137,6 +142,16 @@ function snapshotPageCommand(
     })
   }
   return Object.freeze({ ...command })
+}
+
+function freezeAutomationParams(value: unknown): void {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+    return
+  }
+  Object.freeze(value)
+  for (const nested of Object.values(value)) {
+    freezeAutomationParams(nested)
+  }
 }
 
 export function failedCommandResult(errorCode: string): BrowserClientHostCommandResult {
