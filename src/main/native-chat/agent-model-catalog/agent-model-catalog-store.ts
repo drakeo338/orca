@@ -165,13 +165,13 @@ export class AgentModelCatalogStore {
   refresh(
     fingerprint: string,
     agent: 'claude' | 'codex',
-    fetch: () => Promise<AgentModelCatalogSuccess>
+    listModels: () => Promise<AgentModelCatalogSuccess>
   ): Promise<AgentModelCatalogEntry | null> {
     const inFlight = this.refreshes.get(fingerprint)
     if (inFlight) {
       return inFlight
     }
-    const run = fetch().then(
+    const run = listModels().then(
       (success) => {
         this.refreshes.delete(fingerprint)
         return this.recordSuccess(fingerprint, agent, success)
