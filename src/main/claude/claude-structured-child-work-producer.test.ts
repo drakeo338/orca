@@ -392,10 +392,15 @@ describe('Claude structured child-work producer', () => {
     send(toolResult('toolu_2', 'Could not reproduce', null, true))
     expect(byDescription('Find flaky tests')).toMatchObject({
       membership: 'settled',
-      outcome: 'failed',
+      outcome: 'unknown',
       lastMessage: 'Could not reproduce',
       invocation: { invocationId: 'toolu_2', generation: 2 },
       previousInvocations: [expect.objectContaining({ outcome: 'succeeded' })]
+    })
+    send(system('task_notification', { task_id: 'agent-fg', status: 'failed' }))
+    expect(byDescription('Find flaky tests')).toMatchObject({
+      outcome: 'failed',
+      invocation: { invocationId: 'toolu_2', generation: 2 }
     })
   })
 
@@ -475,6 +480,50 @@ describe('Claude structured child-work producer', () => {
       })
       expect(warn).not.toHaveBeenCalled()
       expect(error).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('an interrupted foreground child', () => {
+    const rejected =
+      "The user doesn't want to proceed with this tool use. The tool use was rejected."
+    const killed = system('task_updated', { task_id: 'agent-fg', patch: { status: 'killed' } })
+    const stopped = system('task_notification', {
+      task_id: 'agent-fg',
+      tool_use_id: 'toolu_fg',
+      status: 'stopped',
+      summary: 'Run sleep command and report'
+    })
+    // Frame orders captured from the real CLI interrupting a foreground agent.
+    it.each([
+      [
+        'its own tool running, the spawn result first',
+        [toolResult('toolu_fg', rejected, null, true), killed, stopped]
+      ],
+      [
+        'between tools, its own stop first',
+        [killed, stopped, toolResult('toolu_fg', rejected, null, true)]
+      ]
+    ])('ends cancelled with %s', async (_case, ending) => {
+      const { send, byDescription } = await producer()
+      send(toolUse('toolu_fg', 'Agent', { description: 'Run sleep command and report' }))
+      send(
+        system('task_started', {
+          task_id: 'agent-fg',
+          tool_use_id: 'toolu_fg',
+          task_type: 'local_agent',
+          subagent_type: 'general-purpose',
+          description: 'Run sleep command and report',
+          is_backgrounded: false
+        })
+      )
+      for (const message of ending) {
+        send(message)
+      }
+      send(frame({ type: 'result', subtype: 'error_during_execution', is_error: true }))
+      expect(byDescription('Run sleep command and report')).toMatchObject({
+        membership: 'settled',
+        outcome: 'cancelled'
+      })
     })
   })
 })

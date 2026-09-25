@@ -188,7 +188,8 @@ function foregroundAgentFor(
 /**
  * A spawn call's result, for each FOREGROUND agent task this frame answers. The call blocked on
  * the child, so its result is the child's ending; a backgrounded spawn returns at launch and
- * proves nothing.
+ * proves nothing. An errored result does not say why: an interrupt can deliver it before the
+ * child's own stop, so it ends the child `unknown` for that frame to refine.
  */
 export function claudeSpawnResults(
   message: Record<string, unknown>,
@@ -204,7 +205,7 @@ export function claudeSpawnResults(
       return []
     }
     return [
-      pendingClaudeTaskEnded(id, result.failed ? 'failed' : 'succeeded', {
+      pendingClaudeTaskEnded(id, result.failed ? 'unknown' : 'succeeded', {
         lastMessage: taskText(result.output),
         toolUseId: result.toolUseId
       })

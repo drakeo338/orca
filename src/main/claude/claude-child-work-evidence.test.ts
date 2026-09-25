@@ -159,7 +159,8 @@ describe('Claude child-work evidence from the task tracker', () => {
         type: 'ended',
         observedAt: 500,
         handle: { idKind: 'task_id', id: 'agent-fg', runId: 'toolu_fg' },
-        outcome: 'failed',
+        // An errored result does not say why the child ended; its own terminal frame does.
+        outcome: 'unknown',
         lastMessage: 'Found 3 flaky tests'
       }
     ])
@@ -260,7 +261,7 @@ describe('Claude child-work evidence from the task tracker', () => {
       expect.objectContaining({
         type: 'ended',
         handle: { idKind: 'task_id', id: 'agent-fg', runId: 'toolu_fg_2' },
-        outcome: 'failed'
+        outcome: 'unknown'
       })
     ])
   })
