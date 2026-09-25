@@ -55,21 +55,9 @@ vi.mock('./native-chat-session-option-settings-write', () => ({
   enqueueSessionOptionSettingsWrite: vi.fn<(target: unknown, mutation: unknown) => Promise<void>>()
 }))
 
-import { getDefaultSettings } from '../../../../shared/constants'
-import { useAppStore } from '../../store'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 const LOCAL_TARGET = { kind: 'local' } as const
-const PAIRED_TARGET = { kind: 'environment', environmentId: 'env-1' } as const
-
-function storeLaunchSelection(model: string): void {
-  useAppStore.setState({
-    settings: {
-      ...getDefaultSettings('/tmp/orca-workspaces'),
-      nativeChatSessionOptions: { codex: { model } }
-    }
-  })
-}
 
 function methodsCalled(): string[] {
   return mocks.call.mock.calls.map(([, method]) => method)
@@ -117,7 +105,6 @@ describe('useStructuredAgentSession provisional launch gate', () => {
   })
 
   it('keeps local sends usable while withholding every provider surface but the picker', async () => {
-    storeLaunchSelection('gpt-5.5')
     const { result } = renderHook(() =>
       useStructuredAgentSession({
         sessionId: 'session-1',
@@ -125,7 +112,7 @@ describe('useStructuredAgentSession provisional launch gate', () => {
         agent: 'codex',
         isVisible: true,
         transportEnabled: false,
-        launch: 'new'
+        launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} }
       })
     )
 
@@ -144,7 +131,7 @@ describe('useStructuredAgentSession provisional launch gate', () => {
       conversationCommands: []
     })
     expect(result.current.sessionCommands).toBeUndefined()
-    // The picker shows the stored selection the create seeds, from the first frame.
+    // The picker shows the selection the create seeds, from the first frame.
     expect(currentModel(result.current.optionSnapshot)).toBe('gpt-5.5')
     expect(result.current.optionSurface.getSnapshot()).toBe(result.current.optionSnapshot)
     expect(result.current.send('queued while launching')).toBe(true)
@@ -153,32 +140,12 @@ describe('useStructuredAgentSession provisional launch gate', () => {
     await act(async () => {
       await result.current.cancel('turn-1')
       await result.current.stopBackgroundTask('task-1')
-      // Held for publish, not sent.
-      expect(await result.current.setStructuredOption('model', 'gpt-live')).toBe(true)
     })
 
-    expect(currentModel(result.current.optionSnapshot)).toBe('gpt-live')
     expect(methodsCalled()).toEqual(['agentSession.modelCatalog'])
   })
 
-  it("does not show this client's stored selection for a paired host", () => {
-    storeLaunchSelection('gpt-5.5')
-    const { result } = renderHook(() =>
-      useStructuredAgentSession({
-        sessionId: 'session-1',
-        target: PAIRED_TARGET,
-        agent: 'codex',
-        isVisible: true,
-        transportEnabled: false,
-        launch: 'new'
-      })
-    )
-    // The paired host seeds from its own settings; the static seed names no default.
-    expect(currentModel(result.current.optionSnapshot)).toBeUndefined()
-  })
-
   it('shows no stored selection for a chat this view did not launch', () => {
-    storeLaunchSelection('gpt-5.5')
     const { result } = renderHook(() =>
       useStructuredAgentSession({
         sessionId: 'session-1',

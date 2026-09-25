@@ -67,17 +67,17 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
   it('keeps treating the chat as its launch after the launch record is deleted on publish', () => {
     mocks.launchLifecycle = 'pending'
     const { rerender } = render(sessionView())
-    expect(mocks.controllerProps).toMatchObject({ launch: 'new' })
+    expect(mocks.controllerProps).toMatchObject({ launch: { kind: 'new' } })
     mocks.launchLifecycle = null
     rerender(sessionView())
-    expect(mocks.controllerProps).toMatchObject({ launch: 'new', transportEnabled: true })
+    expect(mocks.controllerProps).toMatchObject({ launch: { kind: 'new' }, transportEnabled: true })
   })
 
   it('marks a launch that resumes a conversation from history as a resume', () => {
     mocks.launchLifecycle = 'pending'
     mocks.launchResumes = true
     render(sessionView())
-    expect(mocks.controllerProps).toMatchObject({ launch: 'resume' })
+    expect(mocks.controllerProps).toMatchObject({ launch: { kind: 'resume' } })
   })
 
   it('does not treat a reopened chat as a launch', () => {

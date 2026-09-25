@@ -1,6 +1,4 @@
-import { useMemo, useRef } from 'react'
-import { useAppStore } from '../../store'
-import { resolveStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
+import { useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
@@ -18,10 +16,8 @@ import {
 import { useStructuredAgentSessionMessages } from './use-structured-agent-session-messages'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
-import {
-  useStructuredAgentSessionOptions,
-  type StructuredAgentSessionLaunchKind
-} from './use-structured-agent-session-options'
+import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
+import type { StructuredAgentSessionLaunchView } from './use-native-chat-provisional-launch'
 import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
@@ -37,7 +33,7 @@ export function useStructuredAgentSession(args: {
   isVisible: boolean
   transportEnabled?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
-  launch?: StructuredAgentSessionLaunchKind
+  launch?: StructuredAgentSessionLaunchView
 }) {
   const { agent, isVisible, launch, sessionId, target, transportEnabled = true } = args
   const {
@@ -47,6 +43,7 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     mutate,
     writeError,
+    reportWriteError,
     providerVisible
   } = useStructuredAgentSessionTransport({
     sessionId,
@@ -56,22 +53,11 @@ export function useStructuredAgentSession(args: {
   })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
-  // The selection create seeds, read from the same settings record. A paired
-  // host seeds from its own settings, which this client does not hold.
-  const persistedSessionOptions = useAppStore((store) => store.settings?.nativeChatSessionOptions)
-  const launchSeedOptions = useMemo(
-    () =>
-      launch && target.kind === 'local'
-        ? resolveStructuredLaunchSeedOptions(persistedSessionOptions, agent)
-        : undefined,
-    [agent, launch, persistedSessionOptions, target.kind]
-  )
   const {
     conversationCommands,
     optionSnapshot,
     optionSurface,
     setStructuredOption,
-    holdingOptionPicks,
     threadGoal: threadGoalSupport,
     contextUsage: contextUsageSupport
   } = useStructuredAgentSessionOptions({
@@ -85,15 +71,14 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
     mutate,
-    ...(launch ? { launch } : {}),
-    ...(launchSeedOptions ? { launchSeedOptions } : {})
+    reportWriteError,
+    ...(launch ? { launch } : {})
   })
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
     target,
     fence: transportState.fence,
-    submissions: transportState.submissions,
-    holdingOptionPicks
+    submissions: transportState.submissions
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({

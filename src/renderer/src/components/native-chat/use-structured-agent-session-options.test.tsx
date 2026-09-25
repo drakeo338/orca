@@ -3,7 +3,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), enqueue: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  call: vi.fn(),
+  enqueue: vi.fn(),
+  hold: vi.fn<(sessionId: string, id: string, encoded: string) => Promise<unknown> | null>(),
+  reportWriteError: vi.fn<(message: string) => void>()
+}))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call
@@ -11,6 +16,11 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 vi.mock('./native-chat-session-option-settings-write', () => ({
   enqueueSessionOptionSettingsWrite: mocks.enqueue
+}))
+
+vi.mock('@/lib/structured-agent-session-launch-options', () => ({
+  holdStructuredAgentSessionLaunchOption: mocks.hold,
+  getStructuredAgentSessionLaunchSelection: () => null
 }))
 
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
@@ -60,6 +70,7 @@ type RenderProps = {
   launch?: 'new' | 'resume'
   hidden?: boolean
   launchSeedOptions?: Record<string, string>
+  heldOptions?: Record<string, string>
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
@@ -84,8 +95,16 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
         turnId: props.turnId ?? null,
         unloadedTurnRevisions: undefined,
         mutate,
-        ...(props.launch ? { launch: props.launch } : {}),
-        ...(props.launchSeedOptions ? { launchSeedOptions: props.launchSeedOptions } : {})
+        reportWriteError: mocks.reportWriteError,
+        ...(props.launch
+          ? {
+              launch: {
+                kind: props.launch,
+                ...(props.launchSeedOptions ? { seedOptions: props.launchSeedOptions } : {}),
+                heldOptions: props.heldOptions ?? {}
+              }
+            }
+          : {})
       }),
     { initialProps: initial }
   )
@@ -139,6 +158,8 @@ describe('useStructuredAgentSessionOptions', () => {
   beforeEach(() => {
     mocks.call.mockReset()
     mocks.enqueue.mockReset()
+    mocks.hold.mockReset()
+    mocks.reportWriteError.mockReset()
   })
 
   it('upgrades the seed with the host catalog while the live read is still pending', async () => {
@@ -219,10 +240,14 @@ describe('useStructuredAgentSessionOptions', () => {
   })
 
   describe('while the launch is provisional', () => {
-    it('renders the launch default and holds a pick without any RPC', async () => {
+    it('renders the launch seed and hands a pick to the launch without any RPC', async () => {
       answer({})
+      mocks.hold.mockReturnValue(new Promise(() => {}))
       const { mutate, calls } = mutateWith(async () => null)
-      const { result, unmount } = renderOptions({ ...PROVISIONAL, launchSeedOptions: SEED }, mutate)
+      const { result, rerender, unmount } = renderOptions(
+        { ...PROVISIONAL, launchSeedOptions: SEED },
+        mutate
+      )
       expect(modelChoiceCount(result.current.optionSnapshot)).toBeGreaterThan(0)
       expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')
 
@@ -231,14 +256,11 @@ describe('useStructuredAgentSessionOptions', () => {
         accepted = await result.current.setStructuredOption('model', 'gpt-5.6-luna')
       })
       expect(accepted).toBe(true)
+      expect(mocks.hold).toHaveBeenCalledWith('session-1', 'model', 'gpt-5.6-luna')
+      // The launch owns the pick; the view renders what it holds.
+      rerender({ ...PROVISIONAL, launchSeedOptions: SEED, heldOptions: { model: 'gpt-5.6-luna' } })
       expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-luna')
       expect(descriptor(result.current.optionSnapshot, 'model')?.valueSource).toBe('dispatched')
-      // A held pick is not in flight (no pendingId): a re-pick is accepted and replaces it.
-      await act(async () => {
-        accepted = await result.current.setStructuredOption('model', 'gpt-5.6-terra')
-      })
-      expect(accepted).toBe(true)
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-terra')
       expect(calls).not.toHaveBeenCalled()
       expect(mocks.call.mock.calls.map(([, method]) => method)).toEqual([
         'agentSession.modelCatalog'
@@ -296,126 +318,70 @@ describe('useStructuredAgentSessionOptions', () => {
       unmount()
     })
 
-    it('re-derives the shown default when the stored selection changes', () => {
+    it('remembers a pick the launch applied as the next launch default', async () => {
       answer({})
-      const { result, rerender, unmount } = renderOptions(
+      mocks.hold.mockResolvedValue({ kind: 'accepted', options: { model: 'gpt-5.6-luna' } })
+      const { result, unmount } = renderOptions(
         { ...PROVISIONAL, launchSeedOptions: SEED },
         mutateWith(async () => null).mutate
       )
-      rerender({ ...PROVISIONAL, launchSeedOptions: { model: 'gpt-5.6-terra' } })
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-terra')
+      await act(async () => {
+        await result.current.setStructuredOption('model', 'gpt-5.6-luna')
+      })
+      await waitFor(() =>
+        expect(mocks.enqueue).toHaveBeenCalledWith(LOCAL_TARGET, {
+          type: 'apply-picks',
+          agent: 'codex',
+          picks: [{ modelId: 'gpt-5.6-luna', optionId: 'model', value: 'gpt-5.6-luna' }]
+        })
+      )
+      expect(mocks.reportWriteError).not.toHaveBeenCalled()
       unmount()
     })
 
-    it('flushes one setOption with the held value once the session attaches', async () => {
+    it('reports a pick the launch could not apply as a refused write and remembers nothing', async () => {
       answer({})
-      const { mutate, calls } = mutateWith(async () => ({
-        key: 'model',
-        value: 'gpt-5.6-luna',
-        options: { model: 'gpt-5.6-luna' }
-      }))
-      const { result, rerender, unmount } = renderOptions(
+      mocks.hold.mockResolvedValue({
+        kind: 'refused',
+        message: 'Model gpt-5.6-luna is unavailable'
+      })
+      const { result, unmount } = renderOptions(
         { ...PROVISIONAL, launchSeedOptions: SEED },
-        mutate
+        mutateWith(async () => null).mutate
       )
       await act(async () => {
         await result.current.setStructuredOption('model', 'gpt-5.6-luna')
       })
-      // Published but not yet attached: still nowhere to deliver it.
-      rerender({ ...PUBLISHED_UNATTACHED, launchSeedOptions: SEED })
-      await tick()
+      await waitFor(() =>
+        expect(mocks.reportWriteError).toHaveBeenCalledWith('Model gpt-5.6-luna is unavailable')
+      )
+      expect(mocks.enqueue).not.toHaveBeenCalled()
+      unmount()
+    })
+
+    it('sends a pick made once the launch has published through the session, not the launch', async () => {
+      answer({})
+      mocks.hold.mockReturnValue(null)
+      const { mutate, calls } = mutateWith(async () => null)
+      const { result, rerender, unmount } = renderOptions(
+        { ...PUBLISHED_UNATTACHED, launchSeedOptions: SEED },
+        mutate
+      )
+      let accepted = true
+      await act(async () => {
+        accepted = await result.current.setStructuredOption('model', 'gpt-5.6-luna')
+      })
+      // Published, not yet attached: nothing holds it and there is no fence to send it on.
+      expect(accepted).toBe(false)
       expect(calls).not.toHaveBeenCalled()
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-luna')
 
       rerender({ ...ATTACHED, launchSeedOptions: SEED })
-      await waitFor(() => expect(mocks.enqueue).toHaveBeenCalledTimes(1))
+      await act(async () => {
+        await result.current.setStructuredOption('model', 'gpt-5.6-luna')
+      })
       expect(setOptionCalls(calls)).toEqual([{ key: 'model', value: 'gpt-5.6-luna' }])
-      expect(mocks.enqueue).toHaveBeenCalledWith(LOCAL_TARGET, {
-        type: 'apply-picks',
-        agent: 'codex',
-        picks: [{ modelId: 'gpt-5.6-luna', optionId: 'model', value: 'gpt-5.6-luna' }]
-      })
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-luna')
+      expect(mocks.hold).toHaveBeenCalledTimes(1)
       unmount()
-    })
-
-    it('sends no setOption at attach when nothing was picked', async () => {
-      answer({})
-      const { mutate, calls } = mutateWith(async () => null)
-      const { rerender, unmount } = renderOptions(
-        { ...PROVISIONAL, launchSeedOptions: SEED },
-        mutate
-      )
-      rerender({ ...ATTACHED, launchSeedOptions: SEED })
-      await tick()
-      expect(setOptionCalls(calls)).toEqual([])
-      unmount()
-    })
-
-    it('flushes only the last of two picks', async () => {
-      answer({})
-      const { mutate, calls } = mutateWith(async () => ({
-        key: 'model',
-        value: 'gpt-5.6-terra',
-        options: { model: 'gpt-5.6-terra' }
-      }))
-      const { result, rerender, unmount } = renderOptions(
-        { ...PROVISIONAL, launchSeedOptions: SEED },
-        mutate
-      )
-      await act(async () => {
-        await result.current.setStructuredOption('model', 'gpt-5.6-luna')
-      })
-      await act(async () => {
-        await result.current.setStructuredOption('model', 'gpt-5.6-terra')
-      })
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-terra')
-
-      rerender({ ...ATTACHED, launchSeedOptions: SEED })
-      await waitFor(() => expect(mocks.enqueue).toHaveBeenCalledTimes(1))
-      expect(setOptionCalls(calls)).toEqual([{ key: 'model', value: 'gpt-5.6-terra' }])
-      unmount()
-    })
-
-    it('reverts a refused flush to the value the session runs and persists nothing', async () => {
-      answer({ options: () => Promise.resolve(LIVE_OPTIONS) })
-      let refuse!: (value: null) => void
-      const { mutate, calls } = mutateWith(() => new Promise((resolve) => (refuse = resolve)))
-      const { result, rerender, unmount } = renderOptions(
-        { ...PROVISIONAL, launchSeedOptions: SEED },
-        mutate
-      )
-      await act(async () => {
-        await result.current.setStructuredOption('model', 'gpt-5.6-luna')
-      })
-      rerender({ ...ATTACHED, launchSeedOptions: SEED })
-      await waitFor(() => expect(setOptionCalls(calls)).toHaveLength(1))
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.6-luna')
-
-      // No fresh read after the refusal: the revert must not wait on one.
-      const readsBeforeRefusal = mocks.call.mock.calls.length
-      await act(async () => {
-        refuse(null)
-        await tick()
-      })
-      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')
-      expect(mocks.call.mock.calls.length).toBe(readsBeforeRefusal)
-      expect(mocks.enqueue).not.toHaveBeenCalled()
-      expect(setOptionCalls(calls)).toHaveLength(1)
-      unmount()
-    })
-
-    it('drops a held pick on unmount: no setOption, no durable write', async () => {
-      answer({})
-      const { mutate, calls } = mutateWith(async () => null)
-      const { result, unmount } = renderOptions({ ...PROVISIONAL, launchSeedOptions: SEED }, mutate)
-      await act(async () => {
-        await result.current.setStructuredOption('model', 'gpt-5.6-luna')
-      })
-      unmount()
-      await tick()
-      expect(calls).not.toHaveBeenCalled()
-      expect(mocks.enqueue).not.toHaveBeenCalled()
     })
   })
 })

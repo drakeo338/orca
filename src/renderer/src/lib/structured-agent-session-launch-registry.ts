@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { StructuredLaunchRecoveryState } from './structured-agent-session-launch-recovery'
+import type { StructuredLaunchSelection } from './structured-agent-session-launch-options'
 import type {
   StructuredAgentLaunchOptions,
   StructuredLaunchCallerGroup
@@ -27,6 +28,7 @@ export type StructuredLaunchState = StructuredLaunchRecoveryState & {
   callers: StructuredLaunchCallerGroup
   /** Why the last attempt failed, shown beside Retry; the toast stays generic. */
   failureReason?: string
+  selection: StructuredLaunchSelection
 }
 
 export type StructuredAgentLaunchStatus = 'idle' | 'pending' | 'unknown'
@@ -234,6 +236,10 @@ export function markStructuredAgentSessionLaunchPublished(
     return false
   }
   if (state.callers.outcome === 'published') {
+    return true
+  }
+  // Still in flight: its own settlement publishes once the picks held during launch land.
+  if (state.callers.outcome === 'pending') {
     return true
   }
   state.callers.outcome = 'published'

@@ -42,12 +42,10 @@ export function NativeChatStructuredSession(
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
-  // Launch records are deleted on publish, so latch it: a reopened chat runs its own options.
-  const [launch] = useState(() => provisionalLaunch.kind ?? undefined)
   const controller = useStructuredAgentSession({
     ...props,
     transportEnabled: provisionalLaunch.transportEnabled,
-    ...(launch ? { launch } : {})
+    ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
   const launchDraftSignal = useNativeChatLaunchDraftSignal({
     terminalTabId: props.tabId,

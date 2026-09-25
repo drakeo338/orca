@@ -179,6 +179,7 @@ export function createStructuredSessionMocks() {
       retryStructuredAgentSessionLaunch: mocks.retryLaunch,
       getStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
       getStructuredAgentSessionLaunchResumes: () => mocks.launchResumes,
+      useStructuredAgentSessionLaunchSelection: () => null,
       useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
       useStructuredAgentSessionLaunchFailureReason: () => mocks.launchFailureReason
     }),
