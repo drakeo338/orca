@@ -17,16 +17,16 @@ internal class BrowserGuestReactSession {
     main.post {
       try {
         check(!destroyed) { "react_module_destroyed" }
+        BrowserGuestOwner.process.checkActiveGeneration(page)
         if (generation != page) {
           task?.stop()
           generation = page
           task = BrowserGuestReactTask(context, page)
-          task?.start()
+          try { task?.start() } catch (error: Exception) { stop(page); throw error }
           BrowserGuestOwner.process.whenEnded(page).whenComplete { _, _ -> stop(page) }
         }
         result.complete("{}")
       } catch (error: Exception) {
-        stop(page)
         result.completeExceptionally(error)
       }
     }

@@ -127,11 +127,14 @@ rejection of native-resource navigation schemes.
 
 `ORCA_BACKGROUND_LAUNCH=1 ./gradlew :orca-mobile-web-shell:testBrowserLifecycle`
 from `mobile/android` compiles the real owner, React task and module-session
-implementation against deterministic Android/RN boundary doubles. The 17 scenarios
+implementation against deterministic Android/RN boundary doubles. The 19 scenarios
 cover live-endpoint transaction errors, retained occupied profiles, actual death,
 no replay, ambiguous/refused binds, background command without Activity launch,
 service disconnection without death, module/task replacement, presentation close,
-startup timeout and stale generations. These are not Android ordering or Chromium
+startup timeout and stale generations. Stale commands and presentation requests must
+preserve the current React task/token and native page after confirmed close/reopen;
+session startup validates the existing native lease on the main queue before mutation.
+These are not Android ordering or Chromium
 simulations; the release fixture supplies the separate measured journey.
 
 Production admission stays disabled. This proves a bounded form journey on one

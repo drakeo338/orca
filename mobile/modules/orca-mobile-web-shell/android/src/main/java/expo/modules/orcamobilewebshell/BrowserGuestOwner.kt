@@ -189,6 +189,11 @@ internal class BrowserGuestOwner {
     return result
   }
 
+  fun checkActiveGeneration(generation: String) {
+    check(Looper.myLooper() == Looper.getMainLooper()) { "main_thread_required" }
+    requireLease(generation)
+  }
+
   private fun requireLease(generation: String): Lease {
     val current = lease ?: error("guest_unavailable")
     check(current.generation == generation && !current.retired) { "stale_guest_generation" }

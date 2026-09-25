@@ -168,6 +168,49 @@ fun main() {
     check(HeadlessJsTaskContext.instance.active.isEmpty())
     replacement.destroy()
   }
+  for (operation in listOf("command", "presentation")) {
+    scenario("stale $operation preserves current task and page across confirmed generation change") {
+      val first = Guest(owner = BrowserGuestOwner.process)
+      val session = BrowserGuestReactSession()
+      session.start(ReactContext(), first.generation).join()
+      val firstToken = HeadlessJsTaskContext.instance.last!!.data.values.getValue("taskToken")
+      val firstStopped = session.waitForStop(first.generation, firstToken)
+      val close = first.owner.close(first.generation)
+      check(firstStopped.isDone && !close.isDone)
+      failure(first.reopen(), "guest_process_occupied")
+      first.endpoint.binder.die()
+      close.join()
+      val current = Guest(owner = BrowserGuestOwner.process)
+      check(current.generation != first.generation)
+      session.start(ReactContext(), current.generation).join()
+      val config = requireNotNull(HeadlessJsTaskContext.instance.last)
+      val token = config.data.values.getValue("taskToken")
+      check(token != firstToken && config.data.values.getValue("generation") == current.generation)
+      val active = HeadlessJsTaskContext.instance.active.toSet()
+      check(active.size == 1)
+      val stopped = session.waitForStop(current.generation, token)
+      check(!stopped.isDone)
+      val rejected = session.start(ReactContext(), first.generation).thenCompose {
+        if (operation == "command") current.owner.command(first.generation, "{}")
+        else current.owner.resume(current.activity, first.generation)
+      }
+      failure(rejected, "stale_guest_generation")
+      check(HeadlessJsTaskContext.instance.active == active)
+      check(HeadlessJsTaskContext.instance.last === config && !stopped.isDone)
+      check(current.endpoint.binder.alive && current.endpoint.sends == 0)
+      check(current.activity.activityLaunches == 0)
+      failure(current.reopen(), "guest_process_occupied")
+      val command = current.owner.command(current.generation, "{}")
+      check(!command.isDone && current.endpoint.sends == 1)
+      val presented = current.owner.resume(current.activity, current.generation)
+      current.foreground(true)
+      check(presented.join() == "{}")
+      current.endpoint.binder.die()
+      failure(command, "guest_process_exited")
+      check(stopped.isDone && HeadlessJsTaskContext.instance.active.isEmpty())
+      session.destroy()
+    }
+  }
   scenario("React task startup failure settles without releasing native owner") {
     val guest = Guest(owner = BrowserGuestOwner.process)
     HeadlessJsTaskContext.instance.fail = true
