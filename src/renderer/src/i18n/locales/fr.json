@@ -17242,7 +17242,7 @@
       "NativeChatResumeFailureGuidance": {
         "unconfirmed": "Orca n'a pas pu confirmer que le message “continue” a été livré. Ouvrez le chat et vérifiez avant d'en envoyer un autre.",
         "superseded": "Ouvrez le chat et répondez. Du nouveau travail est arrivé juste après le redémarrage, donc Orca n'a pas envoyé son message “continue”.",
-        "conflict": "Une autre fenêtre Orca ou un autre terminal détient toujours cette session. Fermez-la, puis réessayez.",
+        "conflict": "Une autre fenêtre Orca ou un autre terminal détient toujours cette session. Fermez l’autre fenêtre Orca ou le terminal concerné, puis réessayez.",
         "ownershipUnknown": "Orca détermine encore quel processus détient cette session. Patientez un instant, puis réessayez.",
         "notAttached": "Le chat ne s'est pas reconnecté. Réessayez ou ouvrez-le pour démarrer un nouveau tour.",
         "dispatchRejected": "L'agent a refusé le message “continue”. Ouvrez le chat et envoyez-en un vous-même.",
