@@ -79,7 +79,7 @@ describe('process boundary ground at a cold restore', () => {
       liveSnapshot,
       restoreInfo,
       pendingRecords: [{ kind: 'output', data: 'fresh$ ' }],
-      pendingRecordsAreComplete: true
+      isFirstTake: true
     })
     expectNoArmedInputModes(checkpoint)
   })
@@ -96,7 +96,7 @@ describe('process boundary ground at a cold restore', () => {
     const checkpoint = await buildDurableCheckpointSnapshot({
       liveSnapshot,
       restoreInfo,
-      pendingRecordsAreComplete: true
+      isFirstTake: true
     })
 
     expect(checkpoint.snapshotAnsi).not.toContain('\x1b[?1004h')

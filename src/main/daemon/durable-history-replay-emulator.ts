@@ -23,7 +23,7 @@ export class DurableHistoryReplayEmulator extends HeadlessEmulator {
         excludeAltBuffer: true,
         excludeModes: true
       }),
-      oscLinks: collectNormalBufferOscLinkRanges(this.terminal, rowCount, this.restoredOscLinks)
+      oscLinks: collectNormalBufferOscLinkRanges(this.terminal, rowCount)
     }
   }
 }
