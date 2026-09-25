@@ -3,6 +3,12 @@ import { useAppStore } from '@/store'
 import { registerRuntimeTerminalTab } from '@/runtime/sync-runtime-graph'
 import { awaitsCodexRestartAnswer, blocksCodexPaneInput } from '../codex-restart-notice-state'
 import { ptyDataHandlers } from './pty-dispatcher'
+import { deliverPtyExitToHandlers } from './pty-exit-delivery'
+import {
+  clearPreHandlerPtyState,
+  hasPreHandlerPtyExit,
+  isPreHandlerPtyStateDiscarded
+} from './pty-pre-handler-buffer'
 import { sweepUnclaimedCodexPaneRestarts } from './codex-detached-pane-restart'
 import {
   hasAddedPendingCodexPaneRestart,
@@ -156,6 +162,29 @@ describe('codex detached pane restart executor', () => {
     expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
     expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({ [LEAF_ID]: NEW_PTY })
     expect(blocksCodexPaneInput(state.codexRestartNoticeByPtyId[NEW_PTY])).toBe(false)
+  })
+
+  it('keeps the replaced PTY exit away from a tab revealed mid-restart', async () => {
+    // Earlier restarts in this file tombstone the same id; start from a live PTY's state.
+    clearPreHandlerPtyState(OLD_PTY)
+    seedQueuedRestart()
+    let revealView: { exitReplayed: boolean; sessionAdmitted: boolean } | null = null
+    vi.mocked(window.api.pty.spawn).mockImplementation(async () => {
+      // Main stops the replaced PTY before replying; no pane handler owns it yet.
+      deliverPtyExitToHandlers({ ptyId: OLD_PTY, code: 0, sidecars: [] })
+      // What a pane revealed now consults before reconnecting under the layout's old id.
+      revealView = {
+        exitReplayed: hasPreHandlerPtyExit(OLD_PTY),
+        sessionAdmitted: !isPreHandlerPtyStateDiscarded(OLD_PTY)
+      }
+      return { id: NEW_PTY }
+    })
+
+    await sweepUnclaimedCodexPaneRestarts()
+
+    // Neither: the reveal reconnects by pane identity, which main answers with the replacement.
+    expect(revealView).toEqual({ exitReplayed: false, sessionAdmitted: false })
+    expect(useAppStore.getState().ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
   })
 
   it('executes via the store subscription without a lifecycle timeout', async () => {

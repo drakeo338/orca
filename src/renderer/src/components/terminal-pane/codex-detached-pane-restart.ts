@@ -209,6 +209,9 @@ async function executeDetachedCodexPaneRestart(
   // Why: main stops this PTY before launching its replacement, and a parked tab's exit sidecar
   // would read that exit as the pane dying — collapsing the leaf or closing the tab.
   disposeParkedTerminalWatchersForPtyIds([ptyId])
+  // Why: a tab revealed mid-restart would otherwise replay this PTY's exit into its pane; with no
+  // admissible session it spawns by pane identity, and main hands it the replacement.
+  discardPreHandlerPtyState(ptyId)
   // Hidden replacements converge on mount; provider sizing must not delay ownership transfer.
   const spawned = await window.api.pty.spawn({
     cols: 80,
