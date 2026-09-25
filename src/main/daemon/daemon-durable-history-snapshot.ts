@@ -26,7 +26,7 @@ export async function buildDurableCheckpointSnapshot(opts: {
   if (!restoreInfo && pendingRecords.length === 0) {
     return liveSnapshot
   }
-  // Why not on a first fold: the seed's ground clears focus and keypad, which TerminalModes cannot compare.
+  // Why not on a first fold: live was seeded with disk plus the ground, so disk is never live's copy.
   if (
     restoreInfo &&
     pendingRecords.length === 0 &&
