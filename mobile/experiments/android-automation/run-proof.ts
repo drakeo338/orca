@@ -4,6 +4,7 @@ import { resolve, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { WebSocket } from 'ws'
 import { runProcess } from '../../../src/shared/child-process/run-process'
+import { assertShellMutation, assertUnrelatedDenial } from './security-witnesses'
 import { buildSnapshot } from '../../../src/main/browser/snapshot-engine'
 
 const serial = process.env.ANDROID_SERIAL
@@ -101,6 +102,12 @@ async function shellCdp(url: string) {
       expression: "window.adbAttached = 'shell-owned'; window.adbAttached",
       returnByValue: true
     })
+    assertShellMutation(evidence.shellMutation)
+    evidence.shellMutationReadback = await send('Runtime.evaluate', {
+      expression: 'window.adbAttached',
+      returnByValue: true
+    })
+    assertShellMutation(evidence.shellMutationReadback)
     const snapshot = await buildSnapshot(send)
     await writeFile(join(directory, 'desktop-snapshot.txt'), snapshot.snapshot)
     evidence.desktopSnapshot = { refs: snapshot.refs, snapshot: snapshot.snapshot }
@@ -182,9 +189,8 @@ try {
   )
   const unrelated = await waitForFile(outsider, 'probe.json')
   evidence.unrelatedApp = unrelated
-  assert.notEqual(unrelated.uid, result.uid)
-  assert(!unrelated.response, 'Unrelated UID received discovery data')
-  assert(unrelated.rejected || unrelated.bytes === -1, 'Rejection was not observed')
+  assert.equal(result.socket, `webview_devtools_remote_${result.pid}`)
+  assertUnrelatedDenial(unrelated, result.socket, result.uid)
   const port = await adb('forward', 'tcp:0', `localabstract:${result.socket}`)
   assert.match(port, /^\d+$/)
   forwardedPort = port
@@ -194,7 +200,9 @@ try {
   assert(response.ok)
   const pages = await response.json()
   evidence.shellDiscovery = pages
+  assert(Array.isArray(pages))
   assert.equal(pages.length, 1)
+  assert(typeof pages[0]?.webSocketDebuggerUrl === 'string')
   const url = new URL(pages[0].webSocketDebuggerUrl)
   url.host = `127.0.0.1:${port}`
   await shellCdp(url.toString())

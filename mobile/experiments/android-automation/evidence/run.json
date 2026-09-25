@@ -1,27 +1,27 @@
 {
-  "serial": "emulator-5690",
+  "serial": "emulator-5694",
   "shellIdentity": "uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012(readtracefs) context=u:r:shell:s0",
   "selinux": "Enforcing",
   "android": "google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.D1/13818094:user/release-keys",
   "buildType": "user",
   "osDebuggable": "0",
   "inApp": {
-    "pid": 5924,
-    "uid": 10218,
-    "shellPid": 5906,
+    "pid": 4275,
+    "uid": 10214,
+    "shellPid": 4253,
     "debuggable": false,
     "webView": "133.0.6943.137",
-    "socket": "webview_devtools_remote_5924",
+    "socket": "webview_devtools_remote_4275",
     "debugDisabledRejected": "java.io.IOException: Connection refused",
     "discovery": [
       {
         "description": "{\"attached\":true,\"empty\":false,\"height\":640,\"never_attached\":false,\"screenX\":0,\"screenY\":0,\"visible\":true,\"width\":320}",
-        "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@49ec12cc413ffec766028509968b31d7d65fa0b7/inspector.html?ws=127.0.0.1/devtools/page/AC4EF9AD8CE6F79D6F1A1AEE39D78492",
-        "id": "AC4EF9AD8CE6F79D6F1A1AEE39D78492",
+        "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@49ec12cc413ffec766028509968b31d7d65fa0b7/inspector.html?ws=127.0.0.1/devtools/page/ED60FFA01A4BC2FBB4C614FD91DB1E2F",
+        "id": "ED60FFA01A4BC2FBB4C614FD91DB1E2F",
         "title": "Android engine automation proof",
         "type": "page",
         "url": "file:///android_asset/page.html",
-        "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/AC4EF9AD8CE6F79D6F1A1AEE39D78492"
+        "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/ED60FFA01A4BC2FBB4C614FD91DB1E2F"
       }
     ],
     "axNodeCount": 15,
@@ -89,25 +89,32 @@
     "outputTruncated": false
   },
   "socketDiscovery": [
-    "0000000000000000: 00000002 00000000 00010000 0001 01 29957 @webview_devtools_remote_5924"
+    "0000000000000000: 00000002 00000000 00010000 0001 01 21456 @webview_devtools_remote_4275"
   ],
   "unrelatedApp": {
-    "uid": 10219,
-    "socket": "webview_devtools_remote_5924",
+    "uid": 10215,
+    "socket": "webview_devtools_remote_4275",
+    "connected": false,
     "rejected": "java.io.IOException: Permission denied"
   },
   "shellDiscovery": [
     {
       "description": "{\"attached\":true,\"empty\":false,\"height\":640,\"never_attached\":false,\"screenX\":0,\"screenY\":0,\"visible\":true,\"width\":320}",
-      "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@49ec12cc413ffec766028509968b31d7d65fa0b7/inspector.html?ws=127.0.0.1:64916/devtools/page/AC4EF9AD8CE6F79D6F1A1AEE39D78492",
-      "id": "AC4EF9AD8CE6F79D6F1A1AEE39D78492",
+      "devtoolsFrontendUrl": "https://chrome-devtools-frontend.appspot.com/serve_rev/@49ec12cc413ffec766028509968b31d7d65fa0b7/inspector.html?ws=127.0.0.1:52453/devtools/page/ED60FFA01A4BC2FBB4C614FD91DB1E2F",
+      "id": "ED60FFA01A4BC2FBB4C614FD91DB1E2F",
       "title": "Android engine automation proof",
       "type": "page",
       "url": "file:///android_asset/page.html?cdp=1",
-      "webSocketDebuggerUrl": "ws://127.0.0.1:64916/devtools/page/AC4EF9AD8CE6F79D6F1A1AEE39D78492"
+      "webSocketDebuggerUrl": "ws://127.0.0.1:52453/devtools/page/ED60FFA01A4BC2FBB4C614FD91DB1E2F"
     }
   ],
   "shellMutation": {
+    "result": {
+      "type": "string",
+      "value": "shell-owned"
+    }
+  },
+  "shellMutationReadback": {
     "result": {
       "type": "string",
       "value": "shell-owned"
@@ -134,12 +141,12 @@
     "snapshot": "heading \"Agent checkout fixture\"\ntext \"Customer\"\n[@e1] text input \"Customer\"\n[@e2] button \"Submit order\"\n[@e3] link \"Next page\"\ntext \"Waiting\""
   },
   "disabledRestart": {
-    "pid": 6093,
-    "uid": 10218,
-    "shellPid": 6079,
+    "pid": 4600,
+    "uid": 10214,
+    "shellPid": 4583,
     "debuggable": false,
     "webView": "133.0.6943.137",
-    "socket": "webview_devtools_remote_6093",
+    "socket": "webview_devtools_remote_4600",
     "debugDisabledRejected": "java.io.IOException: Connection refused",
     "completed": true
   },
@@ -147,7 +154,7 @@
   "passed": true,
   "cleanup": [
     {
-      "action": "remove forward 64916"
+      "action": "remove forward 52453"
     },
     {
       "action": "uninstall dev.orca.outsider"

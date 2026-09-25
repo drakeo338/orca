@@ -70,7 +70,7 @@ inspection is more than discovery.
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Non-debuggable app itself   | In-process Unix-socket HTTP discovery and WebSocket CDP work.                                                                                                                                                  |
 | Unrelated installed APK     | Different UID; direct connection using the exact known socket name fails with `Permission denied`. Both fixture APKs use the same signing certificate, so a matching certificate alone does not grant access.  |
-| Non-root Android shell/adbd | `uid=2000(shell)`, discovery succeeds via `adb forward`; `Runtime.evaluate` writes and returns `shell-owned`.                                                                                                  |
+| Non-root Android shell/adbd | `uid=2000(shell)`, discovery succeeds via `adb forward`; `Runtime.evaluate` writes and returns `shell-owned`, then a separate evaluation reads back the same value.                                            |
 | `run-as`                    | Refuses the app as not debuggable. CDP success is independent of `run-as` or the APK debug flag.                                                                                                               |
 | Discovery                   | Shell sees the predictable PID-based name in `/proc/net/unix`. It is not secret or randomized.                                                                                                                 |
 | Network endpoint            | This app opens no TCP listening socket. The HTTP host in discovery is framing over the fixed Unix socket, not a TCP connection. Only the adversarial host-side adb forward temporarily creates a TCP listener. |
@@ -218,7 +218,10 @@ the emulator. Artifacts contain only bundled fixture content, no user browsing.
 Focused checks:
 
 ```sh
-ORCA_BACKGROUND_LAUNCH=1 pnpm exec tsc -p mobile/experiments/android-automation/tsconfig.json
+ORCA_BACKGROUND_LAUNCH=1 pnpm --dir mobile typecheck
+ORCA_BACKGROUND_LAUNCH=1 pnpm --dir mobile check:tests-typecheck
+ORCA_BACKGROUND_LAUNCH=1 pnpm --dir mobile typecheck:android-automation-proof
+ORCA_BACKGROUND_LAUNCH=1 pnpm --dir mobile test scripts/android-automation-witnesses.test.ts
 ORCA_BACKGROUND_LAUNCH=1 pnpm exec oxlint mobile/experiments/android-automation/run-proof.ts
 ORCA_BACKGROUND_LAUNCH=1 pnpm exec oxfmt --check mobile/experiments/android-automation
 ORCA_BACKGROUND_LAUNCH=1 pnpm run check:code-quality:changed
@@ -231,15 +234,38 @@ no push or PR is part of this task.
 
 ## Validation and cleanup of the final run
 
-The release build (including Android's release lint gate), focused TypeScript,
-oxlint, formatting, changed-code quality gate and `git diff --check` passed. The
-final emulator scenario passed every assertion, including same-process disable,
-with route PID 5924, launcher PID 5906, app UID 10218 and unrelated UID 10219.
-The earlier corrected production-image run also passed before the live-disable
-control was added. These are functional observations, not stability benchmarks.
+The independent review found a mobile typecheck regression and two security-check
+false positives. The runner now has a dedicated strict Node program and mobile CI
+command; both React Native programs exclude only this experiment. Node types are
+explicitly pinned; the DOM library remains for the unchanged portable snapshot
+builder's renderer-yield branch. No production timers or test baseline changed.
+The app and experiment typechecks pass. The full test program still reports its
+existing errors; the test typecheck ratchet passes with no new failing files.
 
-Both fixture packages and the runner's adb forward were removed, and independent
-package/forward queries were empty. Both dedicated emulator launches exited 0;
-`OrcaAutomationProof` and `OrcaAutomationUserProof` were deleted from the dedicated
-AVD directory. Only ignored build outputs and `/tmp` evidence/logs remain. There
-is no live proxy, test app, emulator, background poller, new worktree or subagent.
+Both shell evaluations require no CDP exception and the exact string
+`shell-owned`. The outsider must report a different numeric UID, the exact socket
+for the current route PID, `connected: false`, no read result, and exactly
+`java.io.IOException: Permission denied`. The subsequent shell positive control
+uses that same socket. Connection refusal, EOF, timeouts and arbitrary exceptions
+do not establish isolation. This still witnesses Android connect denial, not an
+isolated test of Chromium's credential predicate.
+
+The corrected release build and outsider release lint passed, as did 18 focused
+witness tests, lint, formatting and the changed-code quality gate. The normal
+headless Google Play API 36 user-image scenario passed; committed `run.json` and
+screenshot now come from that corrected run. The screenshot was visually inspected.
+
+Two separately generated, ignored runner variants repeat the reviewer's negative
+controls without adding production flags: one replaces only the mutation with a
+throwing expression, and one replaces only the outsider socket argument with
+`review-no-such-socket`. Their results are recorded in
+[negative controls](evidence/negative-controls.json). Each must exit 1, omit a
+successful verdict and fail at its intended witness assertion, with cleanup
+receipts. Deterministic tests also reject refusal at the correct name and an
+incorrect name even when its reported error is permission denial.
+
+All three runs remove both fixture packages and any allocated adb forward. The
+dedicated `OrcaAutomationFix` emulator is stopped and its AVD deleted after the
+runs; independent package, forward and socket queries verify cleanup. Only ignored
+build outputs and `/tmp` evidence/logs remain. No production integration, parallel
+fallback, push or PR is included; a fresh independent delta review is still needed.

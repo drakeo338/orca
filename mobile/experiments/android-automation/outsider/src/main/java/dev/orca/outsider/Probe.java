@@ -18,8 +18,9 @@ public final class Probe extends Activity {
         new Thread(() -> {
             JSONObject result = new JSONObject();
             try (LocalSocket socket = new LocalSocket()) {
-                result.put("uid", Process.myUid()).put("socket", name);
+                result.put("uid", Process.myUid()).put("socket", name).put("connected", false);
                 socket.connect(new LocalSocketAddress(name, LocalSocketAddress.Namespace.ABSTRACT));
+                result.put("connected", true);
                 socket.setSoTimeout(3000);
                 socket.getOutputStream().write("GET /json/list HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
                 byte[] data = new byte[4096];
