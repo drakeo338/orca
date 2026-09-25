@@ -57,11 +57,20 @@ export const BROWSER_CLIENT_HOST_METHODS = [
       }
 
       const registry = getBrowserHostLeaseRegistry(runtime)
+      const pagesAtAttach = getRuntimeBrowserPageRegistry(runtime).listPages()
+      const inventoryPageIds = new Set(params.pageInventory?.map((page) => page.browserPageId))
+      for (const page of pagesAtAttach) {
+        if (
+          (page.placement.browserHostClientId === params.browserHostClientId ||
+            inventoryPageIds.has(page.browserPageId)) &&
+          page.pairedDeviceId !== pairedDeviceId
+        ) {
+          throw new Error('browser_host_identity_conflict')
+        }
+      }
       // Attach inventory cannot describe pages created or replaced after readiness is published.
       const pagePlacementsAtAttach = new Map(
-        getRuntimeBrowserPageRegistry(runtime)
-          .listPages()
-          .map((page) => [page.browserPageId, page.placement])
+        pagesAtAttach.map((page) => [page.browserPageId, page.placement])
       )
       const handle = registry.attach({
         browserHostClientId: params.browserHostClientId,
