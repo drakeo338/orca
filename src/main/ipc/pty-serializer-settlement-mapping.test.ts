@@ -47,9 +47,12 @@ vi.mock('../telemetry/client', () =>
 vi.mock('../telemetry/classify-error', () =>
   import('./pty-ipc-mock-registry').then((m) => m.classifyErrorModuleMock())
 )
+const managedWslCliDir = vi.hoisted(() =>
+  vi.fn((): string | null => 'C:\\orca-user-data\\wsl-managed-cli\\hash')
+)
 vi.mock('../cli/wsl-managed-cli', async (importOriginal) => ({
   ...(await importOriginal<typeof WslManagedCliModule>()),
-  getManagedWslCliDir: () => 'C:\\orca-user-data\\wsl-managed-cli\\hash'
+  getManagedWslCliDir: managedWslCliDir
 }))
 vi.mock('../cli/linux-terminal-orca-cli-shim', () =>
   import('./pty-ipc-mock-registry').then((m) => m.linuxCliShimModuleMock())
@@ -521,7 +524,8 @@ describe('registerPtyHandlers', () => {
       expect.arrayContaining(['ORCA_OMP_SOURCE_AGENT_DIR/p'])
     )
   })
-  it('forces managed ORCA_USER_DATA_PATH for WSL spawns even when the caller provides a stale root', async () => {
+  it('forces managed WSL env over stale caller values, even when CLI setup fails', async () => {
+    managedWslCliDir.mockReturnValueOnce(null)
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')
     Object.defineProperty(process, 'platform', {
       configurable: true,
@@ -542,7 +546,8 @@ describe('registerPtyHandlers', () => {
         rows: 24,
         shellOverride: 'wsl.exe',
         env: {
-          ORCA_USER_DATA_PATH: '/tmp/stale-orca-user-data'
+          ORCA_USER_DATA_PATH: '/tmp/stale-orca-user-data',
+          ORCA_WSL_CLI_DIR: '/tmp/stale-wsl-cli'
         }
       })
     } finally {
@@ -555,5 +560,6 @@ describe('registerPtyHandlers', () => {
     const env = spawnCall[2].env as Record<string, string>
     expect(spawnCall[0]).toBe('wsl.exe')
     expect(env.ORCA_USER_DATA_PATH).toBe('/tmp/orca-user-data')
+    expect(env.ORCA_WSL_CLI_DIR).toBeUndefined()
   })
 })

@@ -5,7 +5,7 @@ import { expect, it } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
 import { removeTree } from '../../shared/windows-transient-lock-removal'
 import { buildWslExecArgs } from '../../shared/wsl-login-shell-command'
-import { setAppEnvironment } from '../../shared/app-environment'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { addOrcaWslInteropEnv } from '../pty/wsl-orca-env'
 import { getManagedWslCliDir } from './wsl-managed-cli'
 import { getBashShellReadyRcfileContent } from '../providers/local-pty-shell-ready-bash-rcfile'
@@ -16,7 +16,7 @@ it.skipIf(process.platform !== 'win32' || process.env.ORCA_TEST_MANAGED_WSL !== 
   async () => {
     const root = mkdtempSync(join(tmpdir(), "orca WSL's managed CLI "))
     const distro = process.env.ORCA_TEST_WSL_DISTRO || undefined
-    const userDataPath = join(root, 'user data 张三')
+    const userDataPath = join(root, 'user data 张三 O\u2019Brien')
     const env: Record<string, string> = { ORCA_BACKGROUND_LAUNCH: '1' }
     for (const [key, value] of Object.entries(process.env)) {
       if (value !== undefined) {
@@ -51,15 +51,7 @@ it.skipIf(process.platform !== 'win32' || process.env.ORCA_TEST_MANAGED_WSL !== 
       const translated = await wsl(['wslpath', '-u', root])
       expect(translated.code, translated.stderr).toBe(0)
       const guestRoot = translated.stdout.trim()
-      setAppEnvironment({
-        getPath: () => userDataPath,
-        getAppPath: () => root,
-        getVersion: () => '0.0.0-test',
-        isPackaged: () => false,
-        onWillQuit: () => {},
-        exit: () => {},
-        getAppMetrics: () => []
-      })
+      installFakeAppEnvironment({ getPath: () => userDataPath, getAppPath: () => root })
       const directory = getManagedWslCliDir({ isPackaged: false, userDataPath })
       expect(directory).not.toBeNull()
       Object.assign(env, {

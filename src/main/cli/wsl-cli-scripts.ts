@@ -1,3 +1,5 @@
+import { quotePowerShellLiteral } from '../../shared/powershell-native-argument'
+
 const MANAGED_MARKER = '# Orca managed WSL CLI launcher'
 const BRIDGE_MANAGED_MARKER = '# Orca managed WSL CLI PowerShell bridge'
 
@@ -65,7 +67,7 @@ export function buildWslBridgeScript(app?: {
 }): string {
   const setAppEnv = app
     ? [
-        `$env:ORCA_USER_DATA_PATH = ${quotePowerShell(app.userDataPath)}`,
+        `$env:ORCA_USER_DATA_PATH = ${quotePowerShellLiteral(app.userDataPath)}`,
         // Why: WSLENV /p maps this guest-only dir back; an app the CLI starts must not inherit it.
         'Remove-Item Env:ORCA_WSL_CLI_DIR -ErrorAction SilentlyContinue',
         ...(app.cliEntryPath ? buildDevCliEnv(app.cliEntryPath) : [])
@@ -166,16 +168,12 @@ function buildDevCliEnv(cliEntryPath: string): string[] {
     '$env:ORCA_NODE_OPTIONS = $env:NODE_OPTIONS',
     '$env:ORCA_NODE_REPL_EXTERNAL_MODULE = $env:NODE_REPL_EXTERNAL_MODULE',
     'Remove-Item Env:NODE_OPTIONS, Env:NODE_REPL_EXTERNAL_MODULE -ErrorAction SilentlyContinue',
-    `$ForwardArgs = @(${quotePowerShell(cliEntryPath)}) + $ForwardArgs`
+    `$ForwardArgs = @(${quotePowerShellLiteral(cliEntryPath)}) + $ForwardArgs`
   ]
 }
 
 function bridgeLines(lines: readonly string[]): string {
   return lines.map((line) => `  ${line}\n`).join('')
-}
-
-function quotePowerShell(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`
 }
 
 export function getBridgePathFromCommandPath(commandPath: string): string {

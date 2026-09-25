@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { setAppEnvironment } from '../../shared/app-environment'
+import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { getManagedWslCliDir } from './wsl-managed-cli'
 
 const roots: string[] = []
@@ -49,15 +49,7 @@ describe('managed WSL CLI provisioning', () => {
     const cliEntryPath = join(appPath, 'out', 'cli', 'index.js')
     mkdirSync(join(appPath, 'out', 'cli'), { recursive: true })
     writeFileSync(cliEntryPath, 'fixture')
-    setAppEnvironment({
-      getPath: () => host.userDataPath,
-      getAppPath: () => appPath,
-      getVersion: () => '0.0.0-test',
-      isPackaged: () => false,
-      onWillQuit: () => {},
-      exit: () => {},
-      getAppMetrics: () => []
-    })
+    installFakeAppEnvironment({ getPath: () => host.userDataPath, getAppPath: () => appPath })
     const directory = getManagedWslCliDir({ ...host, isPackaged: false }) ?? ''
     expect(readFileSync(join(directory, 'orca-dev'), 'utf8')).toContain(process.execPath)
     const bridge = readFileSync(join(directory, 'orca-wsl-bridge.ps1'), 'utf8')

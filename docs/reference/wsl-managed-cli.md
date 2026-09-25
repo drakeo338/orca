@@ -14,10 +14,10 @@ WSL shells still need Settings → General registration.
 2. **Crossing.** `addOrcaWslInteropEnv` adds `ORCA_WSL_CLI_DIR/p`, so both the
    daemon and in-process spawn paths translate it with the distro's own mounts.
 3. **Guest.** `WSL_MANAGED_CLI_PATH_RESTORE` runs after user startup files in the
-   bash rcfile and the local zsh first-prompt hook. It leads PATH with the
-   directory once (nested shells do not duplicate it) when
-   `$ORCA_WSL_CLI_DIR/$ORCA_CLI_COMMAND` is executable, and otherwise prints one
-   warning. Other login shells get no CLI; nothing blocks a shell.
+   bash rcfile and the local zsh first-prompt hook, which run once per Orca shell.
+   It leads PATH with the directory when `$ORCA_WSL_CLI_DIR/$ORCA_CLI_COMMAND` is
+   executable, and otherwise prints one warning. Other login shells get no CLI;
+   nothing blocks a shell.
 
 The colocated launcher finds its bridge beside itself and PowerShell by Windows
 path, so neither guest PATH nor the automount root matters. The bridge pins this
