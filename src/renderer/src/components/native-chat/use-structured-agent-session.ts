@@ -75,6 +75,7 @@ export function useStructuredAgentSession(args: {
     sessionId,
     target,
     transportEnabled,
+    isVisible,
     providerVisible,
     fence: state.fence,
     turnId: transportState.turnId,

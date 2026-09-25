@@ -58,6 +58,7 @@ type RenderProps = {
   fence: number | null
   turnId?: string | null
   launching?: boolean
+  hidden?: boolean
   launchSeedOptions?: Record<string, string>
 }
 
@@ -77,7 +78,8 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
         sessionId: 'session-1',
         target: LOCAL_TARGET,
         transportEnabled: props.transportEnabled,
-        providerVisible: props.transportEnabled,
+        isVisible: !props.hidden,
+        providerVisible: props.transportEnabled && !props.hidden,
         fence: props.fence,
         turnId: props.turnId ?? null,
         unloadedTurnRevisions: undefined,
@@ -146,6 +148,24 @@ describe('useStructuredAgentSessionOptions', () => {
       expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-hosted')
       expect(descriptor(result.current.optionSnapshot, 'model')?.valueSource).toBe('default')
     })
+    unmount()
+  })
+
+  it('reads no host catalog for a hidden retained tab until it is shown', async () => {
+    answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+    const { rerender, unmount } = renderOptions(
+      { ...REOPENED, hidden: true },
+      mutateWith(async () => null).mutate
+    )
+    await tick()
+    // A read can start a background listing process; restored hidden tabs must not at startup.
+    expect(mocks.call).not.toHaveBeenCalled()
+    rerender(REOPENED)
+    await waitFor(() =>
+      expect(mocks.call.mock.calls.map(([, method]) => method)).toContain(
+        'agentSession.modelCatalog'
+      )
+    )
     unmount()
   })
 

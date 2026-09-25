@@ -37,6 +37,8 @@ export function useStructuredAgentSessionOptions(args: {
   sessionId: string
   target: RuntimeClientTarget
   transportEnabled: boolean
+  /** The pane is on screen; a hidden retained tab must not warm the catalog at startup. */
+  isVisible: boolean
   providerVisible: boolean
   fence: number | null
   turnId: string | null
@@ -50,6 +52,7 @@ export function useStructuredAgentSessionOptions(args: {
   const {
     agent,
     fence,
+    isVisible,
     launching = false,
     launchSeedOptions,
     mutate,
@@ -112,6 +115,7 @@ export function useStructuredAgentSessionOptions(args: {
     sessionId,
     target,
     optionCatalog,
+    enabled: isVisible,
     namesDefault: launching,
     fence,
     activeOptionRecordRef,

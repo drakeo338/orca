@@ -22,6 +22,7 @@ export function useHostModelCatalogUpgrade(args: {
   sessionId: string
   target: RuntimeClientTarget
   optionCatalog: AgentSessionOptionCatalog | null
+  enabled: boolean
   namesDefault: boolean
   fence: number | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
@@ -32,6 +33,7 @@ export function useHostModelCatalogUpgrade(args: {
   const {
     activeOptionRecordRef,
     agent,
+    enabled,
     fence,
     namesDefault,
     optionCatalog,
@@ -40,7 +42,7 @@ export function useHostModelCatalogUpgrade(args: {
     updateOptionState
   } = args
   useEffect(() => {
-    if (!optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
+    if (!enabled || !optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
       return
     }
     let stale = false
@@ -67,6 +69,7 @@ export function useHostModelCatalogUpgrade(args: {
   }, [
     activeOptionRecordRef,
     agent,
+    enabled,
     fence,
     namesDefault,
     optionCatalog,
