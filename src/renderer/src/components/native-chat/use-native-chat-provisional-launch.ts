@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import {
   getStructuredAgentSessionLaunchLifecycle,
+  getStructuredAgentSessionLaunchResumes,
   retryStructuredAgentSessionLaunch,
   useStructuredAgentSessionLaunchFailureReason,
   useStructuredAgentSessionLaunchLifecycle
@@ -34,6 +35,13 @@ export function useNativeChatProvisionalLaunch(
   )
   return {
     lifecycle,
+    /** Read, not subscribed: a launch's kind is fixed when it starts. */
+    kind:
+      lifecycle === null
+        ? null
+        : getStructuredAgentSessionLaunchResumes(sessionId)
+          ? ('resume' as const)
+          : ('new' as const),
     failureReason,
     retry,
     sendThroughRelaunch,

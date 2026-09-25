@@ -32,6 +32,9 @@ import {
   type StructuredOptionSendOutcome
 } from './use-held-structured-option-picks'
 
+/** A chat this view launched: a new conversation, or one resumed from history. */
+export type StructuredAgentSessionLaunchKind = 'new' | 'resume'
+
 export function useStructuredAgentSessionOptions(args: {
   agent: AgentType
   sessionId: string
@@ -45,7 +48,7 @@ export function useStructuredAgentSessionOptions(args: {
   mutate: StructuredAgentSessionMutate
   /** The encoded selection a launch seeds, shown until the host names the model. */
   launchSeedOptions?: Readonly<Record<string, string>>
-  launching?: boolean
+  launch?: StructuredAgentSessionLaunchKind
 }) {
   const {
     agent,
@@ -112,7 +115,8 @@ export function useStructuredAgentSessionOptions(args: {
     target,
     optionCatalog,
     enabled: args.isVisible,
-    namesDefault: args.launching ?? false,
+    // A resumed conversation may keep its own model, so only a new one runs the listed default.
+    namesDefault: args.launch === 'new',
     fence,
     activeOptionRecordRef,
     updateOptionState

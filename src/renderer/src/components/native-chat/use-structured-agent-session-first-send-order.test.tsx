@@ -104,7 +104,7 @@ describe('a pick and a first message made while the chat launches', () => {
           agent: 'codex',
           isVisible: true,
           transportEnabled,
-          launching: true
+          launch: 'new'
         }),
       { initialProps: { transportEnabled: false } }
     )
@@ -143,7 +143,7 @@ describe('a pick and a first message made while the chat launches', () => {
           agent: 'codex',
           isVisible: true,
           transportEnabled,
-          launching: true
+          launch: 'new'
         }),
       { initialProps: { transportEnabled: false } }
     )

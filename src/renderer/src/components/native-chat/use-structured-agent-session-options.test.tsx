@@ -57,16 +57,16 @@ type RenderProps = {
   transportEnabled: boolean
   fence: number | null
   turnId?: string | null
-  launching?: boolean
+  launch?: 'new' | 'resume'
   hidden?: boolean
   launchSeedOptions?: Record<string, string>
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
-const PROVISIONAL: RenderProps = { transportEnabled: false, fence: null, launching: true }
+const PROVISIONAL: RenderProps = { transportEnabled: false, fence: null, launch: 'new' }
 // The receipt lands first; attach delivers the fence on a later render.
-const PUBLISHED_UNATTACHED: RenderProps = { transportEnabled: true, fence: null, launching: true }
-const ATTACHED: RenderProps = { transportEnabled: true, fence: 1, launching: true }
+const PUBLISHED_UNATTACHED: RenderProps = { transportEnabled: true, fence: null, launch: 'new' }
+const ATTACHED: RenderProps = { transportEnabled: true, fence: 1, launch: 'new' }
 // A chat this view did not launch (reopened), attached before its first live read.
 const REOPENED: RenderProps = { transportEnabled: true, fence: 1 }
 
@@ -84,7 +84,7 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
         turnId: props.turnId ?? null,
         unloadedTurnRevisions: undefined,
         mutate,
-        launching: props.launching ?? false,
+        ...(props.launch ? { launch: props.launch } : {}),
         ...(props.launchSeedOptions ? { launchSeedOptions: props.launchSeedOptions } : {})
       }),
     { initialProps: initial }
@@ -253,6 +253,26 @@ describe('useStructuredAgentSessionOptions', () => {
       await waitFor(() =>
         expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-hosted')
       )
+      unmount()
+    })
+
+    it('names no listed default for a resumed chat, only a model its launch sends', async () => {
+      answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+      const resumed = { ...PROVISIONAL, launch: 'resume' as const }
+      const { result, rerender, unmount } = renderOptions(
+        resumed,
+        mutateWith(async () => null).mutate
+      )
+      await waitFor(() => {
+        const model = descriptor(result.current.optionSnapshot, 'model')
+        expect(
+          model?.kind.type === 'select' && model.kind.choices.some((c) => c.value === 'gpt-hosted')
+        ).toBe(true)
+      })
+      // The resumed conversation may keep its own model rather than the listing's default.
+      expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
+      rerender({ ...resumed, launchSeedOptions: SEED })
+      expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-5.5')
       unmount()
     })
 

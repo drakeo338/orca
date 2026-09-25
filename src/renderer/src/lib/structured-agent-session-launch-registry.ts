@@ -165,6 +165,15 @@ export function getStructuredAgentSessionLaunchLifecycle(
   return getPersistedStructuredAgentLaunchRecord(sessionId)?.lifecycle ?? null
 }
 
+/** The launch adopts an existing conversation, which may keep a model of its own. */
+export function getStructuredAgentSessionLaunchResumes(sessionId: string): boolean {
+  const state = getStructuredLaunchStateBySessionId(sessionId)
+  const resumeFrom = state
+    ? state.intent.params.resumeFrom
+    : getPersistedStructuredAgentLaunchRecord(sessionId)?.resumeFrom
+  return resumeFrom !== undefined
+}
+
 export function getStructuredAgentSessionLaunchFailureReason(
   worktreeId: string,
   sessionId: string

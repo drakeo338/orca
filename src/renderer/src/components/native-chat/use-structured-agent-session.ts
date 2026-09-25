@@ -18,7 +18,10 @@ import {
 import { useStructuredAgentSessionMessages } from './use-structured-agent-session-messages'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
-import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
+import {
+  useStructuredAgentSessionOptions,
+  type StructuredAgentSessionLaunchKind
+} from './use-structured-agent-session-options'
 import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
@@ -34,9 +37,9 @@ export function useStructuredAgentSession(args: {
   isVisible: boolean
   transportEnabled?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
-  launching?: boolean
+  launch?: StructuredAgentSessionLaunchKind
 }) {
-  const { agent, isVisible, launching = false, sessionId, target, transportEnabled = true } = args
+  const { agent, isVisible, launch, sessionId, target, transportEnabled = true } = args
   const {
     state,
     loadingOlder,
@@ -58,10 +61,10 @@ export function useStructuredAgentSession(args: {
   const persistedSessionOptions = useAppStore((store) => store.settings?.nativeChatSessionOptions)
   const launchSeedOptions = useMemo(
     () =>
-      launching && target.kind === 'local'
+      launch && target.kind === 'local'
         ? resolveStructuredLaunchSeedOptions(persistedSessionOptions, agent)
         : undefined,
-    [agent, launching, persistedSessionOptions, target.kind]
+    [agent, launch, persistedSessionOptions, target.kind]
   )
   const {
     conversationCommands,
@@ -82,7 +85,7 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
     mutate,
-    launching,
+    ...(launch ? { launch } : {}),
     ...(launchSeedOptions ? { launchSeedOptions } : {})
   })
   const outboxController = useStructuredAgentSessionOutbox({

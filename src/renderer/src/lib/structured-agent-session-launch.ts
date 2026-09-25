@@ -44,6 +44,7 @@ export type { StructuredAgentLaunchOptions, StructuredAgentLaunchReceipt }
 export {
   getStructuredAgentLaunchStatus,
   getStructuredAgentSessionLaunchLifecycle,
+  getStructuredAgentSessionLaunchResumes,
   hasStructuredAgentSessionLaunchCancellationTombstone,
   markStructuredAgentSessionLaunchCancelled,
   retireStructuredAgentSessionLaunchCancellationTombstone,

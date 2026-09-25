@@ -125,7 +125,7 @@ describe('useStructuredAgentSession provisional launch gate', () => {
         agent: 'codex',
         isVisible: true,
         transportEnabled: false,
-        launching: true
+        launch: 'new'
       })
     )
 
@@ -170,7 +170,7 @@ describe('useStructuredAgentSession provisional launch gate', () => {
         agent: 'codex',
         isVisible: true,
         transportEnabled: false,
-        launching: true
+        launch: 'new'
       })
     )
     // The paired host seeds from its own settings; the static seed names no default.
