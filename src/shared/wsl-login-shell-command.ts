@@ -1,5 +1,3 @@
-import { WSL_MANAGED_CLI_PATH } from './wsl-managed-cli-path'
-
 export function quotePosixShell(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`
 }
@@ -22,7 +20,7 @@ export function buildWslExecArgs(
 }
 
 export function buildWslLoginShellCommand(command: string): string {
-  const quotedCommand = quotePosixShell(`${WSL_MANAGED_CLI_PATH}\n${command}`)
+  const quotedCommand = quotePosixShell(command)
   return [
     '_orca_wsl_shell=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)',
     'if [ -z "$_orca_wsl_shell" ] || [ ! -x "$_orca_wsl_shell" ]; then',
@@ -138,10 +136,6 @@ export function buildWslInteractiveLoginShellCommand(): string {
     '    fi',
     '    ;;',
     'esac',
-    'if [ -n "${ORCA_WSL_CLI_DIR:-}${ORCA_WSL_CLI_ERROR:-}" ] && { [ "$_orca_wsl_shell_name" != zsh ] || [ ! -d "${_orca_shell_ready_root}/zsh" ]; }; then',
-    '  echo "Orca managed WSL terminals require the bash or zsh startup wrapper. Check the distro login shell and relaunch Orca." >&2',
-    '  exit 1',
-    'fi',
     'exec "$_orca_wsl_shell" -l'
   ].join('\n')
 }

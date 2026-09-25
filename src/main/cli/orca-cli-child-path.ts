@@ -17,7 +17,6 @@ import { join } from 'node:path'
 import { readInheritedPath } from '../ipc/pty/host-env/path'
 import { resolvePathEnvKey } from '../pty/windows-environment-path'
 import { ensureLinuxTerminalOrcaCliShimDir } from './linux-terminal-orca-cli-shim'
-import { applyManagedWslCliEnvironment } from './wsl-managed-cli'
 
 export type OrcaCliChildPathOptions = {
   isPackaged: boolean
@@ -33,9 +32,6 @@ export function prependOrcaCliDirToChildPath(
   opts: OrcaCliChildPathOptions
 ): void {
   const platform = opts.platform ?? process.platform
-  if (platform === 'win32') {
-    applyManagedWslCliEnvironment(env, opts)
-  }
   // Why: matches node:path's `delimiter` for the running platform, but stays correct when a test
   // drives a foreign platform through the seam.
   const pathDelimiter = platform === 'win32' ? ';' : ':'
@@ -49,7 +45,9 @@ export function prependOrcaCliDirToChildPath(
       : devCliBin
   } else if (platform === 'linux') {
     // Why: bare-`orca` shim scoped to Orca PTYs — Linux CLI installs as `orca-ide` to avoid shadowing GNOME's /usr/bin/orca screen reader (stablyai/orca#7904).
-    const shimDir = ensureLinuxTerminalOrcaCliShimDir({ userDataPath: opts.userDataPath })
+    const shimDir = ensureLinuxTerminalOrcaCliShimDir({
+      userDataPath: opts.userDataPath
+    })
     if (shimDir) {
       const inheritedEntries = readInheritedPath(env, platform)
         .split(pathDelimiter)

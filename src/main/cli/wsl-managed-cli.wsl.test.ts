@@ -5,8 +5,9 @@ import { expect, it } from 'vitest'
 import { runProcess } from '../../shared/child-process/run-process'
 import { removeTree } from '../../shared/windows-transient-lock-removal'
 import { buildWslExecArgs, buildWslLoginShellCommand } from '../../shared/wsl-login-shell-command'
+import { WSL_MANAGED_CLI_PATH } from '../../shared/wsl-managed-cli-path'
 import { applyManagedWslCliEnvironment } from './wsl-managed-cli'
-import { buildWslLauncher } from './wsl-cli-scripts'
+import { buildColocatedWslLauncher } from './wsl-cli-scripts'
 import { getBashShellReadyRcfileContent } from '../providers/local-pty-shell-ready-bash-rcfile'
 
 // Explicit opt-in: never require a developer's WSL installation for unit tests.
@@ -68,10 +69,12 @@ it.skipIf(process.platform !== 'win32' || process.env.ORCA_TEST_MANAGED_WSL !== 
       })
       env.ORCA_TERMINAL_HANDLE = 'term_managed_fixture'
       env.WSLENV += ':ORCA_TERMINAL_HANDLE/u'
-      expect(env.ORCA_WSL_CLI_ERROR).toBeUndefined()
-      const command = '"$ORCA_CLI_COMMAND" "two words" "literal $" | cat'
+      expect(env.ORCA_WSL_CLI_DIR).toBeDefined()
+      const skillSetup = (command: string) =>
+        buildWslLoginShellCommand(`${WSL_MANAGED_CLI_PATH}\n${command}`)
+      const command = 'orca-dev "two words" "literal $" | cat'
       for (const args of [
-        ['sh', '-c', buildWslLoginShellCommand(command)],
+        ['sh', '-c', skillSetup(command)],
         ['bash', '--rcfile', `${guestRoot}/rcfile`, '-ic', command]
       ]) {
         const result = await wsl(['env', `HOME=${guestRoot}`, 'PATH=/usr/bin:/bin', ...args])
@@ -98,17 +101,11 @@ it.skipIf(process.platform !== 'win32' || process.env.ORCA_TEST_MANAGED_WSL !== 
         'command -v orca-dev || exit 42'
       ])
       expect(external.code).toBe(42)
-      const failed = await wsl([
-        'sh',
-        '-c',
-        buildWslLoginShellCommand('"$ORCA_CLI_COMMAND" --exit')
-      ])
+      const failed = await wsl(['sh', '-c', skillSetup('orca-dev --exit')])
       expect(failed.code).toBe(23)
       writeFileSync(
         join(root, 'missing-interop'),
-        buildWslLauncher(process.execPath, '', {
-          windowsPowerShellPath: join(root, 'missing-powershell.exe')
-        })
+        buildColocatedWslLauncher(process.execPath, join(root, 'missing-powershell.exe'))
       )
       const interop = await wsl(['bash', `${guestRoot}/missing-interop`])
       expect(interop.code).toBe(1)
@@ -120,9 +117,10 @@ it.skipIf(process.platform !== 'win32' || process.env.ORCA_TEST_MANAGED_WSL !== 
       })
       expect(unavailable.code).not.toBe(0)
       env.ORCA_WSL_CLI_DIR = join(root, 'missing-cli')
-      const missing = await wsl(['sh', '-c', buildWslLoginShellCommand('echo UNEXPECTED_SUCCESS')])
-      expect(missing.code).toBe(1)
-      expect(missing.stdout).not.toContain('UNEXPECTED_SUCCESS')
+      // An unreachable CLI warns but never blocks the shell.
+      const missing = await wsl(['sh', '-c', skillSetup('echo SHELL_CONTINUED')])
+      expect(missing.code).toBe(0)
+      expect(missing.stdout).toContain('SHELL_CONTINUED')
       expect(missing.stderr).toContain('Check WSL Windows-drive mounts')
       expect((await snapshot()).stdout).toBe(before.stdout)
     } finally {

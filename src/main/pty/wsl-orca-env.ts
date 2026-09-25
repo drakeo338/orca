@@ -27,7 +27,7 @@ function upsertWslenvEntry(entries: string[], entry: string): void {
   entries[existingIndex] = entry
 }
 
-function applyWslenvPassthrough(
+export function applyWslenvPassthrough(
   env: Record<string, string | undefined>,
   passthroughEntries: string[]
 ): void {

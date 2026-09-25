@@ -126,7 +126,7 @@ describe('wsl login shell command helpers', () => {
   it('keeps command-scoped environment variables in the quoted payload', () => {
     const command = buildWslLoginShellCommand('HISTFILE=/tmp/orca-history printf "$HISTFILE"')
 
-    expect(command).toContain('HISTFILE=/tmp/orca-history printf "$HISTFILE"\'')
+    expect(command).toContain('\'HISTFILE=/tmp/orca-history printf "$HISTFILE"\'')
     expectValidShSyntax(command)
   }, 30_000)
 

@@ -8,6 +8,7 @@ import {
   quotePowerShellNativeArgument
 } from '../../../../shared/powershell-native-argument'
 import { buildWslLoginShellCommand } from '../../../../shared/wsl-login-shell-command'
+import { WSL_MANAGED_CLI_PATH } from '../../../../shared/wsl-managed-cli-path'
 import { isWslShellName } from '../../../../shared/local-windows-terminal-runtime'
 import { resolveWindowsShellStartupFamily } from '../../../../shared/windows-terminal-shell'
 import { getProjectAgentSkillTerminalShellOverride } from '@/lib/project-skill-runtime'
@@ -62,7 +63,9 @@ export function getSelectedAgentRuntime(
 }
 
 function encodeWslLoginShellScript(command: string): string {
-  const bytes = new TextEncoder().encode(buildWslLoginShellCommand(command))
+  const bytes = new TextEncoder().encode(
+    buildWslLoginShellCommand(`${WSL_MANAGED_CLI_PATH}\n${command}`)
+  )
   let binary = ''
   for (const byte of bytes) {
     binary += String.fromCharCode(byte)

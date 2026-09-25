@@ -11,6 +11,7 @@ import { agentHookServer } from '../../../agent-hooks/server'
 import { wslHookRelayManager } from '../../../agent-hooks/wsl-hook-relay-manager'
 import { piTitlebarExtensionService } from '../../../pi/titlebar-extension-service'
 import { prependOrcaCliDirToChildPath } from '../../../cli/orca-cli-child-path'
+import { applyManagedWslCliEnvironment } from '../../../cli/wsl-managed-cli'
 import { stripLegacyTerminalShimEnv } from '../../../pty/legacy-terminal-shim-dir'
 import { mergePersistedWindowsPath } from '../../../pty/windows-environment-path'
 import { resolveCodexShellLaunchPreflightCommand } from '../../../pty/codex-shell-launch-preflight'
@@ -281,6 +282,14 @@ export function buildPtyHostEnv(
       baseEnv.ORCA_USER_DATA_PATH ??= opts.userDataPath
     }
     delete baseEnv.ORCA_CLI_COMMAND
+  }
+  // Why every Windows PTY: native PowerShell panes also start WSL, e.g. skill setup.
+  if (process.platform === 'win32') {
+    applyManagedWslCliEnvironment(baseEnv, {
+      isPackaged: opts.isPackaged,
+      userDataPath: opts.userDataPath,
+      resourcesPath: opts.resourcesPath
+    })
   }
   prependOrcaCliDirToChildPath(baseEnv, {
     isPackaged: opts.isPackaged,

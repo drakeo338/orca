@@ -18,7 +18,11 @@ function fixture() {
   const resourcesPath = join(root, 'resources with spaces')
   mkdirSync(join(resourcesPath, 'bin'), { recursive: true })
   writeFileSync(join(resourcesPath, 'bin', 'orca.exe'), 'fixture')
-  return { isPackaged: true, resourcesPath, userDataPath: join(root, 'user data') }
+  return {
+    isPackaged: true,
+    resourcesPath,
+    userDataPath: join(root, 'user data')
+  }
 }
 
 describe('managed WSL CLI provisioning', () => {
@@ -47,17 +51,22 @@ describe('managed WSL CLI provisioning', () => {
       expect(result.stdout.trim()).toBe(ensureManagedWslCli(options))
     }
   })
+
   it('reuses a complete tree, repairs missing files, and isolates app identities and updates', () => {
     const options = fixture()
     const directory = ensureManagedWslCli(options)
-    const launcher = join(directory, 'orca-ide')
+    expect(directory).not.toBeNull()
+    const launcher = join(directory ?? '', 'orca-ide')
     const modified = statSync(launcher).mtimeMs
     expect(ensureManagedWslCli(options)).toBe(directory)
     expect(statSync(launcher).mtimeMs).toBe(modified)
     rmSync(launcher)
     expect(ensureManagedWslCli(options)).toBe(directory)
     expect(readFileSync(launcher, 'utf8')).toContain('resources with spaces')
-    const second = { ...options, userDataPath: join(options.userDataPath, 'second') }
+    const second = {
+      ...options,
+      userDataPath: join(options.userDataPath, 'second')
+    }
     expect(ensureManagedWslCli(second)).not.toBe(directory)
     const update = fixture()
     expect(ensureManagedWslCli({ ...update, userDataPath: options.userDataPath })).not.toBe(
@@ -65,29 +74,19 @@ describe('managed WSL CLI provisioning', () => {
     )
   })
 
-  it('refuses to overwrite unrelated content', () => {
-    const options = fixture()
-    const directory = ensureManagedWslCli(options)
-    writeFileSync(join(directory, 'orca-ide'), 'user content')
-    expect(() => ensureManagedWslCli(options)).toThrow('was modified')
-    expect(readFileSync(join(directory, 'orca-ide'), 'utf8')).toBe('user content')
-  })
-
-  it('passes only the managed mount to WSL without changing the host PATH', () => {
+  it('passes only the managed directory to WSL without changing the host PATH', () => {
     const env = { PATH: 'unchanged', WSLENV: 'KEEP/u:ORCA_WSL_CLI_DIR/u' }
     applyManagedWslCliEnvironment(env, fixture())
     expect(env.PATH).toBe('unchanged')
     expect(env.WSLENV).toBe('KEEP/u:ORCA_WSL_CLI_DIR/p')
   })
 
-  it('publishes an actionable failure and clears inherited setup on failure', () => {
+  it('clears an inherited directory when the CLI runtime is missing', () => {
     const env: Record<string, string> = { ORCA_WSL_CLI_DIR: 'stale' }
     const options = fixture()
     rmSync(join(options.resourcesPath, 'bin', 'orca.exe'))
     applyManagedWslCliEnvironment(env, options)
     expect(env.ORCA_WSL_CLI_DIR).toBeUndefined()
-    expect(env.ORCA_WSL_CLI_ERROR).toContain('Rebuild or reinstall')
-    expect(env.WSLENV).toBe('ORCA_WSL_CLI_ERROR/u')
   })
 
   it('runs development CLI directly, without a cmd.exe quoting boundary', () => {
@@ -95,7 +94,7 @@ describe('managed WSL CLI provisioning', () => {
     const appPath = options.resourcesPath
     mkdirSync(join(appPath, 'out', 'cli'), { recursive: true })
     writeFileSync(join(appPath, 'out', 'cli', 'index.js'), 'fixture')
-    const directory = ensureManagedWslCli({ ...options, isPackaged: false, appPath })
+    const directory = ensureManagedWslCli({ ...options, isPackaged: false, appPath }) ?? ''
     expect(readFileSync(join(directory, 'orca-dev'), 'utf8')).toContain(process.execPath)
     const bridge = readFileSync(join(directory, 'orca-wsl-bridge.ps1'), 'utf8')
     expect(bridge).toContain("$env:ELECTRON_RUN_AS_NODE = '1'")

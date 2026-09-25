@@ -136,7 +136,7 @@ export const TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY =
 // shell must refuse rather than create the wrong one.
 export const TERMINAL_CREATE_SHELL_SELECTION_RUNTIME_CAPABILITY =
   'terminal.create-shell-selection.v1' as const
-// Older Windows hosts still require registration before WSL skill setup terminals.
+// Host puts its own CLI on PATH in managed WSL terminals, so WSL skill setup needs no registration.
 export const TERMINAL_MANAGED_WSL_CLI_RUNTIME_CAPABILITY = 'terminal.managed-wsl-cli.v1' as const
 export const SESSION_TAB_CLOSE_INTENT_RUNTIME_CAPABILITY = 'session-tabs.close-intent.v1' as const
 export const SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY =

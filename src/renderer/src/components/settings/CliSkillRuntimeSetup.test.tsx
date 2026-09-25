@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
 import { buildAgentFeatureSkillInstallCommand } from '../../../../shared/agent-feature-install-commands'
 import { buildWslLoginShellCommand } from '../../../../shared/wsl-login-shell-command'
+import { WSL_MANAGED_CLI_PATH } from '../../../../shared/wsl-managed-cli-path'
 import { useAppStore } from '@/store'
 import {
   buildSkillCommandForRuntime,
@@ -46,15 +47,19 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     } as const
     const command = buildSkillInstallCommandForRuntime(skillCommand, runtime)
     const setupCommand = buildSkillSetupTerminalCommand(command, 'powershell.exe', runtime, 'win32')
-    const encoded = Buffer.from(buildWslLoginShellCommand(skillCommand), 'utf8').toString('base64')
+    const encoded = Buffer.from(
+      buildWslLoginShellCommand(`${WSL_MANAGED_CLI_PATH}\n${skillCommand}`),
+      'utf8'
+    ).toString('base64')
 
     expect(command).toBe(skillCommand)
     expect(setupCommand).toBe(
       `& { $PSNativeCommandArgumentPassing = 'Legacy'; wsl.exe -d 'Ubuntu' --exec sh -c 'sh -c \\"$(printf %s ${encoded} | base64 -d)\\"' } # Runs: ${skillCommand}`
     )
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
-      'npx skills add orchestration --global\''
+      "npx skills add orchestration --global'"
     )
+    expect(decodeWslLoginShellScript(setupCommand)).toContain('export PATH="$ORCA_WSL_CLI_DIR')
   })
 
   it('keeps a Windows-selected WSL install inside WSL without the host preflight', () => {
@@ -71,7 +76,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     expect(setupCommand).toContain("wsl.exe -d 'Ubuntu'")
     expect(setupCommand).not.toContain('where.exe npx')
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
-      'npx skills add orchestration --global\''
+      "npx skills add orchestration --global'"
     )
   })
 
@@ -85,7 +90,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     const setupCommand = buildSkillSetupTerminalCommand(command, 'powershell.exe', runtime, 'win32')
 
     expect(decodeWslLoginShellScript(setupCommand)).toContain(
-      'npx skills update orchestration --global\''
+      "npx skills update orchestration --global'"
     )
   })
 
@@ -365,7 +370,7 @@ describe('CliSkillRuntimeSetup runtime helpers', () => {
     )
 
     expect(buildSkillSetupTerminalCommand(powershellCommand, 'wsl.exe', runtime, 'win32')).toBe(
-      buildWslLoginShellCommand(skillCommand)
+      buildWslLoginShellCommand(`${WSL_MANAGED_CLI_PATH}\n${skillCommand}`)
     )
   })
 
