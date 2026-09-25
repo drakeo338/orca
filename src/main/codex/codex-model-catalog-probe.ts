@@ -56,10 +56,7 @@ export function createCodexModelCatalogProbe(
         env: { ...definedEnv(environment), CODEX_HOME: accountHomePath },
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS
       },
-      (rpc) =>
-        fetchCodexModelCatalogListing({
-          connection: { request: (method, params) => rpc.request(method, params) }
-        })
+      (rpc) => fetchCodexModelCatalogListing({ connection: rpc })
     )
     if (listing.models.length === 0) {
       throw new Error('codex app-server listed no models')
