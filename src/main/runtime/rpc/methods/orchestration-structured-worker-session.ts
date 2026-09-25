@@ -214,13 +214,14 @@ export async function discardStructuredWorkerSession(
   retireSettledStructuredWorkerTab(sessionId, runtime)
 }
 
-/** Delivers the dispatch preamble as the worker's first turn. */
+/** Delivers the dispatch preamble as the worker's first turn. `pending`: the worker's agent had
+ *  not taken it within the wait; the host still holds it for that agent, and never re-sends it. */
 export async function sendStructuredWorkerPreamble(args: {
   host: StructuredAgentSessionHost
   sessionId: string
   dispatchId: string
   preamble: string
-}): Promise<void> {
+}): Promise<'accepted' | 'pending'> {
   const body: AgentJournalMessageItem = {
     kind: 'message',
     role: 'user',
@@ -245,8 +246,7 @@ export async function sendStructuredWorkerPreamble(args: {
   if (!result.ok) {
     throw new Error(`The dispatch preamble was refused: ${result.refusal.message}`)
   }
-  // Accepted is not delivered: the worker's agent may still be starting. Never re-sent; a wait
-  // that runs out is reported as unknown below and settles when the submission does.
+  // Accepted is not delivered: the worker's agent may still be starting.
   const submission =
     result.value.submission.dispatchState === 'pending'
       ? ((
@@ -257,8 +257,8 @@ export async function sendStructuredWorkerPreamble(args: {
             .catch(() => undefined)
         )?.value.submission ?? result.value.submission)
       : result.value.submission
-  if (submission.dispatchState === 'accepted') {
-    return
+  if (submission.dispatchState === 'accepted' || submission.dispatchState === 'pending') {
+    return submission.dispatchState
   }
   if (submission.dispatchState === 'rejected') {
     // A rejection is a verdict, not a mystery: the preamble provably did not happen.

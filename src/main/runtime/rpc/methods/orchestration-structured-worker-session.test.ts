@@ -244,7 +244,7 @@ describe('structured worker dispatch preamble', () => {
   it('reports the preamble delivered only on an accepted submission', async () => {
     await expect(
       send(hostWithSubmission({ dispatchState: 'accepted', reason: null }))
-    ).resolves.toBeUndefined()
+    ).resolves.toBe('accepted')
   })
 
   it('waits for an accepted preamble to be delivered, and reports that delivery (W10)', async () => {
@@ -255,7 +255,15 @@ describe('structured worker dispatch preamble', () => {
           { dispatchState: 'accepted', reason: null }
         )
       )
-    ).resolves.toBeUndefined()
+    ).resolves.toBe('accepted')
+  })
+
+  it('reports a preamble still held for an agent that outlasted the wait, without failing the start (W10)', async () => {
+    // Held, not lost: the host delivers it when the agent starts. Throwing here tore the worker
+    // down, which rejected the preamble the start was about to deliver.
+    await expect(
+      send(hostWithSubmission({ dispatchState: 'pending', reason: null }))
+    ).resolves.toBe('pending')
   })
 
   it('never claims delivery for a submission the provider never acknowledged', async () => {
@@ -263,15 +271,13 @@ describe('structured worker dispatch preamble', () => {
     // into `unknown`, and `performSend` still returns ok. Reporting that as `dispatch_input:
     // accepted` marks the worker ready with no task, and the coordinator blocks in
     // `check --wait --types worker_done` until it times out.
-    for (const dispatchState of ['unknown', 'pending'] as const) {
-      const error = await send(
-        hostWithSubmission({ dispatchState, reason: 'provider child exited' })
-      ).catch((thrown: unknown) => thrown)
-      expect((error as { code?: string }).code).toBe('operation_unknown')
-      // The wiring, not just the throw: this is the code that makes the start receipt
-      // `outcome_unknown` with the worker-show / worker-abandon recovery commands.
-      expect(isUnknownWorkerStartOutcome(error, 'dispatch_input')).toBe(true)
-    }
+    const error = await send(
+      hostWithSubmission({ dispatchState: 'unknown', reason: 'provider child exited' })
+    ).catch((thrown: unknown) => thrown)
+    expect((error as { code?: string }).code).toBe('operation_unknown')
+    // The wiring, not just the throw: this is the code that makes the start receipt
+    // `outcome_unknown` with the worker-show / worker-abandon recovery commands.
+    expect(isUnknownWorkerStartOutcome(error, 'dispatch_input')).toBe(true)
   })
 
   it('keeps a rejected preamble a proven failure under a code of its own', async () => {
