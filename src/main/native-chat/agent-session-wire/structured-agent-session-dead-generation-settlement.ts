@@ -173,7 +173,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
             input.exitedDuringStartup
               ? providerStartupFailureOutcome(input.unexpectedExitReason)
               : unexpectedProviderExitOutcome(input.unexpectedExitReason)
-          )
+          ),
+          // A start that failed ran nothing the user can continue from; that is an error.
+          ...(input.exitedDuringStartup ? { tone: 'error' } : {})
         }
       })
     }

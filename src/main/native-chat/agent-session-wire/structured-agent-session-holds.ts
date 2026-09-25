@@ -6,9 +6,11 @@
 //
 // A surface takes a hold when it binds and drops it when it goes away. The first hold on a session
 // with no child resumes it — that, and not the shape of a lease on disk, is what makes a provider
-// process exist. The last hold leaving starts the idle release clock. Transport close is the BACKSTOP,
-// not the mechanism: a client that vanishes mid-flight never sends its release, so the caller
-// registers one against the connection and the holder set absorbs the duplicate.
+// process exist. A surface coming into view on a chat whose last start failed resumes nothing:
+// the chat already says why, and the next send retries — the rule provider-exit recovery follows.
+// The last hold leaving starts the idle release clock. Transport close is the BACKSTOP, not the
+// mechanism: a client that vanishes mid-flight never sends its release, so the caller registers
+// one against the connection and the holder set absorbs the duplicate.
 //
 // A send to a childless session resumes it too, and so does provider-exit recovery under an open
 // surface. All three go through `ensureProviderChild` inside the session's serialize, so they take
@@ -23,6 +25,16 @@ import {
 import { StructuredAgentSessionHolders } from './structured-agent-session-holders'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-hold-resume'
 import type { StructuredAgentSessionAttachOptions } from './structured-agent-session-attach-orchestration'
+import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
+
+/** A refused hold. In-process readers take the message as the code, as every host refusal is
+ *  raised; the RPC surface sends the refusal's own message with it. */
+export class StructuredAgentSessionHoldRefusedError extends Error {
+  constructor(readonly refusal: AgentSessionWireRefusal) {
+    super(refusal.code)
+    this.name = 'StructuredAgentSessionHoldRefusedError'
+  }
+}
 
 export type StructuredAgentSessionHoldsDeps = {
   /** Attaches a provider child, for a caller already inside `serialize`. */
@@ -33,6 +45,8 @@ export type StructuredAgentSessionHoldsDeps = {
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   /** Whether evicting this session would actually free anything. */
   hasProviderChild: (sessionId: string) => boolean
+  /** Its last child died before it finished starting; see `hold`. */
+  lastStartFailed: (sessionId: string) => boolean
   hasOwedWork: (sessionId: string) => boolean
   evict: (sessionId: string) => Promise<void>
   onError?: (input: { sessionId: string; error: unknown }) => void
@@ -43,6 +57,9 @@ export type StructuredAgentSessionHoldOptions = {
   /** False for a hold that only RETAINS — a subscription stream, which must not make a child
    *  exist just by reading history. */
   resume?: boolean
+  /** False for a surface coming into view: a chat whose last start failed is left for the next
+   *  send to retry, the rule provider-exit recovery follows. An explicit retry restarts it. */
+  resumeFailedStart?: boolean
 }
 
 export class StructuredAgentSessionHolds {
@@ -72,7 +89,10 @@ export class StructuredAgentSessionHolds {
     // Unconditional, not only on the first-holder edge: a second surface arriving during the grace
     // window must cancel the pending release too.
     this.clock.cancel(sessionId)
-    if (options.resume === false) {
+    if (
+      options.resume === false ||
+      (options.resumeFailedStart === false && this.deps.lastStartFailed(sessionId))
+    ) {
       return
     }
     let resumed: StructuredAgentSessionResumeOutcome
@@ -84,8 +104,7 @@ export class StructuredAgentSessionHolds {
     }
     if (!resumed.ok) {
       this.releaseFailedHold(sessionId, holderId, alreadyHeld, incarnation)
-      // The RPC surface raises a refusal as its code.
-      throw new Error(resumed.refusal.code)
+      throw new StructuredAgentSessionHoldRefusedError(resumed.refusal)
     }
   }
 

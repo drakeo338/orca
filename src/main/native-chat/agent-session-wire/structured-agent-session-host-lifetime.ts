@@ -169,7 +169,8 @@ export async function evictOwnedStructuredAgentSessions(
  *  resume and a send's ensure-owner step are the same serialized attach with a different asker. */
 export function createStructuredAgentSessionHolds(
   attachContext: () => StructuredAgentSessionAttachContext,
-  close: (sessionId: string) => Promise<void>
+  close: (sessionId: string) => Promise<void>,
+  restoreReadable: (sessionId: string) => Promise<boolean>
 ): StructuredAgentSessionHolds {
   const context = attachContext()
   return new StructuredAgentSessionHolds({
@@ -180,7 +181,8 @@ export function createStructuredAgentSessionHolds(
         callerKey: attachOptions?.admitRecoveryTicket
           ? 'trusted-local:provider-exit-recovery'
           : 'trusted-local:surface-hold',
-        ...(attachOptions ? { attachOptions } : {})
+        ...(attachOptions ? { attachOptions } : {}),
+        restoreReadable
       }),
     // Tracked from enqueue: a quit drains a queued resume before it evicts, so no child is
     // spawned behind the eviction and orphaned.
@@ -190,6 +192,10 @@ export function createStructuredAgentSessionHolds(
     },
     evict: close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),
+    lastStartFailed: (sessionId) => {
+      const session = context.sessions.get(sessionId)
+      return session?.hasProviderChild === false && session.providerChildPhase === 'starting'
+    },
     // A send pending while the child is still starting is held for that start; evicting would
     // refuse it. Any other pending send may wait on an echo that never comes, so eviction retires it.
     hasOwedWork: (sessionId) => {

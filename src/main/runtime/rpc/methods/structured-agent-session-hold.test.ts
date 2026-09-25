@@ -166,6 +166,34 @@ describe('a client that holds a session', () => {
     })
     expect(host.isHeld('session-missing')).toBe(false)
   })
+
+  it("answers a refused hold with the restart's own cause, not just its code", async () => {
+    await host.close(SESSION)
+    await host.restoreReadableSessions()
+    acquire.mockRejectedValueOnce(new Error('Claude Code is not signed in'))
+
+    const response = await call('agentSession.hold', { sessionId: SESSION, holderId: 'chat-1' })
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: 'agent_session_operation_invalid', message: 'Claude Code is not signed in' }
+    })
+    expect(host.isHeld(SESSION)).toBe(false)
+  })
+
+  it('does not restart a failed start for a chat that comes back into view', async () => {
+    await host.close(SESSION)
+    await host.restoreReadableSessions()
+    acquire.mockClear()
+    acquire.mockRejectedValueOnce(new Error('Claude Code is not signed in'))
+    await call('agentSession.hold', { sessionId: SESSION, holderId: 'chat-1' })
+
+    const remounted = await call('agentSession.hold', { sessionId: SESSION, holderId: 'chat-1' })
+
+    expect(remounted).toMatchObject({ ok: true })
+    expect(acquire).toHaveBeenCalledOnce()
+    expect(host.isHeld(SESSION)).toBe(true)
+  })
 })
 
 describe('a client that disappears without cleanup', () => {

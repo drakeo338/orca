@@ -5,7 +5,8 @@
 // exits under an open surface — never when the app launches. It runs inside the session's
 // serialize, with the attach it is given, so the eligibility it reads is the one the attach acts
 // on. A write-capable hold must fail when acquisition is refused so the surface never mistakes a
-// readable journal for a live provider child.
+// readable journal for a live provider child. A refusal that proves the chat cannot run is written
+// into the chat here, once per attempt, so the reason reaches the user whoever asked.
 
 import type {
   AgentSessionAttachResult,
@@ -20,6 +21,7 @@ import {
 } from './structured-agent-session-attach-orchestration'
 import { failedCreateRefusal } from './structured-agent-session-failed-create-refusal'
 import { adapterSupportsRecord } from './structured-agent-session-provider-support'
+import { recordFailedStructuredAgentSessionResume } from './structured-agent-session-resume-refusal'
 import {
   structuredAgentSessionResumeOperationId,
   structuredAgentSessionResumeParams
@@ -31,13 +33,37 @@ export type StructuredAgentSessionResumeOutcome =
   | { ok: true }
   | { ok: false; refusal: AgentSessionWireRefusal }
 
-export async function resumeHeldStructuredAgentSession(input: {
+type StructuredAgentSessionResumeInput = {
   sessionId: string
   context: StructuredAgentSessionAttachContext
   /** Who is asking; the attach keys the ledger row it settles by it. */
   callerKey: string
   attachOptions?: StructuredAgentSessionAttachOptions
-}): Promise<StructuredAgentSessionResumeOutcome> {
+  /** Makes the journal readable for the failure row when the failed attach left none behind. */
+  restoreReadable: (sessionId: string) => Promise<boolean>
+}
+
+export async function resumeHeldStructuredAgentSession(
+  input: StructuredAgentSessionResumeInput
+): Promise<StructuredAgentSessionResumeOutcome> {
+  const operationId = structuredAgentSessionResumeOperationId(input.context.now())
+  const resumed = await attemptResume(input, operationId)
+  if (!resumed.ok) {
+    await recordFailedStructuredAgentSessionResume({
+      context: input.context,
+      restoreReadable: input.restoreReadable,
+      sessionId: input.sessionId,
+      operationId,
+      refusal: resumed.refusal
+    })
+  }
+  return resumed
+}
+
+async function attemptResume(
+  input: StructuredAgentSessionResumeInput,
+  operationId: string
+): Promise<StructuredAgentSessionResumeOutcome> {
   const { sessionId, context, callerKey } = input
   // The record is read only once this host has adjudicated it and exited any recovery stage a
   // failed attempt latched — a lease left in `manual-recovery` by an unproven exit is one the
@@ -57,10 +83,7 @@ export async function resumeHeldStructuredAgentSession(input: {
       'This execution host cannot resume the requested structured agent session.'
     )
   }
-  const params = structuredAgentSessionResumeParams(
-    record,
-    structuredAgentSessionResumeOperationId(context.now())
-  )
+  const params = structuredAgentSessionResumeParams(record, operationId)
   if (!params) {
     return record.lease.unreconciled
       ? refuse(

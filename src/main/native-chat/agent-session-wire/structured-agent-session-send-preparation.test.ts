@@ -429,13 +429,13 @@ describe('a send with no live owner', () => {
       refusal: { code: 'agent_session_owner_restart_failed' }
     })
 
-    // A client that resends the same id gets another attempt, and the chat no second row.
+    // A client that resends the same id gets another attempt, and each attempt its own row.
     await expect(host.send(CALLER, params)).resolves.toMatchObject({
       ok: false,
       refusal: { code: 'agent_session_owner_restart_failed' }
     })
     expect(acquire).toHaveBeenCalledTimes(2)
-    expect(journalStatuses()).toHaveLength(1)
+    expect(journalStatuses()).toHaveLength(2)
 
     // The outbox's Retry rotates the id: also a fresh attempt.
     await expect(host.send(CALLER, sendParams('while signed out'))).resolves.toMatchObject({

@@ -9,6 +9,7 @@
 // the hold is deliberate: re-registering an id runs the previous cleanup synchronously, so the
 // stale release lands before this hold rather than after it.
 
+import { StructuredAgentSessionHoldRefusedError } from '../../../native-chat/agent-session-wire/structured-agent-session-holds'
 import { defineMethod, type RpcContext } from '../core'
 import {
   ensureStructuredHostInstalled,
@@ -42,10 +43,15 @@ export const STRUCTURED_AGENT_SESSION_HOLD_METHODS = [
         ctx.connectionId
       )
       try {
-        await host.hold(params.sessionId, holderKey)
+        // A view respawning a start that failed would fail again on every mount; the chat says
+        // why, and the next send retries.
+        await host.hold(params.sessionId, holderKey, { resumeFailedStart: false })
       } catch (error) {
         registration.releaseIfCurrent()
-        throw error
+        // The code a client may branch on, and the refusal's own reason for it to show.
+        throw error instanceof StructuredAgentSessionHoldRefusedError
+          ? Object.assign(new Error(error.refusal.message), { code: error.refusal.code })
+          : error
       }
       return { held: true as const }
     }

@@ -86,7 +86,7 @@ describe('a provider that ends before it finished starting', () => {
       expect.objectContaining({
         mutations: [
           expect.objectContaining({
-            body: { kind: 'status', text: providerStartupFailureOutcome(REASON) }
+            body: { kind: 'status', text: providerStartupFailureOutcome(REASON), tone: 'error' }
           })
         ]
       })
@@ -113,7 +113,7 @@ describe('a provider that ends before it finished starting', () => {
       expect.objectContaining({
         mutations: [
           expect.objectContaining({
-            body: { kind: 'status', text: providerStartupFailureOutcome(REASON) }
+            body: { kind: 'status', text: providerStartupFailureOutcome(REASON), tone: 'error' }
           })
         ]
       })

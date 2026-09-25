@@ -114,8 +114,13 @@ it.each(['resume', 'continueAfterRestart'] as const)(
     expect(await host.restartResume.listFailures()).toMatchObject([
       { sessionId: SESSION, outcome: 'refused' }
     ])
-    // The fix depends on why it failed, which the dialog explains; "send a message" would not work.
+    // The failed resume says why; the restart says it did not ask the agent to continue. The fix
+    // depends on why it failed, which the dialog explains; "send a message" would not work.
     expect(statusNotes(host)).toEqual([
+      {
+        text: 'The provider stopped before it finished starting: provider could not reconnect.',
+        tone: 'error'
+      },
       { text: AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE, tone: 'error' }
     ])
   }

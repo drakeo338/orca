@@ -107,7 +107,12 @@ export function useMobileStructuredAgentState(args: {
       sessionId,
       holderId
     })
-    void held
+    // A refused hold still leaves the chat readable, and the host writes a real failure into it;
+    // a send restarts the agent itself.
+    const readable = held.catch((error: unknown) => {
+      console.warn('[structured-agent-session] hold failed:', error)
+    })
+    void readable
       .then(() => {
         if (cancelled) {
           return

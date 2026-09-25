@@ -26,10 +26,7 @@ import {
   evictHeldStructuredAgentSession,
   type StructuredAgentSessionLifetimeContext
 } from './structured-agent-session-host-lifetime'
-import type {
-  StructuredAgentSessionHolds,
-  StructuredAgentSessionHoldOptions
-} from './structured-agent-session-holds'
+import type { StructuredAgentSessionHolds } from './structured-agent-session-holds'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { listStructuredAgentSessionTabs } from './structured-agent-session-host-tabs'
 import {
@@ -121,7 +118,8 @@ export class StructuredAgentSessionHost {
     })
     this.holds = createStructuredAgentSessionHolds(
       () => this.attachContext(),
-      (sessionId) => this.close(sessionId)
+      (sessionId) => this.close(sessionId),
+      (sessionId) => this.restore.restoreReadableUnderSerialize(sessionId)
     )
     this.restore = createStructuredAgentSessionHostRestore(deps, this.sessions, () => this.now(), {
       reconcile: this.reconcileLeases,
@@ -166,11 +164,7 @@ export class StructuredAgentSessionHost {
 
   /** A surface bound to this session and wants it live. The FIRST hold on a session with no
    *  provider child is what resumes one; a retained hold (a subscription) only keeps it. */
-  hold = (
-    sessionId: string,
-    holderId: string,
-    options?: StructuredAgentSessionHoldOptions
-  ): Promise<void> => this.holds.hold(sessionId, holderId, options)
+  hold: StructuredAgentSessionHolds['hold'] = (...args) => this.holds.hold(...args)
 
   /** That surface is gone. The child outlives it by the idle window, and by any running turn. */
   release = (sessionId: string, holderId: string): void => this.holds.release(sessionId, holderId)
