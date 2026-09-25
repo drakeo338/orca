@@ -60,22 +60,71 @@ try {
   for (const name of ['a', 'b']) {
     const route = await createRoute(name)
     routes.push(route)
-    await adb('reverse', `tcp:${route.proxy.port}`, `tcp:${route.proxy.port}`)
+    await adb('reverse', '--no-rebind', `tcp:${route.proxy.port}`, `tcp:${route.proxy.port}`)
     reversed.push(route.proxy.port)
   }
   const [a, b] = routes
   assert(a && b)
-  async function start(route: typeof a) {
+  async function start(route: typeof a, stopped?: typeof a) {
+    const lifecycle = () => adb('logcat', '-d', '-v', 'brief', '-s', 'RouteProof:I', '*:S')
+    const previous = await lifecycle()
     await adb(
       'shell',
       'am',
       'start',
+      '-W',
       '-n',
       `${packageName}/.Route${route.route.toUpperCase()}`,
       '--ei',
       'proxyPort',
       String(route.proxy.port)
     )
+    const pid = await adb('shell', 'pidof', packageName + ':route_' + route.route)
+    assert.match(pid, /^\d+$/)
+    const resumed = `resume route=${route.route} pid=${pid}`
+    const stoppedPid = stopped
+      ? await adb('shell', 'pidof', packageName + ':route_' + stopped.route)
+      : undefined
+    const stop = `stop route=${stopped?.route} pid=${stoppedPid}`
+    const count = (text: string, message: string) =>
+      text.split('\n').filter((line) => line.endsWith(message)).length
+    await waitFor(
+      `${route.route} resumed${stopped ? `; ${stopped.route} stopped` : ''}`,
+      async () => {
+        const current = await lifecycle()
+        const activity = await adb('shell', 'dumpsys', 'activity', 'activities')
+        return (
+          count(current, resumed) > count(previous, resumed) &&
+          (!stopped || count(current, stop) > count(previous, stop)) &&
+          activity
+            .split('\n')
+            .some(
+              (line) =>
+                line.includes('ResumedActivity:') &&
+                line.includes(`${packageName}/.Route${route.route.toUpperCase()}`)
+            )
+        )
+      }
+    )
+  }
+  function retainedDocuments() {
+    for (const route of routes) {
+      const data = route.reports.map(({ body }) => JSON.parse(body))
+      assert.equal(data.filter((row) => row.kind === 'load').length, 1)
+      assert(
+        data.every((row) => row.page === data[0].page),
+        `${route.route} document changed`
+      )
+    }
+  }
+  async function switchTo(route: typeof a, stopped: typeof a) {
+    retainedDocuments()
+    await start(route, stopped)
+    const since = Date.now()
+    await waitFor(`retained documents after switching to ${route.route}`, () =>
+      routes.every((item) => item.reports.some(({ time }) => time > since))
+    )
+    retainedDocuments()
   }
   const has = (route: typeof a, kind: string, revision: number) =>
     route.reports.some(({ body }) => {
@@ -84,8 +133,9 @@ try {
     })
   await start(a)
   await waitFor('a loaded', () => has(a, 'load', 1))
-  await start(b)
+  await start(b, a)
   await waitFor('b loaded', () => has(b, 'load', 1))
+  retainedDocuments()
   const pidA = await adb('shell', 'pidof', packageName + ':route_a')
   const pidB = await adb('shell', 'pidof', packageName + ':route_b')
   assert.match(pidA, /^\d+$/)
@@ -107,11 +157,11 @@ try {
         ).length >= 3
     )
   )
-  await start(a)
+  await switchTo(a, b)
   await a.revision(3)
   await b.revision(3)
   await waitFor('both HMR after switching to a', () => has(a, 'hmr', 3) && has(b, 'hmr', 3))
-  await start(b)
+  await switchTo(b, a)
   await adb('shell', 'run-as', packageName, 'kill', '-9', pidA)
   await waitFor('a process exited', async () => {
     const output = await adb('shell', 'ps', '-A')

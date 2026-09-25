@@ -6,19 +6,34 @@ import { createServer } from 'vite'
 import { RemoteBrowserSocksServer } from '../../../src/main/browser/remote-browser-socks-server'
 
 export async function createRoute(route: string) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'orca-route-' + route)))
-  const reports: { time: number; body: string }[] = []
-  const targets: { host: string; port: number }[] = []
-  const revision = (value: number) =>
-    writeFile(join(root, 'revision.js'), `export const revision = ${value}\n`)
-  await revision(1)
-  await writeFile(
-    join(root, 'index.html'),
-    `<!doctype html><title>Route ${route}</title><script type="module" src="/main.js"></script>`
-  )
-  await writeFile(
-    join(root, 'main.js'),
-    `
+  const directory = await mkdtemp(join(tmpdir(), 'orca-route-' + route))
+  let server: Awaited<ReturnType<typeof createServer>> | undefined
+  let socks: RemoteBrowserSocksServer | undefined
+  async function close() {
+    try {
+      await socks?.close()
+    } finally {
+      try {
+        await server?.close()
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  }
+  try {
+    const root = await realpath(directory)
+    const reports: { time: number; body: string }[] = []
+    const targets: { host: string; port: number }[] = []
+    const revision = (value: number) =>
+      writeFile(join(root, 'revision.js'), `export const revision = ${value}\n`)
+    await revision(1)
+    await writeFile(
+      join(root, 'index.html'),
+      `<!doctype html><title>Route ${route}</title><script type="module" src="/main.js"></script>`
+    )
+    await writeFile(
+      join(root, 'main.js'),
+      `
 import { revision } from '/revision.js'
 const route = ${JSON.stringify(route)}
 const previous = localStorage.getItem('route')
@@ -40,59 +55,59 @@ if (import.meta.hot) import.meta.hot.accept('/revision.js', module => {
   report('hmr')
 })
 `
-  )
-  const server = await createServer({
-    configFile: false,
-    root,
-    logLevel: 'error',
-    server: { host: '127.0.0.1', port: 0, hmr: { clientPort: 5173 } },
-    plugins: [
-      {
-        name: 'route-reports',
-        configureServer(vite) {
-          vite.middlewares.use('/report', (request, response) => {
-            let body = ''
-            request.on('data', (chunk) => {
-              body += chunk
+    )
+    server = await createServer({
+      configFile: false,
+      root,
+      logLevel: 'error',
+      server: { host: '127.0.0.1', port: 0, hmr: { clientPort: 5173 } },
+      plugins: [
+        {
+          name: 'route-reports',
+          configureServer(vite) {
+            vite.middlewares.use('/report', (request, response) => {
+              let body = ''
+              request.on('data', (chunk) => {
+                body += chunk
+              })
+              request.on('end', () => {
+                reports.push({ time: Date.now(), body })
+                response.end('ok')
+              })
             })
-            request.on('end', () => {
-              reports.push({ time: Date.now(), body })
-              response.end('ok')
-            })
-          })
+          }
         }
-      }
-    ]
-  })
-  await server.listen()
-  const address = server.httpServer?.address()
-  if (!address || typeof address === 'string') {
-    throw new Error('Vite did not bind')
-  }
-  const socks = new RemoteBrowserSocksServer({
-    open: async (target) => {
-      targets.push(target)
-      if (target.host !== 'localhost' || target.port !== 5173) {
-        throw new Error('Unexpected target')
-      }
-      return new Promise((resolve, reject) => {
-        const socket = connect(address.port, '127.0.0.1')
-        socket.once('error', reject)
-        socket.once('connect', () => resolve(socket))
-      })
+      ]
+    })
+    await server.listen()
+    const address = server.httpServer?.address()
+    if (!address || typeof address === 'string') {
+      throw new Error('Vite did not bind')
     }
-  })
-  const proxy = await socks.listen()
-  return {
-    route,
-    reports,
-    targets,
-    proxy,
-    revision,
-    async close() {
-      await socks.close()
-      await server.close()
-      await rm(root, { recursive: true, force: true })
+    socks = new RemoteBrowserSocksServer({
+      open: async (target) => {
+        targets.push(target)
+        if (target.host !== 'localhost' || target.port !== 5173) {
+          throw new Error('Unexpected target')
+        }
+        return new Promise((resolve, reject) => {
+          const socket = connect(address.port, '127.0.0.1')
+          socket.once('error', reject)
+          socket.once('connect', () => resolve(socket))
+        })
+      }
+    })
+    const proxy = await socks.listen()
+    return {
+      route,
+      reports,
+      targets,
+      proxy,
+      revision,
+      close
     }
+  } catch (error) {
+    await close()
+    throw error
   }
 }

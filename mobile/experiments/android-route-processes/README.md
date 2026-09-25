@@ -173,3 +173,41 @@ temporary fixture directories were deleted. The dedicated emulator process exite
 with code 0 after `adb -s emulator-5640 emu kill`; `avdmanager delete avd` removed
 only the newly created `OrcaRouteProof` AVD. Build outputs remain ignored for review
 and reruns; temporary build/emulator logs remain under `/tmp`.
+
+## Review corrections and counterexamples
+
+The harness now waits for Android's resumed Activity and fresh PID-qualified
+resume/stop lifecycle messages on each switch. It checks single-load document
+identity before and after return switches, including fresh page reports, before
+editing HMR modules or killing A. `am start -W` waits for initial process launch.
+Reverse mappings use `--no-rebind`; only successful acquisitions enter cleanup.
+Route construction also unwinds partial setup and attempts every cleanup step.
+
+[review-evidence.json](./review-evidence.json) records the corrected harness run on
+another new dedicated headless API 36 emulator (`OrcaProofFix`, emulator-5682).
+It retains reports, events, current-run lifecycle lines and cleanup receipts;
+older logcat entries and unrelated process/memory dumps are omitted.
+
+- Normal native proof: passed, A PID 6951, B PID 7079, recovered A PID 7303.
+- Reviewer's no-op third/fourth-start fixture: exit 1 at `a resumed; b stopped`,
+  before revision 3 or process death. Background HMR no longer proves switching.
+- Collision before the first acquisition: refused; `tcp:64264 -> tcp:9` survived.
+- Collision before the second acquisition: refused; `tcp:64306 -> tcp:9` survived,
+  while the acquired first mapping on 64301 was removed. The fixture owner then
+  removed its injected mappings. The collision wrapper recognizes `--no-rebind`
+  but forwards it unchanged to adb.
+- Injected SOCKS setup rejection after Vite started: fixture directory removed and
+  probe exited naturally without a live Vite listener.
+
+An additional fourth-start-only no-op probe was **inconclusive**: three attempts
+rejected a second B document load before reaching that injection. This is retained
+as an unexplained fixture/native observation, not a switch counterexample or a
+host timeout, and no acceptance assertion was relaxed. Independent follow-up
+review should investigate it. Raw runs and wrappers remain in
+`/tmp/orca-proof-fix`, including the exploratory launch/parser failures corrected
+before the final normal run. The 30-second environment timeout is unchanged.
+
+Native build, focused TypeScript/oxlint/formatting, changed-code quality and diff
+checks passed. Package and reverse-map queries were empty after cleanup; the
+headless emulator exited 0 and its dedicated AVD was deleted. No PR was opened;
+independent follow-up review remains required.
