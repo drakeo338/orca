@@ -1,15 +1,19 @@
 // A Claude session's frames, through the real adapter, into the host's child records: the order
 // the host receives them in, and whether the parent row the records imply is today's row.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { foldAgentLeadStatus } from '../../shared/agent-lead-status-fold'
 import { createAgentChildWorkAdmission } from '../../shared/agent-status-child-work-admission'
 import type { AgentChildWorkRecord } from '../../shared/agent-status-child-work'
 import type { AgentChildWorkEvidence } from '../../shared/agent-status-child-work-evidence'
 import { agentChildWorkLiveness } from '../../shared/agent-status-child-work-liveness'
-import { reconcileAgentChildWorkEvidence } from '../../shared/agent-status-child-work-reconciliation'
+import {
+  reconcileAgentChildWorkEvidence,
+  type AgentChildWorkReconcileOutcome
+} from '../../shared/agent-status-child-work-reconciliation'
 import { createAgentStatusStore } from '../../shared/agent-status-store'
 import { makeStructuredAgentStatusSubject } from '../../shared/agent-status-subject'
+import { AgentHookServer } from '../agent-hooks/server'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
 import {
@@ -17,6 +21,10 @@ import {
   identityFor,
   PROVIDER_SESSION_ID
 } from './claude-structured-session-test-support'
+
+vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
+vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: vi.fn(() => ({})) }))
+afterEach(() => vi.restoreAllMocks())
 
 const parent = makeStructuredAgentStatusSubject(
   {
@@ -64,7 +72,8 @@ function toolResult(
 
 type Delivery = { kind: 'journal' | 'legacy' | 'evidence'; detail: string }
 
-async function producer() {
+/** With `host`, evidence goes through the host's own ingest instead of straight to reconciliation. */
+async function producer(host?: AgentHookServer) {
   const claude = fakeClaude()
   const store = createAgentStatusStore({ epoch: 'epoch-1', mode: 'authority' })
   expect(store.applyMutation({ parent: { subject: parent } })).not.toBeNull()
@@ -78,6 +87,7 @@ async function producer() {
   /** The producer linkage the journal stamped on each child row. */
   const stamps: { providerParentRef?: string; attempt?: number }[] = []
   const evidenceLog: AgentChildWorkEvidence[][] = []
+  const ingested: (AgentChildWorkReconcileOutcome | null)[] = []
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: 'claude',
@@ -99,7 +109,11 @@ async function producer() {
       expect(sessionId).toBe('session-1')
       deliveries.push({ kind: 'evidence', detail: evidence.map((edge) => edge.type).join(',') })
       evidenceLog.push(evidence)
-      reconcileAgentChildWorkEvidence({ store, admission, parent, provider: 'claude', evidence })
+      if (host) {
+        ingested.push(host.ingestStructuredChildWork(parent, evidence, 'claude'))
+      } else {
+        reconcileAgentChildWorkEvidence({ store, admission, parent, provider: 'claude', evidence })
+      }
     }
   })
   const journal: StructuredAgentSessionEventSink = {
@@ -123,10 +137,11 @@ async function producer() {
     claude.connections[0]!.handlers.onMessage?.(message)
     return deliveries.slice(from)
   }
-  const records = (): AgentChildWorkRecord[] => store.getChildren(parent)
+  const records = (): AgentChildWorkRecord[] =>
+    host ? host.getStructuredChildWork(parent) : store.getChildren(parent)
   const byDescription = (description: string) =>
     records().find((record) => record.description === description)
-  return { adapter, store, send, records, byDescription, evidenceLog, stamps }
+  return { adapter, store, send, records, byDescription, evidenceLog, stamps, ingested }
 }
 
 describe('Claude structured child-work producer', () => {
@@ -381,6 +396,85 @@ describe('Claude structured child-work producer', () => {
       lastMessage: 'Could not reproduce',
       invocation: { invocationId: 'toolu_2', generation: 2 },
       previousInvocations: [expect.objectContaining({ outcome: 'succeeded' })]
+    })
+  })
+
+  describe('a second ending for a settled child', () => {
+    async function settledForegroundChild() {
+      const host = new AgentHookServer()
+      host.ingestStructuredStatus(
+        {
+          sessionId: parent.sessionId,
+          workspaceId: parent.workspaceId,
+          agent: 'claude',
+          status: 'working',
+          hostExecutionOwned: true,
+          latestPrompt: 'find the flaky tests',
+          updatedAt: 100
+        },
+        parent
+      )
+      const warn = vi.spyOn(console, 'warn')
+      const error = vi.spyOn(console, 'error')
+      const run = await producer(host)
+      run.send(toolUse('toolu_fg', 'Agent', { description: 'Find flaky tests' }))
+      run.send(
+        system('task_started', {
+          task_id: 'agent-fg',
+          tool_use_id: 'toolu_fg',
+          task_type: 'local_agent',
+          description: 'Find flaky tests',
+          is_backgrounded: false
+        })
+      )
+      run.send(toolResult('toolu_fg', 'Two tests flake on CI'))
+      expect(run.byDescription('Find flaky tests')).toMatchObject({
+        membership: 'settled',
+        outcome: 'succeeded',
+        lastMessage: 'Two tests flake on CI'
+      })
+      return { ...run, warn, error }
+    }
+
+    it('keeps a definite outcome through an unclassified ending and lands its evidence', async () => {
+      const { send, byDescription } = await settledForegroundChild()
+      // A notification with no status the host can classify still carries the final summary.
+      send(
+        system('task_notification', {
+          task_id: 'agent-fg',
+          summary: 'Two tests flake on CI; both time out on the shared runner',
+          usage: { total_tokens: 1_500 }
+        })
+      )
+      expect(byDescription('Find flaky tests')).toMatchObject({
+        membership: 'settled',
+        outcome: 'succeeded',
+        lastMessage: 'Two tests flake on CI; both time out on the shared runner',
+        totalTokens: 1_500
+      })
+    })
+
+    it('keeps the first definite outcome over a conflicting one, and reports no fault', async () => {
+      const { send, byDescription, ingested, warn, error } = await settledForegroundChild()
+      send(
+        system('task_notification', {
+          task_id: 'agent-fg',
+          status: 'failed',
+          summary: 'Crashed after returning'
+        })
+      )
+      expect(byDescription('Find flaky tests')).toMatchObject({
+        membership: 'settled',
+        outcome: 'succeeded',
+        lastMessage: 'Two tests flake on CI'
+      })
+      // Admission refuses it; the host counts that refusal as the fence doing its job.
+      expect(ingested.at(-1)).toMatchObject({
+        settled: 0,
+        rejected: [{ handleId: 'agent-fg', reason: 'stale-invocation' }]
+      })
+      expect(warn).not.toHaveBeenCalled()
+      expect(error).not.toHaveBeenCalled()
     })
   })
 })

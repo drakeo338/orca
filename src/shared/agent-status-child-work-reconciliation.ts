@@ -52,11 +52,8 @@ function applyEnded(ctx: ReconcileContext, edge: AgentChildWorkEndedEvidence): v
   if (agentChildWorkRunVerdict(ctx, existing, edge.handle.runId) !== 'current') {
     return
   }
-  // A reported ending latches. An `unknown` one (an inventory omitted the child before its own
-  // terminal frame arrived) learns the outcome that frame reports.
-  if (existing.membership === 'settled' && existing.outcome !== 'unknown') {
-    return
-  }
+  // Admission owns what a second ending may change: an `unknown` one keeps a definite outcome and
+  // lands its evidence; a conflicting definite one is refused as `stale-invocation`.
   settleAgentChildWork(ctx, existing, edge.outcome, edge.observedAt, {
     ...(edge.lastMessage !== undefined ? { lastMessage: edge.lastMessage } : {}),
     ...(edge.totalTokens !== undefined ? { totalTokens: edge.totalTokens } : {})
