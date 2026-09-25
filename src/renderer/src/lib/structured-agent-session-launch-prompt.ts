@@ -13,6 +13,7 @@ import {
   type StructuredAgentSessionLaunchPromptMutation
 } from '@/components/native-chat/structured-agent-session-outbox-storage'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { whenStructuredAgentSessionOptionPicksSettled } from './structured-agent-session-held-option-picks'
 
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
@@ -154,6 +155,8 @@ export function settleStructuredAgentLaunchPrompt(args: {
       return { delivered: false, failureNotified: true }
     }
     const entry = args.stagedEntry
+    // A model or effort picked while the chat launched is shown for this turn, so it lands first.
+    await whenStructuredAgentSessionOptionPicksSettled(entry.sessionId)
     const dispatch = shareStructuredAgentLaunchPromptDispatch(
       entry.sessionId,
       entry.clientMessageId,

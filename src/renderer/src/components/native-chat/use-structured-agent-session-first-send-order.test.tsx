@@ -31,6 +31,7 @@ vi.mock('./native-chat-session-option-settings-write', () => ({
 }))
 
 import { useStructuredAgentSession } from './use-structured-agent-session'
+import { whenStructuredAgentSessionOptionPicksSettled } from '@/lib/structured-agent-session-held-option-picks'
 
 const LOCAL_TARGET = { kind: 'local' } as const
 
@@ -38,7 +39,14 @@ const HOST_CATALOG = {
   origin: 'live-session',
   models: [
     { id: 'gpt-default', label: 'GPT Default', isDefault: true, efforts: [] },
-    { id: 'gpt-picked', label: 'GPT Picked', efforts: [] }
+    {
+      id: 'gpt-picked',
+      label: 'GPT Picked',
+      efforts: [
+        { value: 'low', label: 'Low' },
+        { value: 'high', label: 'High' }
+      ]
+    }
   ],
   fetchedAt: 1
 }
@@ -114,5 +122,62 @@ describe('a pick and a first message made while the chat launches', () => {
     rerender({ transportEnabled: true })
     await waitFor(() => expect(mutationMethods()).toHaveLength(2))
     expect(mutationMethods()).toEqual(['agentSession.setOption', 'agentSession.send'])
+  })
+
+  it('sends the first message only after every held pick has settled', async () => {
+    const settle: (() => void)[] = []
+    const defaultCall = mocks.call.getMockImplementation()
+    mocks.call.mockImplementation((target, method, params) =>
+      method === 'agentSession.setOption'
+        ? new Promise((resolve) => {
+            settle.push(() => resolve({ ok: true, value: {} }))
+          })
+        : defaultCall!(target, method, params)
+    )
+    readState = sessionState(null)
+    const { result, rerender } = renderHook(
+      ({ transportEnabled }: { transportEnabled: boolean }) =>
+        useStructuredAgentSession({
+          sessionId: 'session-1',
+          target: LOCAL_TARGET,
+          agent: 'codex',
+          isVisible: true,
+          transportEnabled,
+          launching: true
+        }),
+      { initialProps: { transportEnabled: false } }
+    )
+    await waitFor(() => expect(mocks.call).toHaveBeenCalled())
+    await act(async () => {
+      expect(await result.current.setStructuredOption('model', 'gpt-picked')).toBe(true)
+    })
+    await act(async () => {
+      expect(await result.current.setStructuredOption('effort', 'high')).toBe(true)
+    })
+    act(() => {
+      expect(result.current.send('first message')).toBe(true)
+    })
+    // A launch prompt sends outside this outbox; it waits on the same held picks.
+    let launchPromptReleased = false
+    void whenStructuredAgentSessionOptionPicksSettled('session-1').then(() => {
+      launchPromptReleased = true
+    })
+
+    readState = sessionState(3)
+    rerender({ transportEnabled: true })
+    await waitFor(() => expect(settle).toHaveLength(1))
+    // Held picks flush one at a time; the queued message must not slip in between them.
+    await act(async () => settle[0]!())
+    await waitFor(() => expect(settle).toHaveLength(2))
+    expect(mutationMethods()).toEqual(['agentSession.setOption', 'agentSession.setOption'])
+    expect(launchPromptReleased).toBe(false)
+    await act(async () => settle[1]!())
+    await waitFor(() => expect(mutationMethods()).toHaveLength(3))
+    expect(launchPromptReleased).toBe(true)
+    expect(mutationMethods()).toEqual([
+      'agentSession.setOption',
+      'agentSession.setOption',
+      'agentSession.send'
+    ])
   })
 })

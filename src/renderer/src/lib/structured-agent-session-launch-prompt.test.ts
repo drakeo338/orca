@@ -10,11 +10,16 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 }))
 
 import { settleStructuredAgentLaunchPrompt } from './structured-agent-session-launch-prompt'
+import {
+  resetStructuredAgentSessionOptionPicksHeldForTests,
+  setStructuredAgentSessionOptionPicksHeld
+} from './structured-agent-session-held-option-picks'
 
 describe('settleStructuredAgentLaunchPrompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetStructuredAgentSessionOptionPicksHeldForTests()
     vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(
       '11111111-1111-4111-8111-111111111111'
     )
@@ -56,5 +61,27 @@ describe('settleStructuredAgentLaunchPrompt', () => {
       state: string
     }[]
     expect(persisted).toMatchObject([{ state: 'dispatching' }])
+  })
+
+  it('holds the launch prompt until a pick made while the chat launched has settled', async () => {
+    const stagedEntry = enqueueStructuredAgentSessionLaunchPrompt('session-1', 'review this')
+    mocks.call.mockResolvedValue({ ok: false, refusal: { code: 'x', message: 'x' } })
+    setStructuredAgentSessionOptionPicksHeld('session-1', true)
+
+    const settled = settleStructuredAgentLaunchPrompt({
+      launchResult: Promise.resolve({ sessionId: 'session-1', fence: 1 }),
+      options: { prompt: 'review this' },
+      stagedEntry
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(mocks.call).not.toHaveBeenCalled()
+
+    setStructuredAgentSessionOptionPicksHeld('session-1', false)
+    await settled
+    expect(mocks.call).toHaveBeenCalledWith(
+      { kind: 'local' },
+      'agentSession.send',
+      expect.anything()
+    )
   })
 })

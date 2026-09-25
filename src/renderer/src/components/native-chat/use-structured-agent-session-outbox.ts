@@ -33,8 +33,10 @@ export function useStructuredAgentSessionOutbox(args: {
   target: RuntimeClientTarget
   fence: number | null
   submissions: readonly AgentJournalSubmission[]
+  /** An option pick made before this send and not yet settled by the host goes first. */
+  holdingOptionPicks?: boolean
 }) {
-  const { fence, sessionId, submissions, target } = args
+  const { fence, holdingOptionPicks = false, sessionId, submissions, target } = args
   const targetKey = target.kind === 'local' ? 'local' : `environment:${target.environmentId}`
   const [outbox, setOutbox] = useState<StructuredAgentSessionOutboxEntry[]>(() =>
     readMountedStructuredAgentSessionOutbox(sessionId, fence, readOutbox)
@@ -179,7 +181,12 @@ export function useStructuredAgentSessionOutbox(args: {
       return
     }
     const admission = admitStructuredAgentSessionOutboxEntry(outbox, blockedIdRef.current)
-    if (admission.state !== 'dispatch' || fence === null || inFlightIdRef.current !== null) {
+    if (
+      admission.state !== 'dispatch' ||
+      fence === null ||
+      holdingOptionPicks ||
+      inFlightIdRef.current !== null
+    ) {
       return
     }
     const next = admission.entry
@@ -215,7 +222,7 @@ export function useStructuredAgentSessionOutbox(args: {
       // local state, so mirror the settled state once the shared admission finishes.
       void dispatch.promise.then(mirrorPersisted)
     }
-  }, [applyDisposition, fence, outbox, sessionId, target])
+  }, [applyDisposition, fence, holdingOptionPicks, outbox, sessionId, target])
 
   // A transport-side unknown may never have reached the host, and nothing else
   // moves it out of `unconfirmed`, so one wedges the whole FIFO queue. Re-issuing

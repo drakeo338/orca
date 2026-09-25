@@ -229,8 +229,9 @@ export function useStructuredAgentSessionOptions(args: {
     [agent, launchSeedOptions, mutate, optionCatalog, sessionId, target, updateOptionState]
   )
   // Until the launch publishes and a fence attaches, a pick has nowhere to go.
-  const { held, currentHeld, hold } = useHeldStructuredOptionPicks({
+  const { held, holding, currentHeld, hold } = useHeldStructuredOptionPicks({
     identity,
+    sessionId,
     deliverable: transportEnabled && fence !== null,
     pending: optionState.pendingId !== null,
     send: sendStructuredOption
@@ -308,6 +309,8 @@ export function useStructuredAgentSessionOptions(args: {
     contextUsage: support?.contextUsage,
     optionSnapshot,
     optionSurface,
-    setStructuredOption
+    setStructuredOption,
+    /** A pick the host has not settled yet; the first turn must not overtake it. */
+    holdingOptionPicks: holding
   }
 }

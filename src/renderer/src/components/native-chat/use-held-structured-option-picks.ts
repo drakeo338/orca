@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { STRUCTURED_LAUNCH_SEED_OPTION_IDS } from '../../../../shared/native-chat-session-option-defaults'
+import { setStructuredAgentSessionOptionPicksHeld } from '@/lib/structured-agent-session-held-option-picks'
 
 export type StructuredOptionSendOutcome = 'accepted' | 'refused' | 'superseded'
 
@@ -16,14 +17,16 @@ function heldFor(picks: HeldPicks, identity: string): Readonly<Record<string, st
  * fence is attached yet), as encoded values keyed by option id. They send nothing
  * until `deliverable`, then flush one key at a time through `send`; only the
  * host's acceptance persists a pick. Memory only, so a closed tab drops them.
+ * While any is held, no send of this session may go out ahead of it.
  */
 export function useHeldStructuredOptionPicks(args: {
   identity: string
+  sessionId: string
   deliverable: boolean
   pending: boolean
   send: (id: string, encoded: string) => Promise<StructuredOptionSendOutcome>
 }) {
-  const { deliverable, identity, pending, send } = args
+  const { deliverable, identity, pending, send, sessionId } = args
   const [picks, setPicks] = useState<HeldPicks>(() => ({ identity, values: NO_HELD_PICKS }))
   const picksRef = useRef(picks)
   const updatePicks = useCallback(
@@ -38,6 +41,11 @@ export function useHeldStructuredOptionPicks(args: {
     []
   )
   const held = heldFor(picks, identity)
+  const holding = Object.keys(held).length > 0
+  useEffect(() => {
+    setStructuredAgentSessionOptionPicksHeld(sessionId, holding)
+    return () => setStructuredAgentSessionOptionPicksHeld(sessionId, false)
+  }, [holding, sessionId])
   const currentHeld = useCallback(() => heldFor(picksRef.current, identity), [identity])
   const hold = useCallback(
     (id: string, encoded: string) =>
@@ -78,5 +86,5 @@ export function useHeldStructuredOptionPicks(args: {
     })
   }, [deliverable, held, identity, pending, resendAttempt, send, updatePicks])
 
-  return { held, currentHeld, hold }
+  return { held, holding, currentHeld, hold }
 }

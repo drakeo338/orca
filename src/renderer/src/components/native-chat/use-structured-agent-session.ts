@@ -68,6 +68,7 @@ export function useStructuredAgentSession(args: {
     optionSnapshot,
     optionSurface,
     setStructuredOption,
+    holdingOptionPicks,
     threadGoal: threadGoalSupport,
     contextUsage: contextUsageSupport
   } = useStructuredAgentSessionOptions({
@@ -88,7 +89,8 @@ export function useStructuredAgentSession(args: {
     sessionId,
     target,
     fence: transportState.fence,
-    submissions: transportState.submissions
+    submissions: transportState.submissions,
+    holdingOptionPicks
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
