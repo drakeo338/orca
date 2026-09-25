@@ -99,7 +99,7 @@ export function useMobileStructuredAgentSession(args: {
   useEffect(() => () => operationIdsRef.current.clear(), [])
   const stateArgs = { client, sessionId, sessionKey, enabled, connected }
   const { state, stateRef, loadingOlder, loadEarlier } = useMobileStructuredAgentState(stateArgs)
-  useMobileStructuredSendOperationReconciliation(state.submissions)
+  const awaitSend = useMobileStructuredSendOperationReconciliation(state.submissions, onSendError)
 
   const mutate = useCallback(
     async <TValue>(
@@ -219,11 +219,13 @@ export function useMobileStructuredAgentSession(args: {
         text,
         attachments: sendAttachments,
         deadline,
-        onError: onSendError
+        onError: onSendError,
+        onAwaitingSettlement: awaitSend
       })
     },
     [
       agent,
+      awaitSend,
       callerIdentity,
       client,
       conversationCommands,
@@ -233,7 +235,8 @@ export function useMobileStructuredAgentSession(args: {
       optionSnapshot,
       sessionId,
       sessionKey,
-      setStructuredOption
+      setStructuredOption,
+      stateRef
     ]
   )
   const { groupedDraft, respondPermission, respondQuestion } = useMobileStructuredPromptResponses({

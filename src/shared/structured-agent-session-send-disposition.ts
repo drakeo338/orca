@@ -7,13 +7,16 @@
 // the refs, the React state and the storage write, and nothing else decides an
 // entry's state.
 
+import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
 import {
+  DISPATCH_REJECTED_CANCELLED,
   dispatchRejectionReasonIsInternal,
   dispatchRejectionWasTransportWriteFailure
 } from './structured-agent-session-dispatch-rejection'
 import {
   classifyStructuredAgentSessionSendFailure,
+  reconcileStructuredAgentSessionOutbox,
   requeueStructuredAgentSessionSendRefusal,
   type StructuredAgentSessionOutboxEntry
 } from './structured-agent-session-outbox'
@@ -103,6 +106,144 @@ export function structuredAgentSessionRejectionNotice(reason: string | null): st
     : reason
 }
 
+/** The message provably did not happen: it parks with its reason, and Retry sends it under a new id. */
+function rejectedSubmissionDisposition(
+  entries: StructuredAgentSessionOutboxEntry[],
+  clientMessageId: string,
+  reason: string | null
+): StructuredAgentSessionSendDisposition {
+  return {
+    entries,
+    error: structuredAgentSessionRejectionNotice(reason),
+    blockedClientMessageId: clientMessageId,
+    retryWithFreshClientMessageId: clientMessageId
+  }
+}
+
+/** A rejection the user is told about; a cancel is their own withdrawal and drops silently. */
+function reportsRejection(submission: AgentJournalSubmission): boolean {
+  return (
+    submission.dispatchState === 'rejected' && submission.reason !== DISPATCH_REJECTED_CANCELLED
+  )
+}
+
+/**
+ * The journal rejected a send after its dispatch answered `pending`, or while the pane was away.
+ * That is the same fact as a rejected send result, so it gets the same disposition. Every such
+ * entry is requeued so none is skipped as in flight, and the queue stops on the first. Null while
+ * another answer already holds the queue, or when nothing was rejected.
+ */
+export function disposeStructuredAgentSessionLateRejection(input: {
+  entries: readonly StructuredAgentSessionOutboxEntry[]
+  submissions: readonly AgentJournalSubmission[]
+  blockedClientMessageId: string | null
+}): StructuredAgentSessionSendDisposition | null {
+  if (input.blockedClientMessageId !== null) {
+    return null
+  }
+  const rejected = new Map(
+    input.submissions
+      .filter(reportsRejection)
+      .map((submission) => [submission.clientMessageId, submission.reason])
+  )
+  const head = input.entries.find((entry) => rejected.has(entry.clientMessageId))
+  if (!head) {
+    return null
+  }
+  const entries = input.entries.map((entry) =>
+    rejected.has(entry.clientMessageId) && entry.state !== 'queued'
+      ? { ...entry, state: 'queued' as const }
+      : entry
+  )
+  return rejectedSubmissionDisposition(
+    entries,
+    head.clientMessageId,
+    rejected.get(head.clientMessageId) ?? null
+  )
+}
+
+/** What one journal update does to the outbox; the hook applies it and owns the refs and storage. */
+export type StructuredAgentSessionJournalFold = {
+  entries: StructuredAgentSessionOutboxEntry[]
+  /** The journal answered the send in flight, so its promise must not apply. */
+  answeredInFlight: boolean
+  /** The host now owns the blocked or an unconfirmed entry, so the banner no longer applies. */
+  clearsError: boolean
+  /** Always the next value, never "unchanged". */
+  blockedClientMessageId: string | null
+  /** Applied last: it names the new blocked entry, its error and the id Retry rotates. */
+  lateRejection: StructuredAgentSessionSendDisposition | null
+}
+
+export function foldStructuredAgentSessionJournal(input: {
+  entries: readonly StructuredAgentSessionOutboxEntry[]
+  submissions: readonly AgentJournalSubmission[]
+  blockedClientMessageId: string | null
+  inFlightClientMessageId: string | null
+}): StructuredAgentSessionJournalFold {
+  const hostOwns = new Set(
+    input.submissions
+      .filter(
+        (submission) =>
+          submission.dispatchState === 'pending' || submission.dispatchState === 'accepted'
+      )
+      .map((submission) => submission.clientMessageId)
+  )
+  const unblocks =
+    input.blockedClientMessageId !== null && hostOwns.has(input.blockedClientMessageId)
+  const blockedClientMessageId = unblocks ? null : input.blockedClientMessageId
+  const reconciled = reconcileStructuredAgentSessionOutbox(input.entries, input.submissions)
+  const lateRejection = disposeStructuredAgentSessionLateRejection({
+    entries: reconciled,
+    submissions: input.submissions,
+    blockedClientMessageId
+  })
+  const entries = lateRejection?.entries ?? reconciled
+  const inFlight = input.inFlightClientMessageId
+  return {
+    entries,
+    // A late rejection that requeued the entry in flight answered it too.
+    answeredInFlight:
+      inFlight !== null &&
+      (hostOwns.has(inFlight) ||
+        entries.some(
+          (entry, index) => entry.clientMessageId === inFlight && entry !== reconciled[index]
+        )),
+    clearsError:
+      unblocks ||
+      input.entries.some(
+        (entry) => entry.state === 'unconfirmed' && hostOwns.has(entry.clientMessageId)
+      ),
+    blockedClientMessageId,
+    lateRejection
+  }
+}
+
+/**
+ * For a client with no outbox: which awaited sends the journal has settled, and the notice for each
+ * one it rejected, so a late rejection reads exactly like an immediate one.
+ */
+export function settleAwaitedStructuredAgentSessionSends(
+  awaited: ReadonlySet<string>,
+  submissions: readonly AgentJournalSubmission[]
+): { settled: string[]; notices: string[] } {
+  const settled: string[] = []
+  const notices: string[] = []
+  for (const submission of submissions) {
+    if (
+      !awaited.has(submission.clientMessageId) ||
+      (submission.dispatchState !== 'accepted' && submission.dispatchState !== 'rejected')
+    ) {
+      continue
+    }
+    settled.push(submission.clientMessageId)
+    if (reportsRejection(submission)) {
+      notices.push(structuredAgentSessionRejectionNotice(submission.reason))
+    }
+  }
+  return { settled, notices }
+}
+
 export function disposeStructuredAgentSessionSendResult(
   input: SendDispositionInput & {
     result: AgentSessionMutationResult<AgentSessionSendResult>
@@ -151,12 +292,11 @@ export function disposeStructuredAgentSessionSendResult(
     }
   }
   if (submission.dispatchState === 'rejected') {
-    return {
-      entries: replaceEntryState(input, 'queued'),
-      error: structuredAgentSessionRejectionNotice(submission.reason),
-      blockedClientMessageId: input.entry.clientMessageId,
-      retryWithFreshClientMessageId: input.entry.clientMessageId
-    }
+    return rejectedSubmissionDisposition(
+      replaceEntryState(input, 'queued'),
+      input.entry.clientMessageId,
+      submission.reason
+    )
   }
   if (submission.dispatchState === 'unknown' && submission.recovered) {
     return {

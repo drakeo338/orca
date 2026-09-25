@@ -4,10 +4,12 @@ import { createStructuredAgentSessionOperationId } from '../../../../shared/stru
 import {
   admitStructuredAgentSessionOutboxEntry,
   createStructuredAgentSessionOutboxEntry,
-  reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import type { StructuredAgentSessionSendDisposition } from '../../../../shared/structured-agent-session-send-disposition'
+import {
+  foldStructuredAgentSessionJournal,
+  type StructuredAgentSessionSendDisposition
+} from '../../../../shared/structured-agent-session-send-disposition'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
 import {
@@ -93,18 +95,15 @@ export function useStructuredAgentSessionOutbox(args: {
 
   useEffect(() => {
     const current = outboxRef.current
-    const hostOwns = new Set(
-      submissions
-        .filter(
-          (submission) =>
-            submission.dispatchState === 'pending' || submission.dispatchState === 'accepted'
-        )
-        .map((submission) => submission.clientMessageId)
-    )
-    const next = reconcileStructuredAgentSessionOutbox(current, submissions)
-    const admittedInFlight = inFlightIdRef.current !== null && hostOwns.has(inFlightIdRef.current)
+    const fold = foldStructuredAgentSessionJournal({
+      entries: current,
+      submissions,
+      blockedClientMessageId: blockedIdRef.current,
+      inFlightClientMessageId: inFlightIdRef.current
+    })
+    const next = fold.entries
     if (
-      admittedInFlight ||
+      fold.answeredInFlight ||
       next.some((entry, index) => entry !== current[index]) ||
       next.length !== current.length
     ) {
@@ -113,20 +112,21 @@ export function useStructuredAgentSessionOutbox(args: {
       writeOutbox(sessionId, next)
     }
     // Keyed on the entry actually in flight, which is no longer always the head: the journal
-    // owning it outranks a send promise that has not settled, so release single-flight and make
+    // answering it outranks a send promise that has not settled, so release single-flight and make
     // that promise a no-op. Keying on the head would discard the tail's unsettled send instead,
     // and with it a refusal only that send can report.
-    if (admittedInFlight) {
+    if (fold.answeredInFlight) {
       dispatchGenerationRef.current += 1
       inFlightIdRef.current = null
     }
-    if (blockedIdRef.current !== null && hostOwns.has(blockedIdRef.current)) {
-      blockedIdRef.current = null
+    blockedIdRef.current = fold.blockedClientMessageId
+    if (fold.clearsError) {
       setError(null)
-    } else if (
-      current.some((entry) => entry.state === 'unconfirmed' && hostOwns.has(entry.clientMessageId))
-    ) {
-      setError(null)
+    }
+    if (fold.lateRejection) {
+      blockedIdRef.current = fold.lateRejection.blockedClientMessageId
+      retryWithFreshClientMessageIdRef.current = fold.lateRejection.retryWithFreshClientMessageId
+      setError(fold.lateRejection.error)
     }
   }, [sessionId, submissions])
 

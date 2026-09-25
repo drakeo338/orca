@@ -31,6 +31,8 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   attachments: readonly (StructuredAgentSessionAttachment & { contentFingerprint?: string })[]
   deadline?: number
   onError: (message: string) => void
+  /** The host answered `pending`; its settlement arrives on the stream, keyed by this id. */
+  onAwaitingSettlement?: (clientMessageId: string) => void
 }): Promise<MobileNativeChatSendOutcome> {
   const timeoutMs = timeoutForDeadline(input.deadline)
   if (timeoutMs === null) {
@@ -100,6 +102,9 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     timeoutMs
   })
   const delivery = mobileStructuredSendDelivery(result, operation.retained)
+  if (result.status === 'accepted' && result.value.submission?.dispatchState === 'pending') {
+    input.onAwaitingSettlement?.(operation.operationId)
+  }
   if (delivery.operationIdSpent) {
     try {
       await clearMobileStructuredSendOperation({
