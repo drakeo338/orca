@@ -165,6 +165,21 @@ describe('a structured chat coordinates through the same verbs as a terminal', (
     expect(response).toMatchObject({ ok: false, error: { code: 'dispatch_inactive' } })
   })
 
+  it("lets its worker ask it at its session address, the one the worker's preamble names", async () => {
+    const runId = await runCreate(SESSION_X)
+    const taskId = idOf((await as(SESSION_X, 'orchestration.taskCreate', { spec: 'q' })).task)
+    await as(SESSION_X, 'orchestration.dispatch', { task: taskId, to: WORKER_HANDLE })
+
+    const asked = await as(undefined, 'orchestration.ask', {
+      from: WORKER_HANDLE,
+      to: ADDRESS_X,
+      question: 'which way?',
+      timeoutMs: 0
+    })
+    expect(asked).toMatchObject({ timedOut: true })
+    expect(h.db.getQuestion(String(asked.messageId))).toMatchObject({ run_id: runId })
+  })
+
   it("places a worker-start in the session's own workspace", async () => {
     const runId = await runCreate(SESSION_X)
     vi.spyOn(h.runtime, 'validateOrchestrationAgentLauncher').mockImplementation(() => {})
@@ -547,5 +562,41 @@ describe('a structured worker that names itself by session id', () => {
     })
     expect(h.db.getRunMailboxOwnerIdsForHandle(handle)).toEqual([runId])
     expect(h.db.getRunMailboxOwnerIdsForHandle(ADDRESS_Y)).toEqual([runId])
+  })
+
+  it.each([
+    ['its handle', handle],
+    ['its session address', ADDRESS_Y]
+  ])('is asked by its own worker at %s', async (_label, to) => {
+    const { run } = resultOf(
+      await h.dispatch(
+        orchestrationRequest(
+          'orchestration.runCreate',
+          { objective: 'o' },
+          { sessionId: workerSession }
+        )
+      )
+    )
+    const runId = idOf(run)
+    h.db.createDispatchContext({
+      taskId: h.db.createTask({ runId, spec: 'sub' }).id,
+      assigneeHandle: WORKER_HANDLE,
+      assigneePaneKey: WORKER_PANE,
+      creator: { kind: 'terminal', handle, paneKey, orcaSessionId: workerSession },
+      maxDepth: Number.MAX_SAFE_INTEGER
+    })
+
+    const asked = resultOf(
+      await h.dispatch(
+        orchestrationRequest('orchestration.ask', {
+          from: WORKER_HANDLE,
+          to,
+          question: 'which way?',
+          timeoutMs: 0
+        })
+      )
+    )
+    expect(asked).toMatchObject({ timedOut: true })
+    expect(h.db.getQuestion(String(asked.messageId))).toMatchObject({ run_id: runId })
   })
 })
