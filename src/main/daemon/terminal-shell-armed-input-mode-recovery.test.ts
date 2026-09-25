@@ -108,15 +108,14 @@ describe('armed input modes arm the unclean-death trigger', () => {
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })
 
-  it('re-asserts only the modes armed at command start, as shell-owned and without a new owner', () => {
+  it('re-asserts only the host modes after the ground, without a new owner', () => {
     const scanner = new TerminalShellLifecycleScanner()
     scanner.seedOwner('shell')
     const prompt = `\x1b[?1004h\x1b[>5u$ ${COMMAND_START}`
     expect(triggers(scanner, `${prompt}\x1b[?1003h\x1b[>1uRUN${COMMAND_DONE}`)).toBe(true)
-    triggers(scanner, PROCESS_BOUNDARY_GROUND)
     const generation = scanner.generation
 
-    expect(scanner.reassertCommandBaseline()).toBe('\x1b[?1004h\x1b[>5u')
+    expect(scanner.groundProcessBoundary()).toBe(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h\x1b[>5u`)
     expect(scanner.generation).toBe(generation)
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })
@@ -165,6 +164,83 @@ async function runNormalBufferDeath(confirmed: boolean) {
   session.dispose()
   return { snapshot, records }
 }
+
+// Each step's proof verdict applies to any recovery episode that step opens.
+async function runSteps(steps: readonly { data: string; confirm?: boolean }[]) {
+  let confirmed = false
+  const sub = createSubprocess(true)
+  sub.confirmShellForeground.mockImplementation(async () => confirmed)
+  const session = new Session({
+    sessionId: 'steps',
+    cols: 80,
+    rows: 24,
+    subprocess: sub.handle,
+    shellReadySupported: false
+  })
+  for (const step of steps) {
+    confirmed = step.confirm ?? false
+    sub.emit(step.data)
+    await session.settleShellOwnershipConfirmation()
+  }
+  const snapshot = session.getSnapshot()
+  const proofs = sub.confirmShellForeground.mock.calls.length
+  session.dispose()
+  return { snapshot, proofs }
+}
+
+describe('host-armed modes survive and command-armed modes do not', () => {
+  it('never triggers on host modes when 133;D arrives without a 133;C', async () => {
+    // PowerShell without PSReadLine emits A and D but never C.
+    const { snapshot, proofs } = await runSteps([
+      { data: `\x1b[?1004h${PROMPT_START}PS> ` },
+      { data: `dir\r\n${COMMAND_DONE}${PROMPT_START}PS> `, confirm: true }
+    ])
+
+    expect(proofs).toBe(0)
+    expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
+  })
+
+  it('keeps an enable after a mid-command full reset owned by the command', async () => {
+    const { snapshot } = await runSteps([
+      { data: `${PROMPT_START}$ ${COMMAND_START}` },
+      { data: '\x1bc' },
+      { data: `\x1b[?1000hRUN\r\n${COMMAND_DONE}` },
+      {
+        data: `${PROMPT_START}$ ${COMMAND_START}\x1b[?1003hRUN\r\n${COMMAND_DONE}${PROMPT_START}$ `,
+        confirm: true
+      }
+    ])
+
+    expect(snapshot?.modes.mouseTrackingMode).toBe('none')
+  })
+
+  it('keeps a host mode host-owned when a program re-sends its enable', async () => {
+    const { snapshot } = await runSteps([
+      { data: `\x1b[?1004h${PROMPT_START}$ ${COMMAND_START}` },
+      { data: `\x1b[?1004hRUN\r\n${COMMAND_DONE}` },
+      {
+        data: `${PROMPT_START}$ ${COMMAND_START}\x1b[?1000hRUN\r\n${COMMAND_DONE}${PROMPT_START}$ `,
+        confirm: true
+      }
+    ])
+
+    expect(snapshot?.modes.mouseTrackingMode).toBe('none')
+    expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
+  })
+})
+
+describe("prompt-armed modes are the host's only once a 133;C proves the prompt ended", () => {
+  it.each([
+    ['re-asserts them after a C', `${COMMAND_START}\x1b[?1003hRUN`, '\x1b[?1004h'],
+    ['grounds them without a C', '\x1b[?1049hTUI', '']
+  ])('%s', (_label, command, reasserted) => {
+    const scanner = new TerminalShellLifecycleScanner()
+    const events = scanner.scan(`${PROMPT_START}\x1b[?1004h$ ${command}${COMMAND_DONE}`)
+
+    expect(events.uncleanDeathTriggerEnd).toBeDefined()
+    expect(scanner.groundProcessBoundary()).toBe(`${PROCESS_BOUNDARY_GROUND}${reasserted}`)
+  })
+})
 
 describe('Session grounds a proven normal-buffer death', () => {
   it('records the ground and leaves the daemon emulator with mouse and focus off', async () => {

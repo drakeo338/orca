@@ -1,3 +1,4 @@
+import { PROCESS_BOUNDARY_GROUND } from '../../shared/terminal-mode-reset-profiles'
 import type { TerminalOwner } from '../../shared/terminal-owner'
 import { TerminalArmedInputModes } from './terminal-armed-input-modes'
 
@@ -53,9 +54,10 @@ export class TerminalShellLifecycleScanner {
   private altActive = false
   private commandEnteredAlternateScreen = false
   private readonly inputModes = new TerminalArmedInputModes()
-  // Why one-shot: a refuted proof leaves the stale modes armed (no reset was ever
+  // Why one-shot: a refuted proof leaves the alt screen up (no reset was ever
   // scanned), and without disarming every later prompt's D would re-open a full
-  // pause-and-inspect episode. Only a fresh alternate-screen or input-mode enable re-arms.
+  // pause-and-inspect episode. Only a fresh alternate-screen enable re-arms; input
+  // modes are one-shot by markCommandEnd's demotion.
   private uncleanTriggerArmed = false
 
   get owner(): TerminalOwner | undefined {
@@ -78,9 +80,12 @@ export class TerminalShellLifecycleScanner {
     return true
   }
 
-  /** Re-arms the modes the shell or host had on at OSC 133;C without treating them as a new owner. */
-  reassertCommandBaseline(): string {
-    return this.inputModes.reassertCommandBaseline()
+  /** Scans the process-boundary ground plus a re-assert of the host's input modes,
+   *  which never counts as a new owner; returns the bytes to inject. */
+  groundProcessBoundary(): string {
+    const hostModes = this.inputModes.hostModes()
+    this.scan(PROCESS_BOUNDARY_GROUND)
+    return `${PROCESS_BOUNDARY_GROUND}${this.inputModes.reassertHostModes(hostModes)}`
   }
 
   seedOwner(owner: TerminalOwner | undefined, opts: { alternateScreen?: boolean } = {}): void {
@@ -128,16 +133,16 @@ export class TerminalShellLifecycleScanner {
           this.commandEnteredAlternateScreen = false
           continue
         }
-        if (marker === 'A' || marker === 'D') {
-          this.inputModes.markPromptBoundary()
+        if (marker === 'A') {
+          this.inputModes.markPrompt()
         }
         if (marker !== 'D') {
           continue
         }
-        // An alternate screen or a program's input mode still up at command-finished
+        // An alternate screen or a command's input mode still up at command-finished
         // means the app died without its own teardown; the caller must repair first.
-        const uncleanDeath =
-          this.uncleanTriggerArmed && (this.altActive || this.inputModes.hasProgramArmedModes)
+        const leftInputModes = this.inputModes.markCommandEnd()
+        const uncleanDeath = (this.uncleanTriggerArmed && this.altActive) || leftInputModes
         const cleanExit = !uncleanDeath && this.commandEnteredAlternateScreen && !this.altActive
         this.revoke()
         this.commandEnteredAlternateScreen = false
@@ -168,9 +173,7 @@ export class TerminalShellLifecycleScanner {
         if (kittyPrefix !== '<' && Number.isInteger(first) && first > 0) {
           this.revoke()
         }
-        if (this.inputModes.applyKittyKeyboard(kittyPrefix, kittyParams)) {
-          this.uncleanTriggerArmed = true
-        }
+        this.inputModes.applyKittyKeyboard(kittyPrefix, kittyParams)
         continue
       }
       const enabled = (match[3] ?? match[5]) === 'h'
@@ -185,9 +188,7 @@ export class TerminalShellLifecycleScanner {
         if (enabled && TUI_MODE_ENABLES.has(param)) {
           this.revoke()
         }
-        if (this.inputModes.applyPrivateMode(param, enabled)) {
-          this.uncleanTriggerArmed = true
-        }
+        this.inputModes.applyPrivateMode(param, enabled)
         if (ALTERNATE_SCREEN_MODES.has(param)) {
           this.inputModes.switchScreen(enabled)
           this.altActive = enabled

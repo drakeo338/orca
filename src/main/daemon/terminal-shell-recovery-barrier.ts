@@ -1,4 +1,3 @@
-import { PROCESS_BOUNDARY_GROUND } from '../../shared/terminal-mode-reset-profiles'
 import { TerminalShellCleanExitConfirmation } from './terminal-shell-clean-exit-confirmation'
 import { TerminalShellLifecycleScanner } from './terminal-shell-lifecycle-scanner'
 import type { PtyIngressEmission } from '../../shared/pty-startup-ingress'
@@ -281,12 +280,8 @@ export class TerminalShellRecoveryBarrier {
     this.queuedBytes = 0
     try {
       if (confirmed && this.isAlive()) {
-        // Scanned before release so alt-state stays honest; the reset bytes are
-        // deliberately inert for ownership (no OSC 133, no TUI mode enables).
-        this.scanner.scan(PROCESS_BOUNDARY_GROUND)
-        // Why re-assert: the ground only owes the dead program's modes; ones the shell
-        // or host armed outside a command (ConPTY's ?1004h) must survive.
-        const ground = `${PROCESS_BOUNDARY_GROUND}${this.scanner.reassertCommandBaseline()}`
+        // Scanned before release so alt-state stays honest.
+        const ground = this.scanner.groundProcessBoundary()
         try {
           this.releaseDownstream({
             data: ground,
