@@ -146,7 +146,7 @@ export function rejectClaudeStartupWrites(session: ClaudeSession, reason: string
 
 /** Why a held prompt was rejected when Orca itself stopped a child still starting. */
 export const CLAUDE_STARTUP_ABANDONED_REJECTION =
-  'Claude never finished starting, so Orca stopped it. Send again to retry.'
+  'Claude never finished starting, so Orca stopped it. Your message was not sent.'
 
 /** Startup cannot land any more; nothing held was written, so all of it is rejected. */
 export function failClaudeStartupGate(

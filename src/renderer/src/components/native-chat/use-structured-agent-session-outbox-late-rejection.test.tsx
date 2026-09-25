@@ -20,7 +20,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 
 const LOCAL_TARGET = { kind: 'local' } as const
-const REASON = 'Claude never finished starting, so Orca stopped it. Send again to retry.'
+const REASON = 'Claude never finished starting, so Orca stopped it. Your message was not sent.'
 
 type SendParams = { envelope: { clientOperationId: string }; retryUnknown?: true }
 

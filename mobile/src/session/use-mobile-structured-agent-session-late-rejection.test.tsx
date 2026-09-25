@@ -20,7 +20,7 @@ const asyncStorage = vi.hoisted(() => ({
 
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
 
-const REASON = 'Claude never finished starting, so Orca stopped it. Send again to retry.'
+const REASON = 'Claude never finished starting, so Orca stopped it. Your message was not sent.'
 
 type SendParams = { envelope: { clientOperationId: string; payloadFingerprint: string } }
 
