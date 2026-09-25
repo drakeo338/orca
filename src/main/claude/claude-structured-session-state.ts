@@ -23,7 +23,7 @@ import type {
 } from '../../shared/agent-session-wire'
 import type { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import type { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
-import type { ClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
+import type { ClaudeSessionStartup } from './claude-structured-session-startup-state'
 
 export type ClaudeAuthDiagnostic = {
   apiKeySourceConfigured: boolean
@@ -190,7 +190,7 @@ export type ClaudeSession = {
   events: StructuredAgentSessionEventSink | undefined
   unbindReadingControl?: () => void
   /** Published at spawn; init facts, option restore and queued prompts land when startup does. */
-  startup: ClaudeSessionStartupGate
+  startup: ClaudeSessionStartup
 }
 
 export function mintClaudeAcquisitionGeneration(deps: ClaudeStructuredSessionAdapterDeps): string {

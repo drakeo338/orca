@@ -10,7 +10,7 @@ import {
 } from './claude-agent-sdk-control-requests'
 import { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
-import { createClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
+import { createClaudeSessionStartup } from './claude-structured-session-startup-state'
 import {
   claudeStructuredSessionOptionsFrom,
   observeClaudeFastModeFacts,
@@ -46,7 +46,7 @@ function sessionFor(setModel: ClaudeSession['connection']['setModel']): ClaudeSe
     capabilities: [],
     events: undefined,
     translator: null,
-    startup: { ...createClaudeSessionStartupGate(), state: 'proven' }
+    startup: { ...createClaudeSessionStartup(), state: 'proven' }
   }
 }
 

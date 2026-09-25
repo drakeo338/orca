@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../../shared/agent-session-definitive-refusal'
 import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
+import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../../shared/orchestration-timing-budgets'
 import type { StructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-host'
 import { getStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrcaRuntimeService } from '../../orca-runtime'
@@ -244,7 +245,18 @@ export async function sendStructuredWorkerPreamble(args: {
   if (!result.ok) {
     throw new Error(`The dispatch preamble was refused: ${result.refusal.message}`)
   }
-  const submission = result.value.submission
+  // Accepted is not delivered: the worker's agent may still be starting. Never re-sent; a wait
+  // that runs out is reported as unknown below and settles when the submission does.
+  const submission =
+    result.value.submission.dispatchState === 'pending'
+      ? ((
+          await args.host
+            .waitForSendSettlement(args.sessionId, result.value.clientMessageId, {
+              budgetMs: ORCHESTRATION_READINESS_TIMEOUT_MS
+            })
+            .catch(() => undefined)
+        )?.value.submission ?? result.value.submission)
+      : result.value.submission
   if (submission.dispatchState === 'accepted') {
     return
   }

@@ -224,10 +224,17 @@ describe('structured worker session hold', () => {
 })
 
 describe('structured worker dispatch preamble', () => {
-  function hostWithSubmission(submission: Record<string, unknown>) {
+  function hostWithSubmission(
+    submission: Record<string, unknown>,
+    delivered?: Record<string, unknown>
+  ) {
     return {
       deps: { store: { getRecord: () => ({ lease: { runtimeFence: 7 } }) } },
-      send: async () => ({ ok: true, value: { clientMessageId: 'c1', submission } })
+      send: async () => ({ ok: true, value: { clientMessageId: 'c1', submission } }),
+      // What the submission settled as while the worker's agent started; undefined when the
+      // start outlasted the wait.
+      waitForSendSettlement: async () =>
+        delivered ? { value: { clientMessageId: 'c1', submission: delivered } } : undefined
     } as never
   }
 
@@ -237,6 +244,17 @@ describe('structured worker dispatch preamble', () => {
   it('reports the preamble delivered only on an accepted submission', async () => {
     await expect(
       send(hostWithSubmission({ dispatchState: 'accepted', reason: null }))
+    ).resolves.toBeUndefined()
+  })
+
+  it('waits for an accepted preamble to be delivered, and reports that delivery (W10)', async () => {
+    await expect(
+      send(
+        hostWithSubmission(
+          { dispatchState: 'pending', reason: null },
+          { dispatchState: 'accepted', reason: null }
+        )
+      )
     ).resolves.toBeUndefined()
   })
 

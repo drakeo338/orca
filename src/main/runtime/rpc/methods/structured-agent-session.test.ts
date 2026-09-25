@@ -12,6 +12,7 @@ import {
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
+import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from '../../../native-chat/agent-session-wire/structured-agent-session-send-settlement'
 import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-session-mutation-envelope'
 import { ALL_RPC_METHODS } from './index'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
@@ -252,11 +253,11 @@ describe('capability gating', () => {
       signal: controller.signal
     })
 
-    expect(hostCalls.waitForSendSettlement).toHaveBeenCalledWith(
-      SESSION,
-      'client-1',
-      controller.signal
-    )
+    expect(hostCalls.waitForSendSettlement).toHaveBeenCalledWith(SESSION, 'client-1', {
+      until: 'answered',
+      budgetMs: STRUCTURED_AGENT_SESSION_START_WAIT_MS,
+      signal: controller.signal
+    })
     expect(response).toMatchObject({
       ok: true,
       result: {
@@ -296,36 +297,6 @@ describe('capability gating', () => {
       clientCapabilities: [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY]
     })
 
-    expect(response).toMatchObject({
-      ok: true,
-      result: { value: { submission: { dispatchState: 'pending' } } }
-    })
-  })
-
-  it('returns durable pending immediately to clients that understand admission', async () => {
-    hostCalls.send.mockResolvedValueOnce({
-      ok: true,
-      replayed: false,
-      fence: 1,
-      cursor: { epoch: 'epoch-a', sequence: 1 },
-      value: {
-        clientMessageId: 'client-1',
-        submission: {
-          clientMessageId: 'client-1',
-          fence: 1,
-          payloadFingerprint: 'fingerprint',
-          dispatchState: 'pending',
-          providerItemId: null,
-          reason: null,
-          submittedAt: 1,
-          resolvedAt: null
-        }
-      }
-    })
-
-    const response = await call('agentSession.send', sendParams(), STRUCTURED_CLIENT)
-
-    expect(hostCalls.waitForSendSettlement).not.toHaveBeenCalled()
     expect(response).toMatchObject({
       ok: true,
       result: { value: { submission: { dispatchState: 'pending' } } }

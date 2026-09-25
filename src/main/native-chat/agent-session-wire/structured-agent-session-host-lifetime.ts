@@ -6,6 +6,8 @@
 // do.
 
 import { activeStructuredAgentSessionTurnId } from '../../../shared/structured-agent-session-projection'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
+import { DISPATCH_REJECTED_PROVIDER_CLOSED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   evictStructuredAgentSession,
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
@@ -38,12 +40,18 @@ export type StructuredAgentSessionLifetimeContext = {
 }
 
 /** Dropping a session and dropping its status row are ONE operation: the store keeps the row until
- *  told, so a caller that only deletes strands a live-looking row no reader can ever decay. */
+ *  told, so a caller that only deletes strands a live-looking row no reader can ever decay. A
+ *  handle closes with nothing queued: what is still queued now will not be handed over. */
 export async function forgetStructuredAgentSession(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string
 ): Promise<void> {
-  await context.sessions.get(sessionId)?.journal.close()
+  const session = context.sessions.get(sessionId)
+  await session?.journal
+    .rejectQueuedSubmissions(session.fence, DISPATCH_REJECTED_PROVIDER_CLOSED)
+    // Best effort: the next open rejects a leftover itself.
+    .catch((error: unknown) => context.deps.onEventSinkError?.({ sessionId, error }))
+  await session?.journal.close()
   context.sessions.delete(sessionId)
   context.forgetStatus(sessionId)
 }
@@ -175,7 +183,8 @@ export async function evictOwnedStructuredAgentSessions(
  *  resume and a send's ensure-owner step are the same serialized attach with a different asker. */
 export function createStructuredAgentSessionHolds(
   attachContext: () => StructuredAgentSessionAttachContext,
-  close: (sessionId: string) => Promise<void>
+  close: (sessionId: string) => Promise<void>,
+  deliveryActive: (sessionId: string) => boolean
 ): StructuredAgentSessionHolds {
   const context = attachContext()
   return new StructuredAgentSessionHolds({
@@ -196,12 +205,15 @@ export function createStructuredAgentSessionHolds(
     },
     evict: close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),
-    // A send pending while the child is still starting is held for that start; evicting would
-    // refuse it. Any other pending send may wait on an echo that never comes, so eviction retires it.
+    // A message accepted and not yet handed over is owed to this child, and so is one pending while
+    // the child still starts. Any other pending send may wait on an echo that never comes, so
+    // eviction retires it.
     hasOwedWork: (sessionId) => {
       const session = context.sessions.get(sessionId)
       return session
         ? activeStructuredAgentSessionTurnId(session.journal.snapshot().items) !== null ||
+            deliveryActive(sessionId) ||
+            session.journal.submissions().some(isQueuedAgentJournalSubmission) ||
             (session.providerChildPhase === 'starting' &&
               session.journal.pendingSubmissions().length > 0)
         : false

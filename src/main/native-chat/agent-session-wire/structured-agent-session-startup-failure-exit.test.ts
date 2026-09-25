@@ -27,7 +27,8 @@ function startedSession(): StructuredAgentSessionUnexpectedExitSession & {
       snapshot: () => ({ items: [] }),
       appendLifecycleBatch: vi.fn(async () => ({ epoch: 'epoch-1', sequence: 1 })),
       markPendingSubmissionsUnknown: vi.fn(async () => []),
-      rejectPendingSubmissions: vi.fn(async () => [])
+      rejectPendingSubmissions: vi.fn(async () => []),
+      rejectQueuedSubmissions: vi.fn(async () => [])
     }
   }
 }

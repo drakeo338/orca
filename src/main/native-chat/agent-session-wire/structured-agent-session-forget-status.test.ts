@@ -21,11 +21,10 @@ import type { StructuredAgentSessionAttachContext } from './structured-agent-ses
 import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 
-// Everything before the journal is out of scope here; what matters is that the orchestration's
-// own `onAttachFailed` runs, which is the real one.
+// Everything before the journal is out of scope here; what matters is what the orchestration does
+// when the attach throws after acquisition.
 vi.mock('./structured-agent-session-attach-flow', () => ({
-  performAttach: async (input: { onAttachFailed?: () => Promise<void> }) => {
-    await input.onAttachFailed?.()
+  performAttach: async () => {
     throw new Error('attach failed after acquisition')
   }
 }))
@@ -230,15 +229,19 @@ describe('a session that leaves the host without an explicit close', () => {
     expect(server.getStatusSnapshot()).toEqual([expect.objectContaining({ prompt: 'other host' })])
   })
 
-  it('leaves the agent-status store with it when an attach fails', async () => {
+  // A failed attach no longer drops the session: the conversation stays open for the failure to be
+  // written into, so its row stays with it and the later close forgets both together.
+  it('keeps the session and its status row together when an attach fails', async () => {
     const { server, feed, sessions } = await workingSession()
+    const drop = vi.spyOn(server, 'dropStructuredStatus')
 
     await expect(
       attachStructuredAgentSession(attachContext(sessions, feed), 'caller-1', attachParams)
     ).rejects.toThrow('attach failed after acquisition')
 
-    expect(sessions.has(SESSION)).toBe(false)
-    expect(server.getStatusSnapshot()).toEqual([])
+    expect(sessions.has(SESSION)).toBe(true)
+    expect(drop).not.toHaveBeenCalled()
+    expect(server.getStatusSnapshot()).toHaveLength(1)
   })
 
   // The feed's own cache deliberately retains the projection for reload history; only the store

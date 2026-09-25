@@ -4,7 +4,7 @@ import { retireClaudeDispatchWaiters } from './claude-structured-dispatch'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { ClaudeBackgroundTaskTracker } from './claude-background-task-tracker'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
-import { createClaudeSessionStartupGate } from './claude-structured-session-startup-gate'
+import { createClaudeSessionStartup } from './claude-structured-session-startup-state'
 
 export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): ClaudeSession {
   return {
@@ -30,7 +30,7 @@ export function sessionFor(send: Mock = vi.fn().mockResolvedValue(undefined)): C
     capabilities: [],
     events: undefined,
     translator: null,
-    startup: { ...createClaudeSessionStartupGate(), state: 'proven' }
+    startup: { ...createClaudeSessionStartup(), state: 'proven' }
   }
 }
 

@@ -136,7 +136,8 @@ describe('provider-exit recovery tickets', () => {
           items: [lifecycleItem('turn-1', 1, { state: 'running', startedAt: 1_000 })]
         }),
         appendLifecycleBatch,
-        markPendingSubmissionsUnknown: vi.fn(async () => [])
+        markPendingSubmissionsUnknown: vi.fn(async () => []),
+        rejectQueuedSubmissions: vi.fn(async () => [])
       }
     } as unknown as StructuredAgentSessionHostSession
 
@@ -204,7 +205,8 @@ describe('provider-exit recovery tickets', () => {
       journal: {
         snapshot: () => ({ items }),
         appendLifecycleBatch,
-        markPendingSubmissionsUnknown: vi.fn(async () => [])
+        markPendingSubmissionsUnknown: vi.fn(async () => []),
+        rejectQueuedSubmissions: vi.fn(async () => [])
       }
     } as unknown as StructuredAgentSessionHostSession
     const store = {
@@ -312,7 +314,8 @@ describe('provider-exit recovery tickets', () => {
           snapshot: () => ({ items }),
           appendLifecycleBatch,
           markPendingSubmissionsUnknown: vi.fn(async () => []),
-          rejectPendingSubmissions: vi.fn(async () => [])
+          rejectPendingSubmissions: vi.fn(async () => []),
+          rejectQueuedSubmissions: vi.fn(async () => [])
         }
       }
 
@@ -370,6 +373,7 @@ describe('provider-exit recovery tickets', () => {
         appendLifecycleBatch: vi.fn(async () => ({ epoch: 'epoch-1', sequence: 1 })),
         markPendingSubmissionsUnknown,
         rejectPendingSubmissions: vi.fn(async () => []),
+        rejectQueuedSubmissions: vi.fn(async () => []),
         submissions: () => [{ clientMessageId: 'client-1', dispatchState: 'pending' }]
       }
     }
@@ -416,6 +420,7 @@ describe('provider-exit recovery tickets', () => {
       journal: {
         markPendingSubmissionsUnknown: vi.fn(async () => []),
         rejectPendingSubmissions: vi.fn(async () => []),
+        rejectQueuedSubmissions: vi.fn(async () => []),
         snapshot: () => ({
           items: [lifecycleItem('turn-failing', 1, { state: 'running', startedAt: 1 })]
         }),

@@ -3,8 +3,8 @@
 //
 // They share one shape — admit the envelope against the lease, run a plan, publish the journal — so
 // they share one path here rather than five copies in the host. The host keeps attach, holds and
-// teardown. A send is the one mutation that may need those first: it makes sure the session has
-// an owner as a step of its own serialized admission, see `structured-agent-session-send-preparation`.
+// teardown. A send and a Stop are conversation writes: they open the conversation and are admitted
+// without the writer lease; the session's delivery loop starts the provider child a send needs.
 
 import type {
   AgentJournalItemIdentity,
@@ -21,14 +21,14 @@ import type {
   AgentSessionThreadGoalChange,
   AgentSessionThreadGoalResult
 } from '../../../shared/agent-session-wire'
-import type { StructuredAgentSessionHolds } from './structured-agent-session-holds'
+import { DISPATCH_REJECTED_CANCELLED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import {
   admitAndRunAgentSessionMutation,
   type AgentSessionMutationRequest
 } from './structured-agent-session-mutation-admission'
 import {
-  prepareStructuredAgentSessionSend,
+  openConversationForWrite,
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import {
@@ -51,11 +51,12 @@ export type StructuredAgentSessionMutationContext = {
   flushStreamedEvents: (sessionId: string) => Promise<void>
   requireSession: (sessionId: string) => StructuredAgentSessionHostSession
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-  /** A send that finds the owner gone brings it back through here, inside its own serialize. */
-  holds: Pick<StructuredAgentSessionHolds, 'ensureProviderChild'>
-  /** Makes a closed session's journal readable again, inside the caller's serialize, for a send
-   *  the ledger answers without an owner. */
-  restoreReadable: (sessionId: string) => Promise<boolean>
+  /** The session's conversation, opened when closed; inside the caller's serialize. */
+  openConversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
+  /** A message was accepted: the session's delivery loop hands it over. */
+  wakeDelivery: (sessionId: string) => void
+  /** Stops a provider child that has not proven its start; inside the caller's serialize. */
+  stopStartingChild: (sessionId: string) => Promise<void>
   now: () => number
 }
 
@@ -100,12 +101,19 @@ export function sendStructuredAgentSessionTurn(
     params.envelope,
     {
       ...plan,
-      run: (ctx) => {
+      run: async (ctx) => {
         const blocked = structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId))
-        return blocked ? Promise.resolve(blocked) : plan.run(ctx)
+        if (blocked) {
+          return blocked
+        }
+        const accepted = await plan.run(ctx)
+        if (accepted.ok) {
+          context.wakeDelivery(ctx.sessionId)
+        }
+        return accepted
       }
     },
-    (ledger, record) => prepareStructuredAgentSessionSend(context, params.envelope, ledger, record)
+    () => openConversationForWrite(context.openConversation, params.envelope)
   )
 }
 
@@ -130,7 +138,35 @@ export function cancelStructuredAgentSessionTurn(
             context.serialize(`compact-cancel:${sessionId}`, task)
         }
       : context
-  return mutate(cancellationContext, caller, params.envelope, cancelPlan(params))
+  const plan = cancelPlan(params)
+  if (params.scope || params.prompt) {
+    return mutate(cancellationContext, caller, params.envelope, plan)
+  }
+  return mutate(
+    cancellationContext,
+    caller,
+    params.envelope,
+    {
+      ...plan,
+      run: async (ctx) => {
+        // Stop withdraws every queued message first, whatever the start or the child is doing.
+        const withdrawn = await ctx.journal.rejectQueuedSubmissions(
+          ctx.fence,
+          DISPATCH_REJECTED_CANCELLED
+        )
+        const session = context.sessions.get(ctx.sessionId)
+        if (session?.hasProviderChild && session.providerChildPhase === 'starting') {
+          // A start that may never land is the one thing here Stop has to end.
+          await context.stopStartingChild(ctx.sessionId)
+          return { ok: true, value: { turnId: params.turnId, cancelled: true } }
+        }
+        return session?.hasProviderChild
+          ? plan.run(ctx)
+          : { ok: true, value: { turnId: params.turnId, cancelled: withdrawn.length > 0 } }
+      }
+    },
+    () => openConversationForWrite(context.openConversation, params.envelope)
+  )
 }
 
 export function respondToStructuredAgentSessionPrompt(

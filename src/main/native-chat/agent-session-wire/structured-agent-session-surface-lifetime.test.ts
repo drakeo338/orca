@@ -261,6 +261,8 @@ describe('a chat that closes', () => {
     if (!result.ok) {
       throw new Error('send was refused')
     }
+    // Handed over first: a message still queued at close is rejected as never sent instead.
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalled())
     const settlement = host.waitForSendSettlement(SESSION, result.value.clientMessageId)
 
     await host.close(SESSION)
@@ -459,6 +461,12 @@ describe('a session evicted and opened again', () => {
   })
 })
 
+function submissionState(clientMessageId: string): string | undefined {
+  return host
+    .journalSnapshot(SESSION)
+    .submissions.find((entry) => entry.clientMessageId === clientMessageId)?.dispatchState
+}
+
 describe('an unexpected provider exit', () => {
   it('publishes terminal settlement to a waiting older client', async () => {
     await attach()
@@ -475,6 +483,8 @@ describe('an unexpected provider exit', () => {
     if (!result.ok) {
       throw new Error('send was refused')
     }
+    // Accepted first; the exit must meet a message the provider was handed.
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce())
     const settlement = host.waitForSendSettlement(SESSION, result.value.clientMessageId)
     const exitedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
 
@@ -536,12 +546,14 @@ describe('an unexpected provider exit', () => {
     await host.hold(SESSION, SURFACE)
     dispatch.mockRejectedValueOnce(new Error('provider delivery became unknown'))
     const unknownBody = hostTestMessage('message with unknown delivery')
+    const unknownEnvelope = envelope('agentSession.send', { body: unknownBody })
     await expect(
-      host.send(CALLER, {
-        envelope: envelope('agentSession.send', { body: unknownBody }),
-        body: unknownBody
-      })
-    ).resolves.toMatchObject({ ok: true, value: { submission: { dispatchState: 'unknown' } } })
+      host.send(CALLER, { envelope: unknownEnvelope, body: unknownBody })
+    ).resolves.toMatchObject({ ok: true, value: { submission: { dispatchState: 'pending' } } })
+    // Accepted, then handed over by the delivery loop, where the thrown dispatch becomes doubt.
+    await vi.waitFor(() =>
+      expect(submissionState(unknownEnvelope.clientOperationId)).toBe('unknown')
+    )
     const exitedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
 
     await host.handleAdapterEvent({
@@ -570,9 +582,12 @@ describe('an unexpected provider exit', () => {
       providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-next', ordinal: 1 }
     })
     const body = hostTestMessage('a distinct next message')
-    await expect(
-      host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
-    ).resolves.toMatchObject({ ok: true, value: { submission: { dispatchState: 'accepted' } } })
+    const nextEnvelope = envelope('agentSession.send', { body })
+    await expect(host.send(CALLER, { envelope: nextEnvelope, body })).resolves.toMatchObject({
+      ok: true,
+      value: { submission: { dispatchState: 'pending' } }
+    })
+    await vi.waitFor(() => expect(submissionState(nextEnvelope.clientOperationId)).toBe('accepted'))
     expect(dispatch).toHaveBeenCalledTimes(2)
   })
 
@@ -637,8 +652,11 @@ describe('an unexpected provider exit', () => {
     }
     await expect(host.send(CALLER, unknownParams)).resolves.toMatchObject({
       ok: true,
-      value: { submission: { dispatchState: 'unknown' } }
+      value: { submission: { dispatchState: 'pending' } }
     })
+    await vi.waitFor(() =>
+      expect(submissionState(unknownParams.envelope.clientOperationId)).toBe('unknown')
+    )
     const runtimeState = (
       host as unknown as {
         runtimeState: { lifecycleBarrier: () => Promise<{ ok: false; error: Error }> }
@@ -682,9 +700,12 @@ describe('an unexpected provider exit', () => {
       providerIdentity: { provider: 'codex', threadId: THREAD, turnId: 'turn-next', ordinal: 1 }
     })
     const body = hostTestMessage('a distinct next message after failed-barrier recovery')
-    await expect(
-      host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
-    ).resolves.toMatchObject({ ok: true, value: { submission: { dispatchState: 'accepted' } } })
+    const nextEnvelope = envelope('agentSession.send', { body })
+    await expect(host.send(CALLER, { envelope: nextEnvelope, body })).resolves.toMatchObject({
+      ok: true,
+      value: { submission: { dispatchState: 'pending' } }
+    })
+    await vi.waitFor(() => expect(submissionState(nextEnvelope.clientOperationId)).toBe('accepted'))
     expect(dispatch).toHaveBeenCalledTimes(2)
   })
 

@@ -278,6 +278,9 @@ export type StructuredAgentSessionAdapter = {
   ): Promise<void | Readonly<Record<string, string>>>
   /** Resolves once a live session can take an option write, or after a bound; never rejects. */
   awaitOptionWritable?(sessionId: string): Promise<void>
+  /** Resolves once a session published before it proved its start has proven it, failed, or been
+   *  closed; at once for any other. Never rejects. */
+  awaitStarted?(sessionId: string): Promise<void>
   readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
   /** Option keys skipped after a provider rejected their persisted restore value. */
   readOptionRestoreFailures?(sessionId: string): readonly string[]

@@ -190,6 +190,7 @@ describe('dead structured-session generation settlement', () => {
       | 'submissions'
       | 'markPendingSubmissionsUnknown'
       | 'rejectPendingSubmissions'
+      | 'rejectQueuedSubmissions'
       | 'appendLifecycleBatch'
     > = {
       snapshot: () => ({
@@ -201,6 +202,9 @@ describe('dead structured-session generation settlement', () => {
         throw new Error('journal_closed')
       },
       rejectPendingSubmissions: async () => {
+        throw new Error('journal_closed')
+      },
+      rejectQueuedSubmissions: async () => {
         throw new Error('journal_closed')
       },
       appendLifecycleBatch: async () => {

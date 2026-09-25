@@ -7,6 +7,7 @@
 // the refs, the React state and the storage write, and nothing else decides an
 // entry's state.
 
+import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
 import {
   dispatchRejectionReasonIsInternal,
@@ -89,6 +90,21 @@ function refusedRedelivery(
  * Exported because a client without an outbox needs the same copy: the rule about
  * which reasons a person may read is a property of the reason, not of the queue.
  */
+/** A message the host accepted and then did not deliver: the chat says why and offers Retry. */
+export function rejectedDispatchingSubmission(
+  entries: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[]
+): AgentJournalSubmission | undefined {
+  return submissions.find(
+    (submission) =>
+      submission.dispatchState === 'rejected' &&
+      entries.some(
+        (entry) =>
+          entry.clientMessageId === submission.clientMessageId && entry.state === 'dispatching'
+      )
+  )
+}
+
 export function structuredAgentSessionRejectionNotice(reason: string | null): string {
   if (reason === null) {
     return 'Message was not sent.'
@@ -124,12 +140,17 @@ export function disposeStructuredAgentSessionSendResult(
           )
         : candidate
     )
+    const refused = entries[refusedIndex]
     return {
       entries,
       error: result.refusal.message,
       // Read back by index rather than from the input: a refusal can rotate the id, and the
       // refused entry is not always the head now that an admitted one no longer holds the queue.
-      blockedClientMessageId: entries[refusedIndex]?.clientMessageId ?? null,
+      // A rejected one holds nothing: it can no longer land, and it keeps its own Retry.
+      blockedClientMessageId:
+        !refused || refused.state === 'rejected'
+          ? input.blockedClientMessageId
+          : refused.clientMessageId,
       retryWithFreshClientMessageId: null
     }
   }
@@ -152,9 +173,9 @@ export function disposeStructuredAgentSessionSendResult(
   }
   if (submission.dispatchState === 'rejected') {
     return {
-      entries: replaceEntryState(input, 'queued'),
+      entries: replaceEntryState(input, 'rejected'),
       error: structuredAgentSessionRejectionNotice(submission.reason),
-      blockedClientMessageId: input.entry.clientMessageId,
+      blockedClientMessageId: input.blockedClientMessageId,
       retryWithFreshClientMessageId: input.entry.clientMessageId
     }
   }

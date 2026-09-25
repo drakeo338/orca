@@ -17,6 +17,7 @@ import {
   agentSessionProviderHandleRoot
 } from '../../../shared/agent-session-provider-handle'
 import { latestStructuredAgentSessionUserItem } from '../../../shared/structured-agent-session-projection'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type {
   AgentSessionResumeMarker,
@@ -54,6 +55,8 @@ function pendingSubmissionInFlight(
     if (
       submission &&
       submission.recovered !== true &&
+      // A queued message reached no agent, so there is no work of its to resume.
+      !isQueuedAgentJournalSubmission(submission) &&
       (submission.dispatchState === 'pending' || submission.dispatchState === 'unknown')
     ) {
       return submission

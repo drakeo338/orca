@@ -12,7 +12,7 @@ import { acquireClaudeSession } from './claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
 import { setClaudeStructuredSessionOption } from './claude-structured-options'
 import { readClaudeStructuredSessionOptions } from './claude-structured-session-options'
-import { claudeStartupSettledWithin } from './claude-structured-session-startup-gate'
+import { claudeStartupSettledWithin } from './claude-structured-session-startup-state'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
 import {
   ClaudeAcquisitionRegistry,
@@ -114,8 +114,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
    *  apart without guessing at wall-clock. */
   drainObservedExits = (): Promise<void> => drainClaudeObservedExits(this.exits)
 
-  /** Resolves once a published session's startup has landed or faulted it. */
-  drainStartup = (sessionId: string): Promise<void> =>
+  /** Resolves once a published session's startup has landed, faulted, or been ended by a close. */
+  awaitStarted = (sessionId: string): Promise<void> =>
     this.sessions.get(sessionId)?.startup.settled ?? Promise.resolve()
 
   /** Restart reconciliation reads the transcript a resume replays; these maps track liveness. */
@@ -165,9 +165,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
 
   dispatch: StructuredAgentSessionAdapter['dispatch'] = (input) =>
-    dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch, (settlement) =>
-      this.deps.onDispatchSettledLate?.({ sessionId: input.sessionId, ...settlement })
-    )
+    dispatchClaudeTurn(this.session(input.sessionId), input, input.beforeDispatch)
 
   compact: NonNullable<StructuredAgentSessionAdapter['compact']> = (input) =>
     compactClaudeSession(this.session(input.sessionId), this.compactions, input)

@@ -147,4 +147,36 @@ describe('attachJournal restart reconciliation', () => {
     expect(attached.unconfirmedClientMessageIds).toEqual(['cm_1'])
     expect(attached.journal.submissions()[0]?.dispatchState).toBe('unknown')
   })
+
+  it('leaves a message the open conversation still has queued alone (W4′e)', async () => {
+    const journal = await journals.open({
+      identity: IDENTITY,
+      journalDir: journalDirectoryFor(root, {
+        workspaceId: IDENTITY.workspaceId,
+        sessionId: IDENTITY.sessionId
+      })
+    })
+    await journal.appendSubmission({
+      clientMessageId: 'queued',
+      payloadFingerprint: digestPayload('still queued'),
+      body: userMessage('still queued'),
+      fence: RECORD.lease.runtimeFence,
+      handoverRecorded: true
+    })
+    // History that holds nothing: absence would prove a handed-over message undelivered.
+    const { adapter, dispatch } = adapterWith(async () => window())
+
+    const attached = await attachJournal({
+      record: RECORD,
+      params: PARAMS,
+      journalRoot: root,
+      adapter,
+      openConversation: async () => journal
+    })
+
+    expect(attached.journal).toBe(journal)
+    expect(journal.submissions()[0]).toMatchObject({ dispatchState: 'pending' })
+    expect(journal.submissions()[0]?.handedOverAt).toBeUndefined()
+    expect(dispatch).not.toHaveBeenCalled()
+  })
 })

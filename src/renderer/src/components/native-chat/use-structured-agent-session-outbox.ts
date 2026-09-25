@@ -7,7 +7,11 @@ import {
   reconcileStructuredAgentSessionOutbox,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import type { StructuredAgentSessionSendDisposition } from '../../../../shared/structured-agent-session-send-disposition'
+import {
+  rejectedDispatchingSubmission,
+  structuredAgentSessionRejectionNotice,
+  type StructuredAgentSessionSendDisposition
+} from '../../../../shared/structured-agent-session-send-disposition'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
 import {
@@ -120,7 +124,10 @@ export function useStructuredAgentSessionOutbox(args: {
       dispatchGenerationRef.current += 1
       inFlightIdRef.current = null
     }
-    if (blockedIdRef.current !== null && hostOwns.has(blockedIdRef.current)) {
+    const rejected = rejectedDispatchingSubmission(current, submissions)
+    if (rejected) {
+      setError(structuredAgentSessionRejectionNotice(rejected.reason))
+    } else if (blockedIdRef.current !== null && hostOwns.has(blockedIdRef.current)) {
       blockedIdRef.current = null
       setError(null)
     } else if (

@@ -24,9 +24,7 @@ import { refuseAgentSessionMutation } from './structured-agent-session-mutation-
 import { retryPendingStructuredAgentSessionSettlement } from './structured-agent-session-settlement-retry'
 import { settleStaleSessionStateOnAcquire } from './structured-agent-session-stale-turn-verdict'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
-import { forgetStructuredAgentSession } from './structured-agent-session-host-lifetime'
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
-import { agentSessionJournalCloseRetries } from '../agent-session-journal/journal-close-retry'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   addAgentSessionCreatePhaseAttributes,
@@ -162,12 +160,14 @@ async function runAttach(
       params,
       now: () => context.now(),
       recordPhase,
-      // Site 9: this closes the PRIOR map entry it drops, never the provisional
-      // journal — it has no reference to that one. `onAttached` owns that.
-      onAttachFailed: async () => {
-        await forgetStructuredAgentSession(context, sessionId)
-        context.runtimeState.currentEventSink(sessionId)?.close()
-        context.runtimeState.discardEventSink(sessionId)
+      // A failed attach leaves the conversation open, with its queued messages, for the failure
+      // to be written into; only the attempt's own sink is discarded, in the `finally` below.
+      openConversation: async (id) => {
+        const conversation = await context.openConversation(id)
+        if (!conversation) {
+          throw new Error('agent_session_identity_required')
+        }
+        return conversation.journal
       },
       onAttached: async (attached, acquisitionGeneration, acquiredOwner, providerChildPhase) => {
         const fence = context.deps.store.getRecord(sessionId)?.lease.runtimeFence ?? 0
@@ -177,37 +177,19 @@ async function runAttach(
         const eventSink = acquiredOwner
           ? attemptSink
           : (context.runtimeState.currentEventSink(sessionId) ?? attemptSink)
-        // Site 8: the provisional journal has no owner until the map takes it,
-        // and the barrier below throws by design.
-        try {
-          if (acquiredOwner) {
-            // Before the drain: the buffered events are the new child's, never a stale row's.
-            await settleStaleSessionStateOnAcquire({
-              journal: attached.journal,
-              sessionId,
-              fence,
-              acquisitionGeneration
-            })
-          }
-          await bindAndDrain(eventSink, attached.journal, fence, (activity) =>
-            context.subscribers.publish(sessionId, attached.journal, activity)
-          )
-        } catch (error) {
-          await agentSessionJournalCloseRetries.closeOrRetain(attached.journal)
-          throw error
+        // The journal is the conversation's own open one, so a throw here leaves it indexed.
+        if (acquiredOwner) {
+          // Before the drain: the buffered events are the new child's, never a stale row's.
+          await settleStaleSessionStateOnAcquire({
+            journal: attached.journal,
+            sessionId,
+            fence,
+            acquisitionGeneration
+          })
         }
-        // Site 10: a `set` over a live entry would orphan its handle — and a
-        // close that REJECTED did not release it. The replacement is therefore
-        // ABORTED rather than completed over a handle nothing can reach again:
-        // `previous` stays indexed, so teardown still owns it and can retry.
-        if (previous && previous.journal !== attached.journal) {
-          try {
-            await previous.journal.close()
-          } catch (error) {
-            await agentSessionJournalCloseRetries.closeOrRetain(attached.journal)
-            throw error
-          }
-        }
+        await bindAndDrain(eventSink, attached.journal, fence, (activity) =>
+          context.subscribers.publish(sessionId, attached.journal, activity)
+        )
         context.runtimeState.adoptEventSink(sessionId, eventSink)
         attemptSinkAdopted = eventSink === attemptSink
         context.sessions.set(sessionId, {
@@ -230,9 +212,7 @@ async function runAttach(
           context.now
         )
         await recoverInterruptedCompaction(context.deps.store, sessionId, attached.journal, fence)
-        if (attached.recovery) {
-          context.subscribers.reset(sessionId, attached.journal, attached.recovery.reset)
-        } else if (previousFence !== undefined && previousFence !== fence) {
+        if (previousFence !== undefined && previousFence !== fence) {
           context.subscribers.snapshot(sessionId, attached.journal)
         } else {
           context.subscribers.publish(sessionId, attached.journal)
@@ -241,10 +221,21 @@ async function runAttach(
     }).finally(() => {
       if (!attemptSinkAdopted) {
         attemptSink.close()
+        followRecordFence(context, sessionId)
       }
     })
   )
   return attached
+}
+
+/** A failed attempt still moved the record's fence when it reserved; the conversation it leaves
+ *  open writes its failure row and rejections at that fence, not the one it opened at. */
+function followRecordFence(context: StructuredAgentSessionAttachContext, sessionId: string): void {
+  const conversation = context.sessions.get(sessionId)
+  const fence = context.deps.store.getRecord(sessionId)?.lease.runtimeFence
+  if (conversation && !conversation.hasProviderChild && fence !== undefined) {
+    conversation.fence = Math.max(conversation.fence, fence)
+  }
 }
 
 /** Binds the sink to the journal and waits for the barrier the host publishes

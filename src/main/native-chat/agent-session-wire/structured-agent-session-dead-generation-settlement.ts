@@ -4,6 +4,7 @@ import type {
   AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { DISPATCH_REJECTED_PROVIDER_CLOSED } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import {
@@ -55,6 +56,14 @@ export function providerStartupFailureOutcome(reason?: string): string {
     : 'The provider stopped before it finished starting.'
 }
 
+/** Why a message accepted but not yet handed over was rejected when its child exited. */
+export function providerExitBeforeDeliveryRejection(reason?: string): string {
+  const detail = exitReasonDetail(reason)
+  return detail
+    ? `The provider stopped before this message was sent: ${detail}.`
+    : 'The provider stopped before this message was sent.'
+}
+
 /** Why a send a child that never started left unwritten was rejected. The child's own diagnostic is
  *  the cause the user can act on, so it is the reason, in the words the chat row uses. */
 export function providerStartupFailureRejection(cause?: unknown): string {
@@ -72,13 +81,14 @@ function exitReasonDetail(reason: string | undefined): string | undefined {
 
 type DeadGenerationSubmission = Pick<
   ReturnType<AgentSessionJournal['submissions']>[number],
-  'clientMessageId' | 'dispatchState' | 'recovered'
+  'clientMessageId' | 'dispatchState' | 'recovered' | 'handoverRecorded' | 'handedOverAt'
 >
 
 export type DeadGenerationJournal = {
   appendLifecycleBatch: AgentSessionJournal['appendLifecycleBatch']
   markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
   rejectPendingSubmissions: AgentSessionJournal['rejectPendingSubmissions']
+  rejectQueuedSubmissions: AgentSessionJournal['rejectQueuedSubmissions']
   snapshot: () => Pick<ReturnType<AgentSessionJournal['snapshot']>, 'items'>
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
   submissions?: () => DeadGenerationSubmission[]
@@ -152,9 +162,18 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
       return true
     }
-    // A child that never proved its start accepted nothing — input is written only after it
-    // initializes — so every send it left unanswered is provably unwritten and is rejected with the
-    // child's own diagnostic. A proven child's unanswered sends stay in doubt.
+    // A queued message was never handed to this child, so it is provably unwritten. A child
+    // that never proved its start accepted nothing either — input is written only after it
+    // initializes — so every send it left unanswered is rejected with the child's own diagnostic.
+    // A proven child's handed-over sends stay in doubt.
+    await input.journal.rejectQueuedSubmissions(
+      input.fence,
+      input.exitedDuringStartup
+        ? providerStartupFailureRejection(input.unexpectedExitReason)
+        : input.unexpectedExitReason === undefined
+          ? DISPATCH_REJECTED_PROVIDER_CLOSED
+          : providerExitBeforeDeliveryRejection(input.unexpectedExitReason)
+    )
     await (input.exitedDuringStartup
       ? input.journal.rejectPendingSubmissions(
           input.fence,
@@ -247,7 +266,9 @@ function hasUnsettledSubmission(journal: DeadGenerationJournal): boolean {
   return submissions
     ? submissions.some(
         (submission) =>
-          submission.dispatchState === 'pending' ||
+          // A queued message is not work in progress: nothing has it yet.
+          (submission.dispatchState === 'pending' &&
+            !(submission.handoverRecorded && submission.handedOverAt === undefined)) ||
           (submission.dispatchState === 'unknown' && submission.recovered !== true)
       )
     : (journal.pendingSubmissions?.().length ?? 0) > 0

@@ -41,6 +41,7 @@ import {
   type AgentSessionCreatePhaseRecorder
 } from '../../observability/agent-session-instrumentation'
 import type { ProviderHistoryWindow } from '../agent-session-journal/journal-submission-reconciler'
+import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 
 export type AttachFlowInput = {
   store: AgentSessionRecordStore
@@ -66,8 +67,8 @@ export type AttachFlowInput = {
   onAcquiring?: () => Promise<void> | void
   /** Settles writes already captured by the superseded journal before opening another. */
   beforeJournalOpen?: () => Promise<void> | void
-  /** Closes and removes partial publication after journal attachment fails. */
-  onAttachFailed?: () => Promise<void>
+  /** The host's open conversation, which the attach adopts rather than opening a second one. */
+  openConversation?: (sessionId: string) => Promise<AgentSessionJournal>
 }
 
 export async function performAttach(
@@ -208,6 +209,7 @@ export async function performAttach(
       params,
       journalRoot: input.journalRoot,
       adapter: input.adapter,
+      ...(input.openConversation ? { openConversation: input.openConversation } : {}),
       providerHistoryWindow
     })
     await importAdoptedTranscript(params, attached, record, preparedTranscript.items)
