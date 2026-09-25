@@ -29,7 +29,7 @@ function settle(delivered: 'accepted' | undefined) {
         ? { value: { clientMessageId: 'c1', submission: { dispatchState: delivered } } }
         : undefined
   }
-  const receipt = deliverAndSettleWorkerStartReadiness({
+  const args = {
     runtime: {
       getNestedWorkerMaxDepth: () => 3,
       getTerminalOrchestrationCliCommand: () => 'orca'
@@ -53,7 +53,9 @@ function settle(delivered: 'accepted' | undefined) {
     effects: [],
     terminalRevealWarning: undefined,
     onStage: () => {}
-  } as never)
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fakes implement exactly the runtime, db and host members this settlement reaches.
+  const receipt = deliverAndSettleWorkerStartReadiness(args as never)
   return { db, receipt }
 }
 
