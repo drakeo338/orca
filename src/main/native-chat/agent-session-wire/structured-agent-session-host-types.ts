@@ -31,8 +31,8 @@ export type StructuredAgentSessionHostSession = {
   params: AgentSessionAttachParams
   fence: number
   /** Whether THIS host generation is running the provider process behind the session. A journal
-   *  restored for reading has none, and neither has a session a TUI owns — so neither may be
-   *  evicted to free a child, and neither may have its lease released as an observed exit. */
+   *  restored for reading has none — so it may not be evicted to free a child, nor have its lease
+   *  released as an observed exit. */
   hasProviderChild: boolean
   /** Whether the child behind `hasProviderChild` has proven its start. A publish-first acquire
    *  is `starting` until the adapter's `started` event; only then are its reported options fact. */

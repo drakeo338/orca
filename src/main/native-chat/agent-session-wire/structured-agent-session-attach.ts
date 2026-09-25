@@ -181,7 +181,7 @@ export type AttachedJournal = {
  * record store handed this host the lease and before `onAttached` starts a
  * provider child, so nothing can be appending to the provider's history while it
  * is read, and the window stays valid until the resume consumes it. Every other
- * settlement site — a proven child exit, a handoff suspend — runs while the host
+ * settlement site — a proven child exit — runs while the host
  * may still start another child, and a read there could be overtaken before it
  * is acted on. Orca still never re-sends: this decides state only.
  */
