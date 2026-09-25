@@ -5,6 +5,7 @@ import {
   AGENT_SESSION_RESTART_CONTINUATION_UNCONFIRMED_NOTE,
   AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE
 } from '../../../shared/agent-session-restart-continuation'
+import { AGENT_SESSION_RESTART_INTERRUPTION_NOTE } from '../../../shared/agent-session-restart-interruption'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { latestStructuredAgentSessionUserItem } from '../../../shared/structured-agent-session-projection'
@@ -23,6 +24,9 @@ import {
 // Which outcomes of a restart action become a failure the user is shown, and what retires one.
 
 afterEach(() => vi.restoreAllMocks())
+
+/** Written at quit where the turn was cut off, before any restart action runs. */
+const RESTART_NOTE = { text: AGENT_SESSION_RESTART_INTERRUPTION_NOTE, tone: undefined }
 
 function providerEvents(acquire: Awaited<ReturnType<typeof interruptedRestart>>['acquire']) {
   const events = acquire.mock.calls[0]?.[0].events
@@ -98,7 +102,8 @@ it('files nothing for a chat that finished on its own before its attempt, and sp
   const capsule = new AgentSessionRecoveryCapsule(root)
   expect(await capsule.listFailed(NOW)).toEqual([])
   expect(await capsule.list(NOW)).toEqual([])
-  expect(statusNotes(host)).toEqual([])
+  // Only the quit's own note: the offer, spent without an attempt, adds none.
+  expect(statusNotes(host)).toEqual([RESTART_NOTE])
   host.release(SESSION, 'pane')
 })
 
@@ -114,8 +119,10 @@ it.each(['resume', 'continueAfterRestart'] as const)(
     expect(await host.restartResume.listFailures()).toMatchObject([
       { sessionId: SESSION, outcome: 'refused' }
     ])
-    // The fix depends on why it failed, which the dialog explains; "send a message" would not work.
+    // The quit's note still holds: a send restarts the owner itself, so it is a fresh attempt. The
+    // failure note after it says why this one failed.
     expect(statusNotes(host)).toEqual([
+      RESTART_NOTE,
       { text: AGENT_SESSION_RESTART_NOT_CONNECTED_NOTE, tone: 'error' }
     ])
   }
