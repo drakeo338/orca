@@ -389,6 +389,30 @@ describe('a start the chat needed and did not get', () => {
   })
 })
 
+describe('an attach that fails after indexing its child', () => {
+  it('leaves no child behind, so the next send starts one and is delivered', async () => {
+    await host.close(SESSION)
+    const first = await accept('hello')
+    // The attach's own success record is the step after `onAttached` indexed the child.
+    const record = vi.spyOn(store, 'recordOperationOutcome')
+    record.mockImplementation(async (input) => {
+      if (input.operationId !== first && input.outcome.status === 'succeeded') {
+        record.mockRestore()
+        throw new Error('record store write failed')
+      }
+      return AgentSessionRecordStore.prototype.recordOperationOutcome.call(store, input)
+    })
+    await eventually(() => expect(submission(first)?.dispatchState).toBe('rejected'))
+    const acquiresBefore = acquire.mock.calls.length
+
+    const next = await accept('after the failure')
+
+    await eventually(() => expect(submission(next)?.dispatchState).toBe('accepted'))
+    expect(acquire).toHaveBeenCalledTimes(acquiresBefore + 1)
+    expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([next])
+  })
+})
+
 describe('what an earlier host process left behind', () => {
   it('rejects a message it accepted and never handed over, as not sent (W4′b)', async () => {
     await writeAsEarlierProcess(async (journal, fence) => {

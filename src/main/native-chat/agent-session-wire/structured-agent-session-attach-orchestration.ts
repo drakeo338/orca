@@ -24,6 +24,7 @@ import { refuseAgentSessionMutation } from './structured-agent-session-mutation-
 import { retryPendingStructuredAgentSessionSettlement } from './structured-agent-session-settlement-retry'
 import { settleStaleSessionStateOnAcquire } from './structured-agent-session-stale-turn-verdict'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
+import type { StructuredAgentSessionHostSession } from './structured-agent-session-host-types'
 import type { DeferredStructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -132,6 +133,8 @@ async function runAttach(
   // attach makes it the session's; any other exit closes it with whatever the child queued.
   const attemptSink = context.runtimeState.mintEventSink(sessionId)
   let attemptSinkAdopted = false
+  let indexed: StructuredAgentSessionHostSession | null = null
+  let attachedOk = false
   const attached = stampFailedCreateOwnerVerdict(
     context.deps.store,
     callerKey,
@@ -192,7 +195,7 @@ async function runAttach(
         )
         context.runtimeState.adoptEventSink(sessionId, eventSink)
         attemptSinkAdopted = eventSink === attemptSink
-        context.sessions.set(sessionId, {
+        indexed = {
           journal: attached.journal,
           params,
           fence,
@@ -202,7 +205,8 @@ async function runAttach(
             ? providerChildPhase
             : (previous?.providerChildPhase ?? 'ready'),
           acquisitionGeneration: acquisitionGeneration ?? previous?.acquisitionGeneration ?? null
-        })
+        }
+        context.sessions.set(sessionId, indexed)
         await recoverStructuredRewind(
           context.deps.store,
           sessionId,
@@ -218,12 +222,27 @@ async function runAttach(
           context.subscribers.publish(sessionId, attached.journal)
         }
       }
-    }).finally(() => {
-      if (!attemptSinkAdopted) {
-        attemptSink.close()
-        followRecordFence(context, sessionId)
-      }
     })
+      .then((result) => {
+        attachedOk = result.ok
+        return result
+      })
+      .finally(() => {
+        const releasedIndexedChild =
+          !attachedOk && indexed !== null && context.sessions.get(sessionId) === indexed
+        if (releasedIndexedChild && indexed) {
+          // The failure path released the child this attempt indexed; the conversation stays.
+          indexed.hasProviderChild = false
+          indexed.providerChildPhase = 'ready'
+          context.runtimeState.currentEventSink(sessionId)?.close()
+          context.runtimeState.discardEventSink(sessionId)
+          context.publishStatus?.(sessionId)
+        }
+        if (!attemptSinkAdopted || releasedIndexedChild) {
+          attemptSink.close()
+          followRecordFence(context, sessionId)
+        }
+      })
   )
   return attached
 }
