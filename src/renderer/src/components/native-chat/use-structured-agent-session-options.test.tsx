@@ -73,6 +73,7 @@ type RenderProps = {
   heldOptions?: Record<string, string>
   worktree?: string
   agent?: 'claude' | 'codex'
+  providerStarting?: boolean
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
@@ -93,6 +94,7 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
         transportEnabled: props.transportEnabled,
         isVisible: !props.hidden,
         providerVisible: props.transportEnabled && !props.hidden,
+        ...(props.providerStarting ? { providerStarting: true } : {}),
         fence: props.fence,
         turnId: props.turnId ?? null,
         unloadedTurnRevisions: undefined,
@@ -452,6 +454,58 @@ describe('useStructuredAgentSessionOptions', () => {
       })
       expect(setOptionCalls(calls)).toEqual([{ key: 'model', value: 'gpt-5.6-luna' }])
       expect(mocks.hold).toHaveBeenCalledTimes(1)
+      unmount()
+    })
+  })
+
+  describe('before the provider starts', () => {
+    // What a started Claude host reports: the model its settings or env make Claude run.
+    const CLAUDE_STARTED = {
+      models: [
+        { id: 'opus[1m]', label: 'Opus (1M context)', isDefault: true, efforts: [] },
+        { id: 'haiku', label: 'Haiku', isDefault: false, efforts: [] }
+      ],
+      current: { model: 'haiku' }
+    }
+    const optionReads = (): number =>
+      mocks.call.mock.calls.filter(([, method]) => method === 'agentSession.options').length
+
+    it('shows the model a new chat will run once its provider starts, not a seed default', async () => {
+      answer({ options: () => Promise.resolve(CLAUDE_STARTED) })
+      const starting = { ...ATTACHED, agent: 'claude' as const, providerStarting: true }
+      const { result, rerender, unmount } = renderOptions(
+        starting,
+        mutateWith(async () => null).mutate
+      )
+      await tick()
+      // The host has not read what Claude will run yet, so its answer would be a guess.
+      expect(optionReads()).toBe(0)
+      expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
+
+      rerender({ ...starting, providerStarting: false })
+      await waitFor(() =>
+        expect(currentValue(result.current.optionSnapshot, 'model')).toBe('haiku')
+      )
+      // Unconfirmed until a turn reports it.
+      expect(descriptor(result.current.optionSnapshot, 'model')?.valueSource).toBe('dispatched')
+      expect(optionReads()).toBe(1)
+      unmount()
+    })
+
+    it('still reads a reopened chat while it starts, whose host holds the model it ran', async () => {
+      answer({ options: () => Promise.resolve(CLAUDE_STARTED) })
+      const starting = { ...REOPENED, agent: 'claude' as const, providerStarting: true }
+      const { result, rerender, unmount } = renderOptions(
+        starting,
+        mutateWith(async () => null).mutate
+      )
+      await waitFor(() =>
+        expect(currentValue(result.current.optionSnapshot, 'model')).toBe('haiku')
+      )
+
+      rerender({ ...starting, providerStarting: false })
+      // Re-read once started: only then has the host read what the provider will run.
+      await waitFor(() => expect(optionReads()).toBe(2))
       unmount()
     })
   })

@@ -152,6 +152,9 @@ export type ClaudeSession = {
   replayContentFallbackBlocked: boolean
   options: Map<string, string>
   reportedOptions: { model?: string; effort?: string; fastMode?: boolean }
+  /** What `get_settings` says the next request will send, after Claude's own env and settings
+   *  precedence: the lowest-ranked answer, unconfirmed until a turn reports it. */
+  appliedOptions?: { model?: string; effort?: string }
   fastModeState?: AgentSessionFastModeState
   fastModeDisabledReason?: string
   fastModePerSessionOptIn?: boolean

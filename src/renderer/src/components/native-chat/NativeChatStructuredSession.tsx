@@ -44,6 +44,7 @@ export function NativeChatStructuredSession(
   const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
   const controller = useStructuredAgentSession({
     ...props,
+    providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })

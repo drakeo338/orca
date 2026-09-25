@@ -32,10 +32,20 @@ export function useStructuredAgentSession(args: {
   agent: AgentType
   isVisible: boolean
   transportEnabled?: boolean
+  /** The host has published the session but its provider has not answered startup yet. */
+  providerStarting?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
   launch?: StructuredAgentSessionLaunchView
 }) {
-  const { agent, isVisible, launch, sessionId, target, transportEnabled = true } = args
+  const {
+    agent,
+    isVisible,
+    launch,
+    providerStarting = false,
+    sessionId,
+    target,
+    transportEnabled = true
+  } = args
   const {
     state,
     loadingOlder,
@@ -67,6 +77,7 @@ export function useStructuredAgentSession(args: {
     transportEnabled,
     isVisible,
     providerVisible,
+    providerStarting,
     fence: state.fence,
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,

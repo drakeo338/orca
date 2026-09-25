@@ -23,6 +23,7 @@ import {
 } from './claude-structured-session-acquisition-options'
 import {
   claudeStructuredSessionOptionsFrom,
+  observeClaudeSettingsApplied,
   readClaudeSettingsEffort
 } from './claude-structured-session-options'
 import {
@@ -125,6 +126,7 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
     session.reportedOptions.model = init.model
     session.reportedModelMutation = session.optionMutationSequence
   }
+  observeClaudeSettingsApplied(session, settings)
   if (effort) {
     session.reportedOptions.effort = effort
     session.confirmedOptions.add('effort')

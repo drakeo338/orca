@@ -27,10 +27,23 @@ export function useStructuredAgentSessionOptionState(args: {
   sessionId: string
   target: RuntimeClientTarget
   providerVisible: boolean
+  providerStarting: boolean
+  readsBeforeStart: boolean
   turnId: string | null
   unloadedTurnRevisions: number | undefined
 }) {
-  const { agent, fence, identity, optionCatalog, providerVisible, sessionId, target, turnId } = args
+  const {
+    agent,
+    fence,
+    identity,
+    optionCatalog,
+    providerStarting,
+    providerVisible,
+    readsBeforeStart,
+    sessionId,
+    target,
+    turnId
+  } = args
   const [conversationSupport, setConversationSupport] = useState<{
     sessionId: string
     commands: readonly AgentSessionConversationCommand[]
@@ -78,9 +91,10 @@ export function useStructuredAgentSessionOptionState(args: {
   }, [agent, fence, identity])
 
   const optionsReadRef = useRef<CoalescedPollRunner | null>(null)
-  // Refresh options each turn to confirm which model the provider actually selected.
+  // Refresh options each turn to confirm which model the provider actually selected, and once
+  // the provider starts: only then has the host read what it will run.
   useEffect(() => {
-    if (!providerVisible || !optionCatalog) {
+    if (!providerVisible || (providerStarting && !readsBeforeStart) || !optionCatalog) {
       return
     }
     let stale = false
@@ -111,7 +125,17 @@ export function useStructuredAgentSessionOptionState(args: {
       stale = true
       runner.dispose()
     }
-  }, [fence, optionCatalog, providerVisible, sessionId, target, turnId, updateOptionState])
+  }, [
+    fence,
+    optionCatalog,
+    providerStarting,
+    providerVisible,
+    readsBeforeStart,
+    sessionId,
+    target,
+    turnId,
+    updateOptionState
+  ])
 
   // Reads share the session's host queue with sends and interrupts, so a burst of
   // missed revisions keeps one read in flight and at most one behind it.
