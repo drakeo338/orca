@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
-import { BROWSER_CLIENT_AUTOMATION_METHODS } from '../../shared/browser-client-automation-protocol'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   BrowserClientHostCommandEvent,
   type BrowserClientHostCommandResult,
   type BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
+import * as commandState from './browser-client-host-command-state'
 import { BrowserClientHostCommandDispatcher } from './browser-client-host-command-dispatcher'
 
 const authority: BrowserClientHostLeaseAuthority = {
@@ -42,6 +42,100 @@ const create = event(
 const snapshot = event({ type: 'automation', method: 'browser.snapshot', params: {} })
 
 describe('automation command replay', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('preserves nested own __proto__ data without a platform clone', async () => {
+    vi.stubGlobal('structuredClone', () => {
+      throw new Error('platform clone must not run')
+    })
+    const handler = vi.fn((accepted: BrowserClientHostCommandEvent) => {
+      if (accepted.command.type === 'automation') {
+        const nested = accepted.command.params.nested
+        if (nested === null || typeof nested !== 'object') {
+          throw new Error('nested object required')
+        }
+        expect(Object.getPrototypeOf(nested)).toBe(Object.prototype)
+        expect(Object.hasOwn(nested, '__proto__')).toBe(true)
+        const data = Object.getOwnPropertyDescriptor(nested, '__proto__')!.value
+        expect(data).toEqual({ value: 1 })
+        expect(Object.isFrozen(nested)).toBe(true)
+        expect(Object.isFrozen(data)).toBe(true)
+        expect(Reflect.set(data, 'value', 2)).toBe(false)
+      }
+      return { status: 'completed' as const }
+    })
+    const dispatcher = new BrowserClientHostCommandDispatcher({ authority, handler })
+    await dispatcher.dispatch(create)
+    const command = wireCopy(
+      event({
+        type: 'automation',
+        method: 'browser.eval',
+        params: JSON.parse('{"nested":{"__proto__":{"value":1},"ok":1}}')
+      })
+    )
+    const original = dispatcher.dispatch(command)
+    await expect(original).resolves.toEqual({ status: 'completed' })
+    expect(dispatcher.dispatch(wireCopy(command))).toBe(original)
+    expect(handler).toHaveBeenCalledTimes(2)
+  })
+
+  it('executes and replays schema-accepted depth 3000 JSON without recursive traversal', async () => {
+    const json = `${'{"n":'.repeat(3000)}0${'}'.repeat(3000)}`
+    expect(json.length).toBe(18001)
+    const handler = vi.fn((accepted: BrowserClientHostCommandEvent) => {
+      if (accepted.command.type === 'automation') {
+        let node: unknown = accepted.command.params
+        let depth = 0
+        while (node !== null && typeof node === 'object') {
+          expect(Object.isFrozen(node)).toBe(true)
+          node = Object.getOwnPropertyDescriptor(node, 'n')!.value
+          depth += 1
+        }
+        expect(depth).toBe(3000)
+        expect(node).toBe(0)
+      }
+      return { status: 'completed' as const }
+    })
+    const dispatcher = new BrowserClientHostCommandDispatcher({ authority, handler })
+    await dispatcher.dispatch(create)
+    const command = wireCopy(
+      event({ type: 'automation', method: 'browser.eval', params: JSON.parse(json) })
+    )
+    const original = dispatcher.dispatch(command)
+    await expect(original).resolves.toEqual({ status: 'completed' })
+    expect(dispatcher.dispatch(wireCopy(command))).toBe(original)
+    const changed = wireCopy(
+      event({
+        type: 'automation',
+        method: 'browser.eval',
+        params: JSON.parse(json.replace('0', '1'))
+      })
+    )
+    expect(() => dispatcher.dispatch(changed)).toThrow('browser_host_command_sequence_conflict')
+    expect(handler).toHaveBeenCalledTimes(2)
+  })
+
+  it('snapshots only newly admitted commands, never duplicates or rejected input', async () => {
+    const snapshotSpy = vi.spyOn(commandState, 'snapshotCommandEvent')
+    const handler = vi.fn(() => ({ status: 'completed' as const }))
+    const dispatcher = new BrowserClientHostCommandDispatcher({ authority, handler })
+    await dispatcher.dispatch(create)
+    const original = dispatcher.dispatch(wireCopy(snapshot))
+    for (let index = 0; index < 5; index += 1) {
+      expect(dispatcher.dispatch(wireCopy(snapshot))).toBe(original)
+    }
+    await original
+    expect(dispatcher.dispatch(wireCopy(snapshot))).toBe(original)
+    expect(() => dispatcher.dispatch({ ...snapshot, authorityEpoch: 'stale' })).toThrow()
+    expect(() => dispatcher.dispatch({ ...snapshot, commandSequence: 4 })).toThrow()
+    expect(() => dispatcher.dispatch({ ...snapshot, pageHostGeneration: 0 })).toThrow()
+    expect(snapshotSpy).toHaveBeenCalledTimes(2)
+    expect(handler).toHaveBeenCalledTimes(2)
+  })
+
   it('snapshots nested caller input and prevents handler mutation of replay identity', async () => {
     const handler = vi.fn((accepted: BrowserClientHostCommandEvent) => {
       if (accepted.command.type === 'automation') {
@@ -72,7 +166,7 @@ describe('automation command replay', () => {
     expect(handler).toHaveBeenCalledTimes(2)
   })
 
-  it.each(BROWSER_CLIENT_AUTOMATION_METHODS)(
+  it.each(['browser.snapshot', 'browser.eval'] as const)(
     'replays completed %s exactly once',
     async (method) => {
       const handler = vi.fn(() => ({ status: 'completed' as const, value: { result: [1, null] } }))

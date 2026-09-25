@@ -125,8 +125,7 @@ function snapshotPageCommand(
   command: BrowserClientHostCommandEvent['command']
 ): BrowserClientHostCommandEvent['command'] {
   if (command.type === 'automation') {
-    const params = structuredClone(command.params)
-    freezeAutomationParams(params)
+    const params = snapshotAutomationParams(command.params)
     return Object.freeze({ ...command, params })
   }
   if (command.type === 'reclaimPage') {
@@ -144,14 +143,24 @@ function snapshotPageCommand(
   return Object.freeze({ ...command })
 }
 
-function freezeAutomationParams(value: unknown): void {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
-    return
+// Params are parsed wire JSON; define own properties so __proto__ remains data on every runtime.
+function snapshotAutomationParams(params: Record<string, unknown>): Record<string, unknown> {
+  const snapshot: Record<string, unknown> = {}
+  const pending: { source: object; target: object }[] = [{ source: params, target: snapshot }]
+  while (pending.length > 0) {
+    const { source, target } = pending.pop()!
+    for (const [key, value] of Object.entries(source)) {
+      let copy: unknown = value
+      if (value !== null && typeof value === 'object') {
+        const child = Array.isArray(value) ? [] : {}
+        pending.push({ source: value, target: child })
+        copy = child
+      }
+      Object.defineProperty(target, key, { value: copy, enumerable: true })
+    }
+    Object.freeze(target)
   }
-  Object.freeze(value)
-  for (const nested of Object.values(value)) {
-    freezeAutomationParams(nested)
-  }
+  return snapshot
 }
 
 export function failedCommandResult(errorCode: string): BrowserClientHostCommandResult {
