@@ -2,6 +2,12 @@ import type { LegacyAdoptedMailboxOwner, OrchestrationDb } from '../../../../orc
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import type { DispatchContextRow, DispatchStatus } from '../../../../orchestration/types'
 import type { OrcaRuntimeService } from '../../../../orca-runtime'
+import { parseOrcaSessionAddress } from '../../../../../../shared/orca-session-address'
+import {
+  readStructuredAgentSessionRecord,
+  resolveStructuredWorkerIdentityForSession
+} from '../../../../structured-worker-authority'
+import { structuredWorkerHostScope } from '../../../../structured-worker-identity'
 
 const ACTIVE_DISPATCH_STATUSES: readonly DispatchStatus[] = ['pending', 'dispatched']
 
@@ -56,8 +62,20 @@ export function resolveBareOrchestrationRecipient(params: {
   legacyAdoptedMailboxOwner?: LegacyAdoptedMailboxOwner | null
 }): BareRecipientResolution {
   const { runtime, db, handle } = params
-  const paneKey = runtime.getLiveTerminalPaneKey(handle) ?? undefined
-  const boundRun = paneKey ? db.getCurrentRunForPane(paneKey) : undefined
+  const orcaSessionId = parseOrcaSessionAddress(handle)
+  if (orcaSessionId) {
+    // A structured worker's session address names the worker, which reads its mail as its handle.
+    const worker = resolveStructuredWorkerIdentityForSession(orcaSessionId, db)
+    if (worker) {
+      return resolveBareOrchestrationRecipient({ ...params, handle: worker.handle })
+    }
+  }
+  const paneKey = orcaSessionId ? undefined : (runtime.getLiveTerminalPaneKey(handle) ?? undefined)
+  const boundRun = orcaSessionId
+    ? db.getCurrentRunForCoordinator({ terminalHandle: null, paneKey: null, orcaSessionId })
+    : paneKey
+      ? db.getCurrentRunForPane(paneKey)
+      : undefined
   if (boundRun) {
     const mismatch = runMismatch(handle, boundRun.id, params.explicitRunId)
     return mismatch ?? { ok: true, to: `run:${boundRun.id}`, runId: boundRun.id }
@@ -102,7 +120,17 @@ export function resolveBareOrchestrationRecipient(params: {
     }
   }
 
-  const message = `Terminal ${handle} has no live pane or durable Run/Dispatch mailbox.`
+  if (orcaSessionId) {
+    const record = readStructuredAgentSessionRecord(orcaSessionId)
+    // Unlike a terminal handle, a session address outlives its process, so its direct mail is durable.
+    if (record && structuredWorkerHostScope(record.location)) {
+      return { ok: true, to: handle, runId: params.senderRunId }
+    }
+  }
+
+  const message = orcaSessionId
+    ? `Agent session ${orcaSessionId} does not run on this host and has no durable Run/Dispatch mailbox.`
+    : `Terminal ${handle} has no live pane or durable Run/Dispatch mailbox.`
   return {
     ok: false,
     code: 'terminal_not_found',
