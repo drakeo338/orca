@@ -13,10 +13,10 @@ const NEW_COORDINATOR_SESSION_ADDRESS_SQL = currentRunCoordinatorSessionAddressS
 /**
  * Orca session id columns (bare ids, see orca-session-address) on a Run's coordinator and a
  * Dispatch's assignee and creator: the Orca session id the agent is addressed by, when it has one
- * (today only structured sessions). Existing structured-worker rows get their id from
- * `backfillStructuredWorkerOrcaSessionIds`, which runs after migrate on every open. A coordinator's
- * id carries the consumer generation it was written at and counts only at that generation.
- * The id is the one the agent is addressed by: for a `/clear`ed chat, its lineage root's, not the live one.
+ * (today only structured sessions); for a `/clear`ed chat, its lineage root's, not the live one.
+ * Existing structured-worker rows get their id from `backfillStructuredWorkerOrcaSessionIds`, which
+ * runs after migrate on every open. A coordinator's id carries the consumer generation it was
+ * written at and counts only at that generation.
  *
  * Dev databases stamped v42 by earlier builds hold `*_principal` or `*_actor` columns instead. They
  * are unsupported: the version-skew probe finds a column missing and replays the chain, which adds
