@@ -18,13 +18,19 @@ describeOnWindows('Git Bash launcher shell proof', () => {
       rows: 30,
       useConptyDll: true
     })
+    let output = ''
+    proc.onData((chunk) => {
+      output += chunk
+    })
     const confirm = (): Promise<boolean> =>
       confirmShellForegroundProcess(proc.pid, shell, {
         readWindowsPtyJobProcessIds: () => readWindowsPtyJobProcessIds(proc)
       })
     try {
-      await vi.waitFor(async () => expect(await confirm()).toBe(true), { timeout: 15_000 })
+      // Before the hand-off the launcher is alone; the prompt is painted by the MSYS bash.
+      await vi.waitFor(() => expect(output).toContain('$'), { timeout: 15_000 })
       expect(readWindowsPtyJobProcessIds(proc)?.size).toBe(2)
+      await expect(confirm()).resolves.toBe(true)
 
       proc.write('sleep 60\r')
       await vi.waitFor(async () => expect(await confirm()).toBe(false), { timeout: 10_000 })
