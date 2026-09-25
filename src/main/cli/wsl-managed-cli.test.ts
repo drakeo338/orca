@@ -43,6 +43,12 @@ describe('managed WSL CLI provisioning', () => {
     expect(getManagedWslCliDir(host)).toBeNull()
   })
 
+  it('provides nothing when user data cannot hold the CLI', () => {
+    const host = fixture()
+    writeFileSync(host.userDataPath, 'a file, not a directory')
+    expect(getManagedWslCliDir(host)).toBeNull()
+  })
+
   it('runs the development CLI directly with the dev launcher env', () => {
     const host = fixture()
     const appPath = host.resourcesPath

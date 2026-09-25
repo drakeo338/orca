@@ -47,6 +47,7 @@ export function getManagedWslCliDir(opts: {
     [join(directory, 'orca-wsl-bridge.ps1'), bridge]
   ] as const
   const ready =
-    files.every(([path]) => existsSync(path)) || writeShellWrapperFiles(files, '[WSL CLI]')
+    files.every(([path]) => existsSync(path)) ||
+    writeShellWrapperFiles(files, '[WSL CLI]', 'WSL terminals will start without the Orca CLI')
   return ready ? directory : null
 }

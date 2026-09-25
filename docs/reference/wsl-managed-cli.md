@@ -28,8 +28,10 @@ Electron as Node on `out/cli/index.js` directly, with the environment
 `buildWindowsDevLauncher` sets (`ORCA_APP_EXECUTABLE`, stashed `NODE_OPTIONS`).
 Otherwise it launches its child exactly like the registered bridge.
 
-A missing runtime or unwritable directory leaves `ORCA_WSL_CLI_DIR` unset and logs
-once on the host.
+A missing runtime (logged once) or a failed write (logged per spawn) leaves
+`ORCA_WSL_CLI_DIR` unset. A terminal daemon from an older build adds no WSLENV
+entry, so its WSL panes lack the CLI until the daemon restarts.
 
 Run the opt-in end-to-end test on Windows with `ORCA_BACKGROUND_LAUNCH=1`,
-`ORCA_TEST_MANAGED_WSL=1`, and optionally `ORCA_TEST_WSL_DISTRO=<distro>`.
+`ORCA_TEST_MANAGED_WSL=1`, and optionally `ORCA_TEST_WSL_DISTRO=<distro>`. The zsh
+case skips when the distro lacks `zsh` or `script`.
