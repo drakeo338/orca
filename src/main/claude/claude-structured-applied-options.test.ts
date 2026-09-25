@@ -129,6 +129,20 @@ describe('Claude model before the first turn', () => {
     expect(started).toMatchObject({ reportedOptions: { model: 'haiku' } })
   })
 
+  it('shows the applied effort but never persists it as the session options', async () => {
+    const events: ClaudeStructuredSessionEvent[] = []
+    const adapter = await acquired(startedWithoutATurn(SETTINGS.noOverride), {}, events)
+
+    const started = events.find((event) => event.type === 'started')
+    expect(started).toMatchObject({ reportedOptions: { model: 'opus[1m]' } })
+    // Saved, it would be restored on every reopen past a later settings.json change.
+    expect(started?.type === 'started' ? started.reportedOptions : null).not.toHaveProperty(
+      'effort'
+    )
+    const { current } = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+    expect(current.effort).toBe('medium')
+  })
+
   it('re-reads what Claude will apply after a model write', async () => {
     const settings = structuredClone(SETTINGS.settingsHaiku)
     const claude = startedWithoutATurn(settings)

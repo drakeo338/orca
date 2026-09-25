@@ -149,6 +149,20 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
   session.events?.publish()
 }
 
+/** What the start persists as the session's options. The applied effort is display-only: saved,
+ *  it would pin an effort nobody chose on every reopen, past a later settings change. */
+function claudeStartedReportedOptions(
+  session: ClaudeSession,
+  catalog: unknown[]
+): StructuredAgentSessionStartedOptions['reportedOptions'] {
+  const { current } = claudeStructuredSessionOptionsFrom(session, catalog)
+  if (session.options.has('effort') || session.reportedOptions.effort !== undefined) {
+    return current
+  }
+  const { effort: _displayOnly, ...persisted } = current
+  return persisted
+}
+
 /** Applies startup facts to the published session, restores saved options, then releases
  *  held prompts. Any failure faults the session so the user sees why it never started. */
 export async function settleClaudeSessionStartup(input: {
@@ -178,10 +192,10 @@ export async function settleClaudeSessionStartup(input: {
     if (!superseded()) {
       input.onStarted({
         // `list_models` is answered from this same initialize result, so nothing is re-read.
-        reportedOptions: claudeStructuredSessionOptionsFrom(
+        reportedOptions: claudeStartedReportedOptions(
           session,
           readClaudeModels(facts.initialization)
-        ).current,
+        ),
         restoreSkippedOptions: [...session.restoreSkippedOptions]
       })
       await openClaudeStartupGate(session)
