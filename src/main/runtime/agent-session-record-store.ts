@@ -57,7 +57,7 @@ import {
   collectAgentSessionRestartProbes,
   type AgentSessionRestartProbeArgs
 } from './agent-session-restart-reconciliation'
-import { currentAgentSessionHostRun, type AgentSessionHostRun } from './agent-session-host-run'
+import { agentSessionHostRunSource, type AgentSessionHostRunSource } from './agent-session-host-run'
 import { replaceAgentSessionRecordOptions } from './agent-session-record-options'
 import {
   setAgentSessionReservationProcesslessProof,
@@ -84,23 +84,21 @@ export class AgentSessionRecordStore {
   private constructor(
     private readonly transactions: AgentSessionStoreTransactionQueue,
     /** Stamped on every native lease this store grants, and compared against at restart. Read
-     *  per use, since the machine id can become readable only after the store opens. */
-    readonly currentHostRun: () => Promise<AgentSessionHostRun>
+     *  per use: a restart reconcile can read a machine id the store's open could not. */
+    readonly hostRun: AgentSessionHostRunSource
   ) {}
 
   static async open(
     args: { directory: string; hostId: string } & AgentSessionStoreOpenOptions
   ): Promise<AgentSessionRecordStore> {
-    const { hostRun } = args
     const transactions = await AgentSessionStoreTransactionQueue.open(
       agentSessionStorePath(args.directory),
       args.hostId,
       args
     )
-    return new AgentSessionRecordStore(
-      transactions,
-      hostRun ? async () => hostRun : currentAgentSessionHostRun
-    )
+    const store = new AgentSessionRecordStore(transactions, agentSessionHostRunSource(args.hostRun))
+    await store.hostRun.resolve()
+    return store
   }
 
   private get state(): AgentSessionStoreState {
@@ -178,7 +176,7 @@ export class AgentSessionRecordStore {
   }
 
   async reserveOwner(request: AgentSessionReserveRequest): Promise<AgentSessionReserveResult> {
-    const hostRun = await this.currentHostRun()
+    const hostRun = this.hostRun.current()
     return this.transact(() =>
       commitAgentSessionReservation(this.state, request, AGENT_SESSION_LEASE_TTL_MS, hostRun)
     )
@@ -273,7 +271,7 @@ export class AgentSessionRecordStore {
   async reconcileOnRestart(
     args: AgentSessionRestartProbeArgs
   ): Promise<Map<string, AgentSessionRecord>> {
-    const hostRun = await this.currentHostRun()
+    const hostRun = this.hostRun.current()
     const pending = this.listRecords().filter((record) => record.lease.unreconciled)
     const endedWithPreviousAppRun = agentSessionPreviousAppRunTest(
       this.transactions.hostId,

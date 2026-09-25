@@ -71,7 +71,7 @@ export function stopStoredRecoveringTuiOwnerForHandoff(
   )
 }
 
-export async function reserveStoredAgentSessionHandoffOwner(
+export function reserveStoredAgentSessionHandoffOwner(
   store: AgentSessionRecordStore,
   args: {
     sessionId: string
@@ -84,13 +84,12 @@ export async function reserveStoredAgentSessionHandoffOwner(
     leaseTtlMs?: number
   }
 ) {
-  const hostRun = await store.currentHostRun()
   return store.transitionHandoff(args.sessionId, (record) =>
     reserveAgentSessionHandoffOwner({
       ...args,
       record,
       leaseTtlMs: args.leaseTtlMs ?? AGENT_SESSION_LEASE_TTL_MS,
-      hostRun
+      hostRun: store.hostRun.current()
     })
   )
 }

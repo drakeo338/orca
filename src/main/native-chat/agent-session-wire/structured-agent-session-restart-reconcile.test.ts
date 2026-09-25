@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import {
+  agentSessionLeaseFixture,
+  agentSessionRecordFixture
+} from '../../../shared/agent-session-record.test-fixture'
 import { createRestartReconciler } from './structured-agent-session-restart-reconcile'
+
+const hostRun = { resolve: async () => ({ runId: 'run-1', pid: 1, machine: 'test-os:box' }) }
 
 describe('createRestartReconciler', () => {
   it('reruns after an external store refresh introduces unreconciled leases', async () => {
@@ -13,8 +18,9 @@ describe('createRestartReconciler', () => {
     const store = {
       listRecords: () => [record],
       getRecord: () => record,
-      reconcileOnRestart
-    } as unknown as AgentSessionRecordStore
+      reconcileOnRestart,
+      hostRun
+    }
     const reconcile = createRestartReconciler({
       store,
       probe: async () => ({ outcome: 'pid-absent' }),
@@ -25,6 +31,34 @@ describe('createRestartReconciler', () => {
     record = { ...record, lease: { ...record.lease, unreconciled: true } }
     expect(await reconcile('session-1')).toBeNull()
     expect(reconcileOnRestart).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries an unread machine id once per reconcile, not once per pass', async () => {
+    let passes = 0
+    const record = () =>
+      agentSessionRecordFixture(agentSessionLeaseFixture({ unreconciled: passes < 2 }))
+    const resolveHostRun = vi.fn(hostRun.resolve)
+    const store = {
+      listRecords: () => [record()],
+      getRecord: () => record(),
+      reconcileOnRestart: vi.fn(async () => {
+        passes += 1
+        return new Map()
+      }),
+      hostRun: { resolve: resolveHostRun }
+    }
+    const reconcile = createRestartReconciler({
+      store,
+      probe: async () => ({ outcome: 'pid-absent' }),
+      now: () => 1
+    })
+
+    expect(await reconcile('session-1')).toBeNull()
+    expect(passes).toBe(2)
+    expect(resolveHostRun).toHaveBeenCalledOnce()
+    // Settled: an operation that finds nothing to adjudicate looks nothing up.
+    expect(await reconcile('session-1')).toBeNull()
+    expect(resolveHostRun).toHaveBeenCalledOnce()
   })
 
   it('passes every pending record through the batch owner probe', async () => {
@@ -40,9 +74,7 @@ describe('createRestartReconciler', () => {
     })
     const reconcileOnRestart = vi.fn(
       async (args: {
-        probeMany?: (
-          pending: readonly AgentSessionRecord[]
-        ) => Promise<Map<string, { outcome: 'pid-absent' }>>
+        probeMany?: (pending: readonly AgentSessionRecord[]) => Promise<unknown>
       }) => {
         await args.probeMany?.(records)
         records = records.map((record) => ({
@@ -56,8 +88,9 @@ describe('createRestartReconciler', () => {
       listRecords: () => records,
       getRecord: (sessionId: string) =>
         records.find((record) => record.sessionId === sessionId) ?? null,
-      reconcileOnRestart
-    } as unknown as AgentSessionRecordStore
+      reconcileOnRestart,
+      hostRun
+    }
 
     await expect(
       createRestartReconciler({ store, probe, probeMany, now: () => 1 })('session-1')

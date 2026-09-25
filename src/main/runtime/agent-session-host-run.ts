@@ -13,23 +13,47 @@ const processRunId = randomUUID()
 // Why per process: a machine with no readable id must never match another run's stamps.
 const processFallbackMachine = `${process.platform}:runtime:${randomUUID()}`
 let machine: string | undefined
-let machineLookup: Promise<string | undefined> | undefined
+let machineLookup: Promise<void> | undefined
 
 /**
- * This process's run. Only a machine id that was read is kept: a failed or timed-out lookup
- * answers with the per-process fallback for that call and is retried on the next, so a slow boot
- * costs only the stamps written before the id is read — those are probed at the next restart.
+ * Looks this machine's id up unless one was already read. Only a read id is kept, and only a store
+ * open or a restart reconcile asks: a lookup can spawn a process and a failed one may take its whole
+ * timeout, so nothing per operation may retry it.
  */
-export async function currentAgentSessionHostRun(): Promise<AgentSessionHostRun> {
+export async function resolveAgentSessionHostRun(): Promise<AgentSessionHostRun> {
   if (machine === undefined) {
     // Concurrent callers share one lookup.
-    machineLookup ??= readAgentSessionMachine().finally(() => {
-      machineLookup = undefined
-    })
-    const read = await machineLookup
-    machine ??= read
+    machineLookup ??= readAgentSessionMachine()
+      .then((read) => {
+        machine ??= read
+      })
+      .finally(() => {
+        machineLookup = undefined
+      })
+    await machineLookup
   }
+  return currentAgentSessionHostRun()
+}
+
+/**
+ * This process's run as its last lookup left it, with no lookup of its own. Stamps written while the
+ * id is unread carry the per-process fallback; those are probed at the next restart.
+ */
+export function currentAgentSessionHostRun(): AgentSessionHostRun {
   return { runId: processRunId, pid: process.pid, machine: machine ?? processFallbackMachine }
+}
+
+/** Where a store reads the run it stamps; only `resolve` may look the machine id up again. */
+export type AgentSessionHostRunSource = {
+  current: () => AgentSessionHostRun
+  resolve: () => Promise<AgentSessionHostRun>
+}
+
+/** This process's run, or a fixed one a test names. */
+export function agentSessionHostRunSource(fixed?: AgentSessionHostRun): AgentSessionHostRunSource {
+  return fixed
+    ? { current: () => fixed, resolve: async () => fixed }
+    : { current: currentAgentSessionHostRun, resolve: resolveAgentSessionHostRun }
 }
 
 /** Unmemoized, for tests that stand up a second run on this machine. */

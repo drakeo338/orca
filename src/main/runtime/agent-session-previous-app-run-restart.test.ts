@@ -21,10 +21,16 @@ import {
 } from './agent-session-host-run'
 
 const machineId = vi.hoisted(
-  (): { hostname: string; override: string | undefined; lookups: (string | undefined)[] } => ({
+  (): {
+    hostname: string
+    override: string | undefined
+    lookups: (string | undefined)[]
+    lookupCount: number
+  } => ({
     hostname: 'home-wifi.local',
     override: undefined,
-    lookups: []
+    lookups: [],
+    lookupCount: 0
   })
 )
 
@@ -37,10 +43,12 @@ vi.mock('../agent-hooks/managed-hook-owner-identity', async (importOriginal) => 
   const actual = await importOriginal<typeof MachineIdentityModule>()
   return {
     ...actual,
-    readDurableHostIdentity: async () =>
-      machineId.lookups.length > 0
+    readDurableHostIdentity: async () => {
+      machineId.lookupCount += 1
+      return machineId.lookups.length > 0
         ? machineId.lookups.shift()
         : (machineId.override ?? (await actual.readDurableHostIdentity()))
+    }
   }
 })
 
@@ -490,8 +498,8 @@ describe('the host run a lease is stamped with', () => {
   it("defaults to this process's own run", async () => {
     const store = await AgentSessionRecordStore.open({ directory, hostId: 'local' })
 
-    expect(await store.currentHostRun()).toEqual(await currentAgentSessionHostRun())
-    expect(await store.currentHostRun()).toMatchObject({
+    expect(store.hostRun.current()).toEqual(currentAgentSessionHostRun())
+    expect(store.hostRun.current()).toMatchObject({
       pid: process.pid,
       machine: expect.stringMatching(new RegExp(`^${process.platform}:`))
     })
@@ -503,30 +511,50 @@ describe('the machine a run is stamped with', () => {
     machineId.hostname = 'home-wifi.local'
     machineId.override = undefined
     machineId.lookups = []
+    machineId.lookupCount = 0
   })
 
-  it('retries a machine id lookup that timed out, and stamps the id once it is read', async () => {
+  it('looks an unread machine id up again only at a restart reconcile, and a read one never', async () => {
     // A fresh module, so no earlier test has already read this process's machine id.
     vi.resetModules()
     const fresh = await import('./agent-session-record-store')
-    // The first lookup times out on a slow boot; the second reads the id.
-    machineId.lookups = [undefined, 'win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee']
+    const { createRestartReconciler } =
+      await import('../native-chat/agent-session-wire/structured-agent-session-restart-reconcile')
+    // The store's open times out on a slow boot; every reservation after it must not ask again.
+    machineId.lookupCount = 0
+    machineId.lookups = [undefined]
     const store = await fresh.AgentSessionRecordStore.open({ directory, hostId: 'local' })
-
-    await reserve(store)
-    await reserve(store, { sessionId: 'session-bravo', spawnToken: 'spawn-b' })
-    machineId.lookups = ['win32:ffffffff-bbbb-4ccc-8ddd-eeeeeeeeeeee']
-    await reserve(store, { sessionId: 'session-charlie', spawnToken: 'spawn-c' })
-
+    for (const id of ['session-alpha', 'session-bravo', 'session-charlie']) {
+      await reserve(store, { sessionId: id, spawnToken: `spawn-${id}` })
+    }
+    expect(machineId.lookupCount).toBe(1)
     const stamp = (id: string) => store.getRecord(id)?.lease.ownerHostRun
-    expect(stamp(SESSION)?.machine).toMatch(new RegExp(`^${process.platform}:runtime:`))
-    expect(stamp('session-bravo')?.machine).toMatch(
-      new RegExp(`^${process.platform}:win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`)
+    expect(stamp('session-charlie')?.machine).toMatch(new RegExp(`^${process.platform}:runtime:`))
+
+    // Another writer's commit leaves this store's leases to adjudicate again.
+    const reconcile = createRestartReconciler({
+      store,
+      probe: async () => ({ outcome: 'pid-absent' }),
+      now: () => NOW + 1_000
+    })
+    const readdjudicate = async (): Promise<void> => {
+      const peer = await open()
+      await reserve(peer, { sessionId: `peer-${machineId.lookupCount}-${counter}` })
+      await store.setSessionTabVisibility(SESSION, true)
+      expect(store.getRecord(SESSION)?.lease.unreconciled).toBe(true)
+      expect(await reconcile(SESSION)).toBeNull()
+    }
+    machineId.lookups = ['win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee']
+    await readdjudicate()
+    expect(machineId.lookupCount).toBe(2)
+
+    await reserve(store, { sessionId: 'session-delta', spawnToken: 'spawn-d' })
+    await readdjudicate()
+    expect(machineId.lookupCount).toBe(2)
+    expect(stamp('session-delta')?.machine).toBe(
+      `${process.platform}:win32:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`
     )
-    // Only a read id is kept: the third reservation neither looks it up again nor changes it.
-    expect(stamp('session-charlie')?.machine).toBe(stamp('session-bravo')?.machine)
-    expect(machineId.lookups).toHaveLength(1)
-    expect(stamp('session-bravo')?.runId).toBe(stamp(SESSION)?.runId)
+    expect(stamp('session-delta')?.runId).toBe(stamp('session-alpha')?.runId)
   })
 
   it('is still this machine after the hostname changes, so its crashed run is not probed', async () => {

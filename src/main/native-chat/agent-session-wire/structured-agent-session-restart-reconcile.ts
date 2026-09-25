@@ -11,10 +11,15 @@ import { classifyStoreFailure } from './structured-agent-session-attach'
 
 const MAX_RECONCILIATION_PASSES = 8
 
+type RestartReconcileStore = Pick<
+  AgentSessionRecordStore,
+  'listRecords' | 'getRecord' | 'reconcileOnRestart'
+> & { hostRun: Pick<AgentSessionRecordStore['hostRun'], 'resolve'> }
+
 /** Adjudicates leases loaded by this process or refreshed from another writer.
  *  Answers with the refusal attach owes its caller, or null once settled. */
 export function createRestartReconciler(deps: {
-  store: AgentSessionRecordStore
+  store: RestartReconcileStore
   probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>
   probeMany?: (
     records: readonly AgentSessionRecord[]
@@ -46,13 +51,15 @@ export function createRestartReconciler(deps: {
 }
 
 async function reconcileCurrentLeases(deps: {
-  store: AgentSessionRecordStore
+  store: RestartReconcileStore
   probe: (record: AgentSessionRecord) => Promise<AgentSessionOwnerProbe>
   probeMany?: (
     records: readonly AgentSessionRecord[]
   ) => Promise<Map<string, AgentSessionOwnerProbe>>
   now: () => number
 }): Promise<void> {
+  // Once per reconcile, not per pass: a lookup that fails can cost a process spawn and its timeout.
+  await deps.store.hostRun.resolve()
   for (let pass = 0; pass < MAX_RECONCILIATION_PASSES; pass += 1) {
     await deps.store.reconcileOnRestart({
       probe: deps.probe,
