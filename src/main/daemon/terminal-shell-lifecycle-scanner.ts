@@ -78,6 +78,11 @@ export class TerminalShellLifecycleScanner {
     return true
   }
 
+  /** Re-arms the modes the shell or host had on at OSC 133;C without treating them as a new owner. */
+  reassertCommandBaseline(): string {
+    return this.inputModes.reassertCommandBaseline()
+  }
+
   seedOwner(owner: TerminalOwner | undefined, opts: { alternateScreen?: boolean } = {}): void {
     this.generationState += 1
     this.ownerState = owner

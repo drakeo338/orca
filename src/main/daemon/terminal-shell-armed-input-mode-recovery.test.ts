@@ -106,6 +106,19 @@ describe('armed input modes arm the unclean-death trigger', () => {
     expect(scanner.generation).toBe(generation)
     expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
   })
+
+  it('re-asserts only the modes armed at command start, as shell-owned and without a new owner', () => {
+    const scanner = new TerminalShellLifecycleScanner()
+    scanner.seedOwner('shell')
+    const prompt = `\x1b[?1004h\x1b[>5u$ ${COMMAND_START}`
+    expect(triggers(scanner, `${prompt}\x1b[?1003h\x1b[>1uRUN${COMMAND_DONE}`)).toBe(true)
+    triggers(scanner, PROCESS_BOUNDARY_GROUND)
+    const generation = scanner.generation
+
+    expect(scanner.reassertCommandBaseline()).toBe('\x1b[?1004h\x1b[>5u')
+    expect(scanner.generation).toBe(generation)
+    expect(triggers(scanner, `$ ${COMMAND_START}ls${COMMAND_DONE}`)).toBe(false)
+  })
 })
 
 function createSubprocess(confirmed: boolean) {
@@ -127,7 +140,11 @@ function createSubprocess(confirmed: boolean) {
     onExit() {},
     dispose: () => {}
   }
-  return { handle, confirmShellForeground, emit: (data: string) => onData?.(data) }
+  return {
+    handle,
+    confirmShellForeground,
+    emit: (data: string) => onData?.(data)
+  }
 }
 
 async function runNormalBufferDeath(confirmed: boolean) {
@@ -160,6 +177,35 @@ describe('Session grounds a proven normal-buffer death', () => {
     expect(snapshot?.modes.mouseTracking).toBe(false)
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
     expect(snapshot?.snapshotAnsi).not.toContain('\x1b[?1004h')
+    expect(snapshot?.terminalOwner).toBe('shell')
+  })
+
+  it('keeps focus reporting the host armed before the first prompt (ConPTY)', async () => {
+    const sub = createSubprocess(true)
+    const session = new Session({
+      sessionId: 'conpty-focus',
+      cols: 80,
+      rows: 24,
+      subprocess: sub.handle,
+      shellReadySupported: false
+    })
+    sub.emit(
+      `\x1b[?1004h\x1b]133;A\x07PS> ${COMMAND_START}\x1b[?1003hPROGRAM\r\n${COMMAND_DONE}PS> `
+    )
+    await vi.waitFor(() => expect(sub.confirmShellForeground).toHaveBeenCalledTimes(1))
+    await session.settleShellOwnershipConfirmation()
+    const snapshot = session.getSnapshot()
+    const records = session.takePendingOutput(false)?.records ?? []
+    session.dispose()
+
+    expect(
+      records.some(
+        (record) =>
+          record.kind === 'output' && record.data.includes(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`)
+      )
+    ).toBe(true)
+    expect(snapshot?.modes.mouseTrackingMode).toBe('none')
+    expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
     expect(snapshot?.terminalOwner).toBe('shell')
   })
 
