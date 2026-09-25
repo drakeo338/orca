@@ -244,6 +244,7 @@ describe('site 11: host teardown is failure-complete', () => {
     if (failing) {
       sessions.set(SESSION, {
         ...failing,
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: teardown calls only `close`, and this map is a plain `Map` that binds no delivery.
         journal: {
           close: () => Promise.reject(closeError)
         } as unknown as AgentSessionJournal
