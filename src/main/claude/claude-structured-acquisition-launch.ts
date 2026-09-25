@@ -1,6 +1,8 @@
 import {
   AgentSessionAcquisitionExitUnprovenError,
+  AgentSessionAcquisitionRootExitObservedError,
   AgentSessionPreSpawnError,
+  isAgentSessionPreSpawnError,
   type StructuredAgentSessionAcquireInput
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { withAgentSessionCreatePhase } from '../observability/agent-session-instrumentation'
@@ -40,7 +42,19 @@ export async function resolveClaudeAcquisitionLaunch(args: {
     }
     acquisitions.assertCurrent(sessionId, attempt)
     let resumeSession = sessions.get(sessionId)
-    if (!(await closeClaudePublishedSessionForDeps(sessions, sessionId, deps))) {
+    const closed = await closeClaudePublishedSessionForDeps(sessions, sessionId, deps).catch(
+      (error: unknown) => {
+        // Thrown only after finalizing: like a retained root exit, it cannot refuse the next start.
+        if (
+          error instanceof AgentSessionAcquisitionRootExitObservedError ||
+          isAgentSessionPreSpawnError(error)
+        ) {
+          return true
+        }
+        throw error
+      }
+    )
+    if (!closed) {
       throw new AgentSessionAcquisitionExitUnprovenError(
         new Error(`claude session ${sessionId} could not be stopped`)
       )
