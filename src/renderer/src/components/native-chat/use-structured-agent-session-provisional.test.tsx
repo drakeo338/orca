@@ -124,7 +124,8 @@ describe('useStructuredAgentSession provisional launch gate', () => {
         target: LOCAL_TARGET,
         agent: 'codex',
         isVisible: true,
-        transportEnabled: false
+        transportEnabled: false,
+        launching: true
       })
     )
 
@@ -168,10 +169,25 @@ describe('useStructuredAgentSession provisional launch gate', () => {
         target: PAIRED_TARGET,
         agent: 'codex',
         isVisible: true,
-        transportEnabled: false
+        transportEnabled: false,
+        launching: true
       })
     )
     // The paired host seeds from its own settings; the static seed names no default.
+    expect(currentModel(result.current.optionSnapshot)).toBeUndefined()
+  })
+
+  it('shows no stored selection for a chat this view did not launch', () => {
+    storeLaunchSelection('gpt-5.5')
+    const { result } = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-1',
+        target: LOCAL_TARGET,
+        agent: 'codex',
+        isVisible: true
+      })
+    )
+    // A reopened chat runs its own recorded options until the live read reports them.
     expect(currentModel(result.current.optionSnapshot)).toBeUndefined()
   })
 

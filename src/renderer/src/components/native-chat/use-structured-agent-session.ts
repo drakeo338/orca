@@ -33,8 +33,10 @@ export function useStructuredAgentSession(args: {
   agent: AgentType
   isVisible: boolean
   transportEnabled?: boolean
+  /** This view started the session; only then does the stored selection name what it runs. */
+  launching?: boolean
 }) {
-  const { agent, isVisible, sessionId, target, transportEnabled = true } = args
+  const { agent, isVisible, launching = false, sessionId, target, transportEnabled = true } = args
   const {
     state,
     loadingOlder,
@@ -56,10 +58,10 @@ export function useStructuredAgentSession(args: {
   const persistedSessionOptions = useAppStore((store) => store.settings?.nativeChatSessionOptions)
   const launchSeedOptions = useMemo(
     () =>
-      target.kind === 'local'
+      launching && target.kind === 'local'
         ? resolveStructuredLaunchSeedOptions(persistedSessionOptions, agent)
         : undefined,
-    [agent, persistedSessionOptions, target.kind]
+    [agent, launching, persistedSessionOptions, target.kind]
   )
   const {
     conversationCommands,
@@ -78,6 +80,7 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
     mutate,
+    launching,
     ...(launchSeedOptions ? { launchSeedOptions } : {})
   })
   const outboxController = useStructuredAgentSessionOutbox({

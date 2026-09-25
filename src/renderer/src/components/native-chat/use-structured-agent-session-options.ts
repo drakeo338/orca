@@ -44,10 +44,13 @@ export function useStructuredAgentSessionOptions(args: {
   mutate: StructuredAgentSessionMutate
   /** The encoded selection a launch seeds, shown until the host names the model. */
   launchSeedOptions?: Readonly<Record<string, string>>
+  /** A launch runs the CLI default when nothing is seeded; a reopened session may not. */
+  launching?: boolean
 }) {
   const {
     agent,
     fence,
+    launching = false,
     launchSeedOptions,
     mutate,
     providerVisible,
@@ -109,6 +112,7 @@ export function useStructuredAgentSessionOptions(args: {
     sessionId,
     target,
     optionCatalog,
+    namesDefault: launching,
     fence,
     activeOptionRecordRef,
     updateOptionState

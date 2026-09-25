@@ -145,7 +145,8 @@ export function structuredAgentSessionOptionView(
 export function applyStructuredAgentSessionModelCatalog(
   state: StructuredAgentSessionOptionState,
   seed: AgentSessionOptionCatalog,
-  catalog: AgentSessionModelCatalogResult
+  catalog: AgentSessionModelCatalogResult,
+  options: { namesDefault: boolean }
 ): StructuredAgentSessionOptionState {
   if (state.catalogSource === 'live' || catalog.origin === 'unknown') {
     return state
@@ -158,9 +159,13 @@ export function applyStructuredAgentSessionModelCatalog(
   }
   return {
     ...state,
-    // `isDefault` came from a real listing, so the CLI default is nameable —
+    // `isDefault` came from a real listing, so a launch's CLI default is nameable —
     // as a provisional `default`-source value, never a confirmed one.
-    catalog: { ...seed, models, defaultModelIsCliDefault: true },
+    catalog: {
+      ...seed,
+      models,
+      ...(options.namesDefault ? { defaultModelIsCliDefault: true } : {})
+    },
     catalogSource: 'host'
   }
 }

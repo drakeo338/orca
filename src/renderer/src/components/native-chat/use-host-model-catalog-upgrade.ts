@@ -22,6 +22,7 @@ export function useHostModelCatalogUpgrade(args: {
   sessionId: string
   target: RuntimeClientTarget
   optionCatalog: AgentSessionOptionCatalog | null
+  namesDefault: boolean
   fence: number | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
@@ -32,6 +33,7 @@ export function useHostModelCatalogUpgrade(args: {
     activeOptionRecordRef,
     agent,
     fence,
+    namesDefault,
     optionCatalog,
     sessionId,
     target,
@@ -51,7 +53,9 @@ export function useHostModelCatalogUpgrade(args: {
         if (!stale) {
           updateOptionState((current) =>
             current.record === activeOptionRecordRef.current
-              ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog)
+              ? applyStructuredAgentSessionModelCatalog(current, optionCatalog, catalog, {
+                  namesDefault
+                })
               : current
           )
         }
@@ -60,5 +64,14 @@ export function useHostModelCatalogUpgrade(args: {
     return () => {
       stale = true
     }
-  }, [activeOptionRecordRef, agent, fence, optionCatalog, sessionId, target, updateOptionState])
+  }, [
+    activeOptionRecordRef,
+    agent,
+    fence,
+    namesDefault,
+    optionCatalog,
+    sessionId,
+    target,
+    updateOptionState
+  ])
 }

@@ -27,6 +27,8 @@ const HOST_CATALOG: AgentSessionModelCatalogResult = {
   fetchedAt: 1_000
 }
 
+const LAUNCH = { namesDefault: true }
+
 describe('structured option state from the host model catalog', () => {
   it('renders a pickable snapshot from the seed before any host or live answer', () => {
     const state = createStructuredAgentSessionOptionState('codex', SEED)
@@ -42,7 +44,8 @@ describe('structured option state from the host model catalog', () => {
     const state = applyStructuredAgentSessionModelCatalog(
       createStructuredAgentSessionOptionState('codex', SEED),
       SEED,
-      HOST_CATALOG
+      HOST_CATALOG,
+      LAUNCH
     )
     expect(state.catalogSource).toBe('host')
     const snapshot = structuredAgentSessionOptionSnapshot(state)
@@ -52,12 +55,31 @@ describe('structured option state from the host model catalog', () => {
     expect(model.valueSource).toBe('default')
   })
 
+  it('lists host models but names no value for a session it did not launch', () => {
+    // A reopened session may run a model picked in it, not the listing's default.
+    const state = applyStructuredAgentSessionModelCatalog(
+      createStructuredAgentSessionOptionState('codex', SEED),
+      SEED,
+      HOST_CATALOG,
+      { namesDefault: false }
+    )
+    const snapshot = structuredAgentSessionOptionSnapshot(state)
+    const model = snapshot.find((descriptor) => descriptor.id === 'model')!
+    expect(model.kind.type === 'select' && model.kind.choices.map((c) => c.value)).toEqual([
+      'gpt-hosted'
+    ])
+    expect(model.kind.type === 'select' ? model.kind.currentValue : null).toBeUndefined()
+    const effort = snapshot.find((descriptor) => descriptor.id === 'effort')
+    expect(effort?.kind.type === 'select' ? effort.kind.currentValue : undefined).toBeUndefined()
+  })
+
   it('names the default effort the listing states, and none it does not', () => {
     const effortOf = (catalog: AgentSessionModelCatalogResult) => {
       const state = applyStructuredAgentSessionModelCatalog(
         createStructuredAgentSessionOptionState('codex', SEED),
         SEED,
-        catalog
+        catalog,
+        LAUNCH
       )
       return structuredAgentSessionOptionSnapshot(state).find((d) => d.id === 'effort')!
     }
@@ -72,15 +94,16 @@ describe('structured option state from the host model catalog', () => {
 
   it('keeps the seed on an unknown or empty host answer', () => {
     const seeded = createStructuredAgentSessionOptionState('codex', SEED)
-    expect(applyStructuredAgentSessionModelCatalog(seeded, SEED, { origin: 'unknown' })).toBe(
-      seeded
-    )
     expect(
-      applyStructuredAgentSessionModelCatalog(seeded, SEED, {
-        origin: 'probe',
-        models: [],
-        fetchedAt: 1
-      })
+      applyStructuredAgentSessionModelCatalog(seeded, SEED, { origin: 'unknown' }, LAUNCH)
+    ).toBe(seeded)
+    expect(
+      applyStructuredAgentSessionModelCatalog(
+        seeded,
+        SEED,
+        { origin: 'probe', models: [], fetchedAt: 1 },
+        LAUNCH
+      )
     ).toBe(seeded)
   })
 
@@ -94,7 +117,7 @@ describe('structured option state from the host model catalog', () => {
       }
     )
     expect(live.catalogSource).toBe('live')
-    expect(applyStructuredAgentSessionModelCatalog(live, SEED, HOST_CATALOG)).toBe(live)
+    expect(applyStructuredAgentSessionModelCatalog(live, SEED, HOST_CATALOG, LAUNCH)).toBe(live)
     const snapshot = structuredAgentSessionOptionSnapshot(live)
     const model = snapshot.find((descriptor) => descriptor.id === 'model')!
     expect(model.kind.type === 'select' ? model.kind.currentValue : null).toBe('gpt-live')

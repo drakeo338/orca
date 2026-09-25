@@ -57,14 +57,17 @@ type RenderProps = {
   transportEnabled: boolean
   fence: number | null
   turnId?: string | null
+  launching?: boolean
   launchSeedOptions?: Record<string, string>
 }
 
 // A new chat: create has not published, so there is no fence and no live read.
-const PROVISIONAL: RenderProps = { transportEnabled: false, fence: null }
+const PROVISIONAL: RenderProps = { transportEnabled: false, fence: null, launching: true }
 // The receipt lands first; attach delivers the fence on a later render.
-const PUBLISHED_UNATTACHED: RenderProps = { transportEnabled: true, fence: null }
-const ATTACHED: RenderProps = { transportEnabled: true, fence: 1 }
+const PUBLISHED_UNATTACHED: RenderProps = { transportEnabled: true, fence: null, launching: true }
+const ATTACHED: RenderProps = { transportEnabled: true, fence: 1, launching: true }
+// A chat this view did not launch (reopened), attached before its first live read.
+const REOPENED: RenderProps = { transportEnabled: true, fence: 1 }
 
 function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutate) {
   return renderHook(
@@ -79,6 +82,7 @@ function renderOptions(initial: RenderProps, mutate: StructuredAgentSessionMutat
         turnId: props.turnId ?? null,
         unloadedTurnRevisions: undefined,
         mutate,
+        launching: props.launching ?? false,
         ...(props.launchSeedOptions ? { launchSeedOptions: props.launchSeedOptions } : {})
       }),
     { initialProps: initial }
@@ -142,6 +146,20 @@ describe('useStructuredAgentSessionOptions', () => {
       expect(currentValue(result.current.optionSnapshot, 'model')).toBe('gpt-hosted')
       expect(descriptor(result.current.optionSnapshot, 'model')?.valueSource).toBe('default')
     })
+    unmount()
+  })
+
+  it('lists the host catalog for a reopened chat but names no model until it reports', async () => {
+    answer({ modelCatalog: () => Promise.resolve(HOST_CATALOG) })
+    const { result, unmount } = renderOptions(REOPENED, mutateWith(async () => null).mutate)
+    await waitFor(() => {
+      const model = descriptor(result.current.optionSnapshot, 'model')
+      expect(
+        model?.kind.type === 'select' && model.kind.choices.some((c) => c.value === 'gpt-hosted')
+      ).toBe(true)
+    })
+    // It may run a model picked in it rather than the listing's default.
+    expect(currentValue(result.current.optionSnapshot, 'model')).toBeNull()
     unmount()
   })
 
