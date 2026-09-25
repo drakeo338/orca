@@ -64,10 +64,7 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
     mountedWorktreeIdsRef.current,
     startupHeldWorktreeId
   )
-  if (startupHeldWorktreeId) {
-    // Why null: the gate opening must run the activation plan, which replaces the hold.
-    lastActivationWorktreeIdRef.current = null
-  } else if (renderedActiveWorktreeId) {
+  if (renderedActiveWorktreeId && !startupHeldWorktreeId) {
     const worktreeTabs = tabsByWorktree[renderedActiveWorktreeId] ?? []
     const coldActivationDeferralEnabled =
       terminalParkingEnabled && terminalTitleSnapshotAuthorityEnabled
