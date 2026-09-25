@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
+import type { CliInstallStatus } from '../../../../shared/cli-install-types'
 import {
   ORCA_CLI_SKILL_INSTALL_COMMAND,
   ORCA_CLI_SKILL_UPDATE_COMMAND
@@ -76,6 +77,33 @@ vi.mock('./WslCliRegistration', () => ({
     return null
   }
 }))
+
+function hostStatus(overrides: Partial<CliInstallStatus>): CliInstallStatus {
+  return {
+    platform: 'darwin',
+    commandName: 'orca',
+    commandPath: '/usr/local/bin/orca',
+    pathDirectory: '/usr/local/bin',
+    pathConfigured: true,
+    launcherPath: null,
+    installMethod: 'symlink',
+    supported: true,
+    state: 'not_installed',
+    currentTarget: null,
+    unsupportedReason: null,
+    detail: null,
+    ...overrides
+  }
+}
+
+function stubCliApi(getInstallStatus: ReturnType<typeof vi.fn>): void {
+  Object.assign(window, {
+    api: {
+      cli: { getInstallStatus, getWslInstallStatus: vi.fn(), install: vi.fn(), remove: vi.fn() },
+      shell: { openPath: vi.fn() }
+    }
+  })
+}
 
 describe('CliSection project runtime defaults', () => {
   it('exposes freshness only for a resolved local host runtime', () => {
@@ -157,41 +185,64 @@ describe('CliSection project runtime defaults', () => {
     expect(getWslInstallStatus).toHaveBeenCalledTimes(1)
   })
 
-  it('re-reads its registration toggle when another surface registers the CLI', async () => {
-    const hostStatus = {
-      platform: 'darwin',
-      commandName: 'orca',
-      commandPath: '/usr/local/bin/orca',
-      pathDirectory: '/usr/local/bin',
-      pathConfigured: true,
-      launcherPath: null,
-      installMethod: 'symlink',
-      supported: true,
-      currentTarget: null,
-      unsupportedReason: null,
-      detail: null
-    }
+  it('re-reads on a CLI broadcast without flashing the checking state or disabling the toggle', async () => {
+    let resolveBroadcastRead: (status: CliInstallStatus) => void = () => {}
     const getInstallStatus = vi
       .fn()
-      .mockResolvedValueOnce({ ...hostStatus, state: 'not_installed', commandPath: null })
-      .mockResolvedValue({ ...hostStatus, state: 'installed' })
-    Object.assign(window, {
-      api: {
-        cli: { getInstallStatus, getWslInstallStatus: vi.fn(), install: vi.fn(), remove: vi.fn() },
-        shell: { openPath: vi.fn() }
-      }
-    })
+      .mockResolvedValueOnce(hostStatus({ state: 'not_installed', commandPath: null }))
+      .mockReturnValueOnce(
+        new Promise<CliInstallStatus>((resolve) => {
+          resolveBroadcastRead = resolve
+        })
+      )
+    stubCliApi(getInstallStatus)
 
     render(<CliSection currentPlatform="darwin" settings={getDefaultSettings('/tmp')} />)
     const registrationSwitch = screen.getByRole('switch')
-    await waitFor(() => expect(registrationSwitch.getAttribute('aria-checked')).toBe('false'))
     await waitFor(() => expect(registrationSwitch.hasAttribute('disabled')).toBe(false))
-    expect(getInstallStatus).toHaveBeenCalledTimes(1)
+    expect(registrationSwitch.getAttribute('aria-checked')).toBe('false')
 
     act(() => notifyOrcaCliInstallStateChanged())
 
-    await waitFor(() => expect(registrationSwitch.getAttribute('aria-checked')).toBe('true'))
     expect(getInstallStatus).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Checking CLI registration…')).toBeNull()
+    expect(registrationSwitch.hasAttribute('disabled')).toBe(false)
+    expect(registrationSwitch.getAttribute('aria-checked')).toBe('false')
+
+    await act(async () => resolveBroadcastRead(hostStatus({ state: 'installed' })))
+
+    expect(registrationSwitch.getAttribute('aria-checked')).toBe('true')
+    expect(registrationSwitch.hasAttribute('disabled')).toBe(false)
+  })
+
+  it('keeps the newest CLI read when an older one lands after it', async () => {
+    const pendingReads: ((status: CliInstallStatus) => void)[] = []
+    const getInstallStatus = vi
+      .fn()
+      .mockResolvedValueOnce(hostStatus({ state: 'not_installed', commandPath: null }))
+      .mockImplementation(
+        () =>
+          new Promise<CliInstallStatus>((resolve) => {
+            pendingReads.push(resolve)
+          })
+      )
+    stubCliApi(getInstallStatus)
+
+    render(<CliSection currentPlatform="darwin" settings={getDefaultSettings('/tmp')} />)
+    const registrationSwitch = screen.getByRole('switch')
+    await waitFor(() => expect(registrationSwitch.hasAttribute('disabled')).toBe(false))
+
+    act(() => notifyOrcaCliInstallStateChanged())
+    act(() => notifyOrcaCliInstallStateChanged())
+    expect(pendingReads).toHaveLength(2)
+
+    await act(async () => pendingReads[1](hostStatus({ state: 'installed' })))
+    expect(registrationSwitch.getAttribute('aria-checked')).toBe('true')
+
+    await act(async () =>
+      pendingReads[0](hostStatus({ state: 'not_installed', commandPath: null }))
+    )
+    expect(registrationSwitch.getAttribute('aria-checked')).toBe('true')
   })
 
   it('renders an inline unknown PATH state without offering a mutation', async () => {

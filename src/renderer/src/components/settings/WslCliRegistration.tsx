@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CliInstallStatus } from '../../../../shared/cli-install-types'
@@ -34,33 +34,43 @@ export function WslCliRegistration({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [busyAction, setBusyAction] = useState<'install' | 'remove' | null>(null)
   const mountedRef = useMountedRef()
+  const statusReadGenerationRef = useRef(0)
   const { wslAvailable } = useWindowsTerminalCapabilities(currentPlatform === 'win32')
   const showWslCli = currentPlatform === 'win32' && wslAvailable
 
-  const refreshStatus = useCallback(async (): Promise<void> => {
-    setLoading(true)
-    try {
-      const next = await window.api.cli.getWslInstallStatus()
-      if (mountedRef.current) {
-        setStatus(next)
+  const refreshStatus = useCallback(
+    async ({ keepShownStatus = false }: { keepShownStatus?: boolean } = {}): Promise<void> => {
+      const generation = ++statusReadGenerationRef.current
+      const isCurrent = (): boolean =>
+        mountedRef.current && generation === statusReadGenerationRef.current
+      // Why: a broadcast re-read must not flash "Checking…" or disable the toggle just flipped.
+      if (!keepShownStatus) {
+        setLoading(true)
       }
-    } catch (error) {
-      if (mountedRef.current) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : translate(
-                'auto.components.settings.WslCliRegistration.26b4b3b00f',
-                'Failed to load WSL CLI status.'
-              )
-        )
+      try {
+        const next = await window.api.cli.getWslInstallStatus()
+        if (isCurrent()) {
+          setStatus(next)
+        }
+      } catch (error) {
+        if (isCurrent()) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : translate(
+                  'auto.components.settings.WslCliRegistration.26b4b3b00f',
+                  'Failed to load WSL CLI status.'
+                )
+          )
+        }
+      } finally {
+        if (isCurrent()) {
+          setLoading(false)
+        }
       }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [mountedRef])
+    },
+    [mountedRef]
+  )
 
   useEffect(() => {
     if (!showWslCli) {
@@ -69,7 +79,7 @@ export function WslCliRegistration({
     void refreshStatus()
     // Why: registering from another surface must flip this toggle without a manual refresh.
     const handleCliStateChange = (): void => {
-      void refreshStatus()
+      void refreshStatus({ keepShownStatus: true })
     }
     window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
     return () => window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)

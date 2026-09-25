@@ -36,7 +36,7 @@ const sanctionedReaders = new Map<string, string>([
   ],
   [
     'src/renderer/src/components/floating-terminal/use-floating-terminal-orchestration-visibility.ts',
-    'one-shot read when the floating terminal opens'
+    'banner visibility read when the floating terminal opens and on CLI broadcasts'
   ],
   [
     'src/renderer/src/app-shell/use-onboarding-and-feature-tips.ts',

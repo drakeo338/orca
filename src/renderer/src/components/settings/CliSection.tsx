@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CliInstallStatus } from '../../../../shared/cli-install-types'
@@ -82,6 +82,7 @@ export function CliSection({
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const mountedRef = useMountedRef()
+  const statusReadGenerationRef = useRef(0)
   const agentRuntime = useMemo(
     () =>
       getSelectedAgentRuntime(settings, wslSupportedPlatform, wslAvailable, wslCapabilitiesLoading),
@@ -138,27 +139,39 @@ export function CliSection({
       onSettled: closeDialog
     })
 
-  const loadStatus = useCallback(async (): Promise<void> => {
-    setLoading(true)
-    try {
-      handleStatusChange(await window.api.cli.getInstallStatus())
-    } catch (error) {
-      if (mountedRef.current) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : translate(
-                'auto.components.settings.CliSection.7baec27029',
-                'Failed to load CLI status.'
-              )
-        )
+  const loadStatus = useCallback(
+    async ({ keepShownStatus = false }: { keepShownStatus?: boolean } = {}): Promise<void> => {
+      const generation = ++statusReadGenerationRef.current
+      const isCurrent = (): boolean =>
+        mountedRef.current && generation === statusReadGenerationRef.current
+      // Why: a broadcast re-read must not flash "Checking…" or disable the toggle just flipped.
+      if (!keepShownStatus) {
+        setLoading(true)
       }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false)
+      try {
+        const nextStatus = await window.api.cli.getInstallStatus()
+        if (isCurrent()) {
+          setStatus(nextStatus)
+        }
+      } catch (error) {
+        if (isCurrent()) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : translate(
+                  'auto.components.settings.CliSection.7baec27029',
+                  'Failed to load CLI status.'
+                )
+          )
+        }
+      } finally {
+        if (isCurrent()) {
+          setLoading(false)
+        }
       }
-    }
-  }, [handleStatusChange, mountedRef])
+    },
+    [mountedRef]
+  )
 
   const refreshStatus = useCallback(async (): Promise<void> => {
     clearInstallFailure()
@@ -172,7 +185,7 @@ export function CliSection({
   useEffect(() => {
     // Why: registering from another surface must flip this toggle without a manual refresh.
     const handleCliStateChange = (): void => {
-      void loadStatus()
+      void loadStatus({ keepShownStatus: true })
     }
     window.addEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
     return () => window.removeEventListener(ORCA_CLI_INSTALL_STATE_EVENT, handleCliStateChange)
