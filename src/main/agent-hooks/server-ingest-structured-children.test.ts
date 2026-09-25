@@ -110,7 +110,9 @@ describe('structured child-work ingest', () => {
     const [second] = server.getStructuredChildWork(other)
     expect(first.childWorkId).not.toBe(second.childWorkId)
     server.ingestStructuredChildWork(other, [{ type: 'session-ended', observedAt: 300 }], 'claude')
-    expect(server.getStructuredChildWork(other)).toEqual([])
+    expect(server.getStructuredChildWork(other)).toEqual([
+      expect.objectContaining({ childWorkId: second.childWorkId, outcome: 'unknown' })
+    ])
     expect(server.getStructuredChildWork(SUBJECT)).toEqual([first])
   })
 

@@ -85,10 +85,9 @@ describe('structured child-work reconciliation', () => {
     ).toEqual(['task_id:task-a', 'tool_use_id:toolu_task-a'])
   })
 
-  it('keeps one child when a roster names it before its spawn call is known', () => {
+  it('keeps one child when it is first named before its spawn call is known', () => {
     const { store, apply } = harness()
-    const unnamed = child('task-a', { handle: { idKind: 'task_id', id: 'task-a' } })
-    apply({ type: 'inventory', observedAt: 100, residency: 'background', children: [unnamed] })
+    apply(live(child('task-a', { handle: { idKind: 'task_id', id: 'task-a' } })))
     apply(live(child('task-a'), 110))
     // The first spawn call it reports belongs to the run already recorded, not a new one.
     expect(only(store)).toMatchObject({
@@ -145,14 +144,14 @@ describe('structured child-work reconciliation', () => {
     })
   })
 
-  it('keeps an outcome that arrives after a roster already dropped the child', () => {
+  it('refines an ending nobody classified with the outcome reported after it', () => {
     const { store, apply } = harness()
     apply(live(child('task-a')), live(child('task-b'), 100))
     apply({
-      type: 'inventory',
+      type: 'ended',
       observedAt: 200,
-      residency: 'background',
-      children: [child('task-b')]
+      handle: { idKind: 'task_id', id: 'task-a' },
+      outcome: 'unknown'
     })
     expect(records(store)[0]).toMatchObject({
       membership: 'settled',
@@ -187,53 +186,38 @@ describe('structured child-work reconciliation', () => {
     expect(records(store)[1]).toMatchObject({ membership: 'live' })
   })
 
-  it('settles only background children an inventory omits, and revives one it lists again', () => {
+  it('opens a new run when the producer reports a restart, even under the same run handle', () => {
     const { store, apply } = harness()
-    apply(live(child('bg')), live(child('fg', { residency: 'foreground', stoppable: false })), {
-      type: 'inventory',
+    apply(live(child('task-a')), {
+      type: 'ended',
       observedAt: 200,
-      residency: 'background',
-      children: []
+      handle: { idKind: 'task_id', id: 'task-a' },
+      outcome: 'succeeded'
     })
-    expect(records(store).map(({ membership, outcome }) => ({ membership, outcome }))).toEqual([
-      { membership: 'settled', outcome: 'unknown' },
-      { membership: 'live', outcome: undefined }
-    ])
-    apply({ type: 'inventory', observedAt: 300, residency: 'background', children: [child('bg')] })
-    expect(records(store)[0]).toMatchObject({
+    // A late live edge from the run that ended is not a restart.
+    apply(live(child('task-a'), 250))
+    expect(only(store)).toMatchObject({ membership: 'settled', invocation: { generation: 1 } })
+    apply({ type: 'live', observedAt: 300, child: child('task-a'), restart: true })
+    expect(only(store)).toMatchObject({
       membership: 'live',
-      invocation: { invocationId: 'toolu_bg', generation: 2 }
+      invocation: { invocationId: 'toolu_task-a', generation: 2 },
+      previousInvocations: [expect.objectContaining({ outcome: 'succeeded' })]
     })
   })
 
-  it('reads an empty inventory as no live background work, and no inventory as no evidence', () => {
+  it('ends the current run on an ending whose run handle it never saw', () => {
     const { store, apply } = harness()
-    apply(live(child('bg')))
-    apply(live(child('bg'), 150))
-    expect(only(store).membership).toBe('live')
-    apply({ type: 'inventory', observedAt: 200, residency: 'background', children: [] })
-    expect(only(store)).toMatchObject({ membership: 'settled', outcome: 'unknown' })
-  })
-
-  it('ends foreground children still open when the turn ends, and leaves the rest', () => {
-    const { store, apply } = harness()
-    apply(
-      live(child('open-fg', { residency: 'foreground' })),
-      live(child('done-fg', { residency: 'foreground' })),
-      live(child('bg')),
-      {
-        type: 'ended',
-        observedAt: 150,
-        handle: { idKind: 'task_id', id: 'done-fg', runId: 'toolu_done-fg' },
-        outcome: 'succeeded'
-      },
-      { type: 'turn-ended', observedAt: 200 }
-    )
-    expect(records(store).map(({ membership, outcome }) => ({ membership, outcome }))).toEqual([
-      { membership: 'settled', outcome: 'unknown' },
-      { membership: 'settled', outcome: 'succeeded' },
-      { membership: 'live', outcome: undefined }
-    ])
+    apply(live(child('task-a')), {
+      type: 'ended',
+      observedAt: 200,
+      handle: { idKind: 'task_id', id: 'task-a', runId: 'toolu_unseen' },
+      outcome: 'failed'
+    })
+    expect(only(store)).toMatchObject({
+      membership: 'settled',
+      outcome: 'failed',
+      invocation: { invocationId: 'toolu_task-a', generation: 1 }
+    })
   })
 
   it('carries the reported operation until the next report or the ending', () => {
@@ -304,12 +288,43 @@ describe('structured child-work reconciliation', () => {
     expect(only(store)).toMatchObject({ description: 'Audit the tests', name: 'reviewer' })
   })
 
-  it('drops the session children when the provider session ends', () => {
+  it('settles every child still live when the provider session ends, and keeps them all', () => {
     const { store, apply } = harness()
-    apply(live(child('task-a')), live(child('task-b')))
-    expect(apply({ type: 'session-ended', observedAt: 200 })).toMatchObject({ removed: 2 })
+    apply(live(child('task-a')), live(child('task-b'), 110), {
+      type: 'ended',
+      observedAt: 150,
+      handle: { idKind: 'task_id', id: 'task-b' },
+      outcome: 'succeeded'
+    })
+    expect(apply({ type: 'session-ended', observedAt: 200 })).toMatchObject({
+      settled: 1,
+      removed: 0
+    })
+    expect(
+      records(store).map(({ membership, outcome, settledAt }) => ({
+        membership,
+        outcome,
+        settledAt
+      }))
+    ).toEqual([
+      { membership: 'settled', outcome: 'unknown', settledAt: 200 },
+      { membership: 'settled', outcome: 'succeeded', settledAt: 150 }
+    ])
+    // Its own outcome, arriving late, still refines the unreported ending.
+    apply({
+      type: 'ended',
+      observedAt: 210,
+      handle: { idKind: 'task_id', id: 'task-a' },
+      outcome: 'cancelled'
+    })
+    expect(records(store)[0]).toMatchObject({ outcome: 'cancelled', settledAt: 200 })
+  })
+
+  it('fences a removed lifetime with its old bindings, and frees the id for a new one', () => {
+    const { store, apply } = harness()
+    apply(live(child('task-a')))
+    expect(store.applyMutation({ removeChildren: [only(store).childWorkId] })).not.toBeNull()
     expect(records(store)).toEqual([])
-    // Its old bindings fence the finished lifetime; the id is free again for a new one.
     apply(live(child('task-a'), 300))
     expect(only(store)).toMatchObject({
       membership: 'live',
@@ -335,14 +350,10 @@ describe('structured child-work reconciliation', () => {
       // Same source, same parent and provider: only the producer differs.
       provenance: { source: 'structured-session', producerId: 'another-producer' }
     })
-    apply(
-      live(child('task-a')),
-      { type: 'turn-ended', observedAt: 150 },
-      { type: 'inventory', observedAt: 160, residency: 'background', children: [] },
-      { type: 'session-ended', observedAt: 170 }
-    )
+    apply(live(child('task-a')), { type: 'session-ended', observedAt: 170 })
     expect(records(store)).toEqual([
-      expect.objectContaining({ childWorkId: 'foreign', membership: 'live' })
+      expect.objectContaining({ childWorkId: 'foreign', membership: 'live' }),
+      expect.objectContaining({ membership: 'settled', outcome: 'unknown' })
     ])
   })
 

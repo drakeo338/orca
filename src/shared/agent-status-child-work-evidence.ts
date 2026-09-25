@@ -1,9 +1,8 @@
 // What a structured provider said about its child work, in the child-work vocabulary.
 //
 // A producer decodes provider frames into these edges and the host folds them into the one
-// record per child it owns. Edges carry facts, not records: which child is live, how one ended,
-// which children an authoritative inventory lists. The settlement rules that turn an inventory
-// or a turn boundary into endings live with the records, where residency is stored.
+// record per child it owns. Edges carry facts, not records: which child is live, what it is
+// doing, how it ended. Only a child's own ending settles it, or the end of its session.
 
 import type { AgentChildWorkAliasKind } from './agent-status-child-work-alias'
 import type {
@@ -71,25 +70,12 @@ export type AgentChildWorkEndedEvidence = {
   totalTokens?: number
 }
 
-/** A complete list of the live children of one residency class. A child of that class the host
- *  holds live and the list omits has ended, with an outcome nobody reported. */
-export type AgentChildWorkInventoryEvidence = {
-  type: 'inventory'
-  observedAt: number
-  residency: AgentChildWorkResidency
-  children: AgentChildWorkLiveObservation[]
-}
-
-/** The session's own turn is over: work bound to it can no longer be running. */
-export type AgentChildWorkTurnEndedEvidence = { type: 'turn-ended'; observedAt: number }
-
-/** The provider session is gone; its children go with it. */
+/** The provider session is gone: a child still live can no longer end on its own, so it settles
+ *  with an outcome nobody reported. Settled children stay; the parent's removal drops them. */
 export type AgentChildWorkSessionEndedEvidence = { type: 'session-ended'; observedAt: number }
 
 export type AgentChildWorkEvidence =
   | AgentChildWorkLiveEvidence
   | AgentChildWorkOperationEvidence
   | AgentChildWorkEndedEvidence
-  | AgentChildWorkInventoryEvidence
-  | AgentChildWorkTurnEndedEvidence
   | AgentChildWorkSessionEndedEvidence

@@ -12,7 +12,7 @@ import {
 import { indexedStatusFeedSession } from './structured-agent-session-status-feed-test-session'
 
 const SESSION = 'status-session'
-const EVIDENCE: AgentChildWorkEvidence[] = [{ type: 'turn-ended', observedAt: 5 }]
+const EVIDENCE: AgentChildWorkEvidence[] = [{ type: 'session-ended', observedAt: 5 }]
 let root: string
 const journals = createTrackedJournalOpener()
 

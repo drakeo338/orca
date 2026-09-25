@@ -193,7 +193,23 @@ describe('Claude structured child-work producer', () => {
       step.check?.()
     }
     await adapter.closeSession('session-1')
-    expect(records()).toEqual([])
+    // The session is gone: what still ran settles unreported, and every record stays.
+    const summary = records().map((record) => ({
+      description: record.description,
+      membership: record.membership,
+      outcome: record.outcome,
+      generation: record.invocation.generation
+    }))
+    expect(summary).toEqual([
+      {
+        description: 'Find flaky tests',
+        membership: 'settled',
+        outcome: 'succeeded',
+        generation: 1
+      },
+      { description: 'npm test', membership: 'settled', outcome: 'cancelled', generation: 1 },
+      { description: 'Audit the build', membership: 'settled', outcome: 'unknown', generation: 2 }
+    ])
     expect(adapter.backgroundTaskState('session-1')).toBeUndefined()
   })
 

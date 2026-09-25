@@ -1,22 +1,19 @@
 // Fold one structured session's child-work evidence into the host's records.
 //
-// The store holds the only current record per child; evidence patches it. Settlement from
-// evidence that names no single child (an inventory, a turn boundary) is decided here from the
-// residency the record stores, so every producer shares one rule. It owns only the records its
-// own producer admitted, and never claims an outcome the evidence did not report.
+// The store holds the only current record per child; evidence patches it. A child settles on its
+// own ending, or `unknown` when its session ends while it is still live. It owns only the records
+// its own producer admitted, and never claims an outcome the evidence did not report.
 
 import type { AgentChildWorkAdmission } from './agent-status-child-work-admission'
 import type {
   AgentChildWorkEndedEvidence,
   AgentChildWorkEvidence,
-  AgentChildWorkInventoryEvidence,
   AgentChildWorkOperationEvidence
 } from './agent-status-child-work-evidence'
 import {
   applyAgentChildWorkLive,
   settleAgentChildWork,
   agentChildWorkRunVerdict,
-  STRUCTURED_CHILD_WORK_MAX_LIVE,
   type AgentChildWorkEvidenceContext,
   type AgentChildWorkReconcileOutcome
 } from './agent-status-child-work-evidence-admission'
@@ -92,27 +89,10 @@ function applyOperation(ctx: ReconcileContext, edge: AgentChildWorkOperationEvid
   )
 }
 
-function applyInventory(ctx: ReconcileContext, edge: AgentChildWorkInventoryEvidence): void {
-  const listed = new Set<string>()
-  for (const child of edge.children.slice(0, STRUCTURED_CHILD_WORK_MAX_LIVE)) {
-    listed.add(child.handle.id)
-    applyAgentChildWorkLive(ctx, child, edge.observedAt, true)
-  }
+/** The session is gone: whatever it still ran can no longer report its own ending. */
+function settleLive(ctx: ReconcileContext, observedAt: number): void {
   for (const record of ownedStructuredChildWork(ctx)) {
-    const stableId = currentAgentChildWorkAliases(ctx, record).stableId
-    if (
-      record.membership === 'live' &&
-      record.residency === edge.residency &&
-      (stableId === undefined || !listed.has(stableId))
-    ) {
-      settleAgentChildWork(ctx, record, 'unknown', edge.observedAt)
-    }
-  }
-}
-
-function settleResidents(ctx: ReconcileContext, residency: 'foreground', observedAt: number): void {
-  for (const record of ownedStructuredChildWork(ctx)) {
-    if (record.membership === 'live' && record.residency === residency) {
+    if (record.membership === 'live') {
       settleAgentChildWork(ctx, record, 'unknown', observedAt)
     }
   }
@@ -165,15 +145,8 @@ export function reconcileAgentChildWorkEvidence(
       applyOperation(ctx, edge)
     } else if (edge.type === 'ended') {
       applyEnded(ctx, edge)
-    } else if (edge.type === 'inventory') {
-      applyInventory(ctx, edge)
-    } else if (edge.type === 'turn-ended') {
-      settleResidents(ctx, 'foreground', edge.observedAt)
     } else {
-      removeChildren(
-        ctx,
-        ownedStructuredChildWork(ctx).map((record) => record.childWorkId)
-      )
+      settleLive(ctx, edge.observedAt)
     }
   }
   // Only a settle adds settled history; skipping the scan otherwise keeps progress edges cheap.
