@@ -29,8 +29,8 @@ export type AgentChildWorkObservationAlias = {
 }
 
 /** An observation may be sparse: an omitted label, token count, owner, residency, or (within one
- *  invocation) last message keeps its stored value, and tokens never shrink. Omitting `operation`
- *  clears it. */
+ *  invocation) last message or definite outcome keeps its stored value, and tokens never shrink.
+ *  Omitting `operation` clears it. */
 export type AgentChildWorkObservationFields = {
   kind: AgentChildWorkKind
   state: AgentChildWorkState

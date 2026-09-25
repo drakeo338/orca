@@ -126,14 +126,15 @@ function admittedOperation(
 
 /** Facts a sparse observation leaves unsaid (a roster omission knows only "it is gone"): a later
  *  write fills or replaces them, never erases them. Tokens are cumulative and never shrink; the
- *  last message lasts for its invocation. `operation` is not among them: its absence means the
- *  child stopped doing it. */
+ *  last message and a definite outcome last for their invocation (an `unknown` ending claims
+ *  nothing). `operation` is not among them: its absence means the child stopped doing it. */
 function retainedFacts(
   request: AgentChildWorkObservationFields,
   invocation: AgentChildWorkInvocationFence,
   prior: AgentChildWorkRecord | undefined
 ): Pick<
   AgentChildWorkInput,
+  | 'outcome'
   | 'name'
   | 'description'
   | 'agentType'
@@ -148,6 +149,10 @@ function retainedFacts(
   const lastMessage =
     normalizeOptionalField(request.lastMessage, AGENT_CHILD_WORK_LAST_MESSAGE_MAX_LENGTH) ??
     (sameInvocation ? prior.lastMessage : undefined)
+  const outcome =
+    request.outcome === undefined || request.outcome === 'unknown'
+      ? ((sameInvocation ? prior.outcome : undefined) ?? request.outcome)
+      : request.outcome
   // An out-of-range count passes through unmerged so the codec still refuses it.
   const requestedTokens = request.totalTokens
   const totalTokens =
@@ -164,6 +169,7 @@ function retainedFacts(
   const parentChildWorkId = request.parentChildWorkId ?? prior?.parentChildWorkId
   const residency = request.residency ?? prior?.residency
   return {
+    ...(outcome !== undefined ? { outcome } : {}),
     ...(name !== undefined ? { name } : {}),
     ...(description !== undefined ? { description } : {}),
     ...(agentType !== undefined ? { agentType } : {}),
@@ -193,7 +199,6 @@ export function buildAgentChildWork(
     kind: request.kind,
     state: request.state,
     membership: request.membership,
-    ...(request.outcome !== undefined ? { outcome: request.outcome } : {}),
     ...retainedFacts(request, host.invocation, prior),
     ...(request.providerTiming !== undefined ? { providerTiming: request.providerTiming } : {}),
     ...(operation ? { operation } : {}),
@@ -227,20 +232,18 @@ export function commitAgentChildWork(
 }
 
 /** Settled history only gains precision: an `unknown` ending may become a definite one (a roster
- *  omission can land a tick before the frame naming the outcome); a definite ending never changes,
- *  and a later `unknown` claims nothing about it. An omitted outcome is stored as `unknown`. */
-function settledEvidence(
+ *  omission can land a tick before the frame naming the outcome), and a definite ending never
+ *  changes to another. An omitted outcome counts as `unknown`. */
+function conflictsWithSettled(
   child: AgentChildWorkRecord,
   request: AgentChildWorkAnnounceRequest | AgentChildWorkAdoptRequest
-): 'admit' | 'ignore' | 'conflict' {
-  if (request.membership !== 'settled' || request.state !== child.state) {
-    return 'conflict'
-  }
+): boolean {
   const requested = request.outcome ?? 'unknown'
-  if (requested === child.outcome || child.outcome === 'unknown') {
-    return 'admit'
-  }
-  return requested === 'unknown' ? 'ignore' : 'conflict'
+  return (
+    request.membership !== 'settled' ||
+    request.state !== child.state ||
+    (requested !== 'unknown' && child.outcome !== 'unknown' && requested !== child.outcome)
+  )
 }
 
 export function updateExistingAgentChildWork(
@@ -250,17 +253,8 @@ export function updateExistingAgentChildWork(
   aliases: AgentChildWorkAliasInput[],
   removeAliases: string[] = []
 ): AgentChildWorkAdmissionResult {
-  const evidence = child.membership === 'settled' ? settledEvidence(child, request) : 'admit'
-  if (evidence === 'conflict') {
+  if (child.membership === 'settled' && conflictsWithSettled(child, request)) {
     return rejectAgentChildWorkAdmission('stale-invocation')
-  }
-  if (evidence === 'ignore') {
-    return {
-      accepted: true,
-      childWorkId: child.childWorkId,
-      revision: child.revision,
-      created: false
-    }
   }
   const updated = buildAgentChildWork(
     request,

@@ -250,7 +250,7 @@ describe('child-work settlement stamping', () => {
   it.each([
     ['an explicit unknown', { outcome: 'unknown' }],
     ['an omitted outcome', {}]
-  ] as const)('ignores %s after a definite ending', (_case, ending) => {
+  ] as const)('keeps a definite ending through %s and admits the rest of it', (_case, ending) => {
     const { store, admission } = setup()
     admission.announce(
       observation({
@@ -261,18 +261,28 @@ describe('child-work settlement stamping', () => {
         lastMessage: 'Stopped by user'
       })
     )
-    const before = store.getChild('child-1')
     expect(
       admission.announce(
-        observation({ state: 'done', membership: 'settled', observedAt: 25, ...ending })
+        observation({
+          state: 'done',
+          membership: 'settled',
+          observedAt: 25,
+          lastMessage: 'Cleanup finished',
+          aliases: [
+            { segmentId: 'segment-1', aliasKind: 'task_id', alias: 'task-1' },
+            { segmentId: 'segment-1', aliasKind: 'tool_use_id', alias: 'toolu-1' }
+          ],
+          ...ending
+        })
       )
-    ).toEqual({
-      accepted: true,
-      childWorkId: 'child-1',
-      revision: before?.revision,
-      created: false
+    ).toMatchObject({ accepted: true, childWorkId: 'child-1', created: false })
+    expect(store.getChild('child-1')).toMatchObject({
+      outcome: 'cancelled',
+      settledAt: 20,
+      observedAt: 25,
+      lastMessage: 'Cleanup finished'
     })
-    expect(store.getChild('child-1')).toEqual(before)
+    expect(store.getAliasesForChild('child-1').map((alias) => alias.alias)).toContain('toolu-1')
   })
 
   it('stamps a child first seen already settled at that observation', () => {
