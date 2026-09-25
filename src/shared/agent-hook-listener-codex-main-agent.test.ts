@@ -65,6 +65,34 @@ describe('the Codex root record seeded from a durable row', () => {
     expect(reconciled.mainAgent).toMatchObject({ state: 'done', outcome: 'cancellation' })
   })
 
+  it('keeps the failure a relay read from the rollout on its Stop', () => {
+    reconcileRemoteCodexState(
+      state,
+      PANE_KEY,
+      'PostToolUse',
+      undefined,
+      { state: 'working', prompt: 'ship', agentType: 'codex' },
+      undefined
+    )
+    const reconciled = reconcileRemoteCodexState(
+      state,
+      PANE_KEY,
+      'Stop',
+      undefined,
+      {
+        state: 'done',
+        prompt: 'ship',
+        agentType: 'codex',
+        mainAgent: { state: 'done', outcome: 'failure', stateStartedAt: 7 }
+      },
+      undefined
+    )
+    expect(reconciled).toMatchObject({
+      state: 'done',
+      mainAgent: { state: 'done', outcome: 'failure' }
+    })
+  })
+
   it('folds a relayed waiting child through the shared rule, keeping the root fact', () => {
     // The relay's aggregate says `working`; main re-derives the row from the roster instead.
     const reconciled = reconcileRemoteCodexState(

@@ -47,6 +47,19 @@ export function hasCodexTranscriptSubagents(state: HookListenerState, paneKey: s
   return hasTrackedCodexTranscriptSubagents(state.codexSubagentTranscriptByPaneKey.get(paneKey))
 }
 
+/** Whether the root turn is still open with a rollout that can record its end. */
+export function codexLeadTurnAwaitsTranscriptEnd(
+  state: HookListenerState,
+  paneKey: string
+): boolean {
+  const lead = state.codexLeadStateByPaneKey.get(paneKey)
+  return (
+    lead !== undefined &&
+    lead.state !== 'done' &&
+    state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath !== undefined
+  )
+}
+
 /** The only writer of the root record; the root's clock keeps continuity across same-state writes. */
 export function setCodexMainAgentTurnState(
   state: HookListenerState,
@@ -208,9 +221,13 @@ export function reconcileRemoteCodexState(
     }
     if (leadState) {
       const previousLead = state.codexLeadStateByPaneKey.get(paneKey)
+      // Why: the relay alone reads the rollout, so a turn it saw fail arrives as a Stop carrying the verdict.
+      const outcome =
+        codexOutcomeRestatedByStop(previousLead, leadState).outcome ??
+        (leadState === 'done' ? payload.mainAgent?.outcome : undefined)
       setCodexMainAgentTurnState(state, paneKey, {
         state: leadState,
-        ...codexOutcomeRestatedByStop(previousLead, leadState),
+        ...(outcome ? { outcome } : {}),
         model: payload.model ?? previousLead?.model
       })
     }

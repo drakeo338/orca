@@ -1,7 +1,10 @@
 import type { AgentHookSource } from '../agent-hook-relay'
 import type { AgentHookEventPayload } from './listener-event'
 import type { HookListenerState } from './listener-state'
-import { hasCodexTranscriptSubagents } from './providers/codex-state'
+import {
+  codexLeadTurnAwaitsTranscriptEnd,
+  hasCodexTranscriptSubagents
+} from './providers/codex-state'
 import { hasMuseSessionLog } from './providers/muse-events'
 
 /** Whether a pane's last hook body should be re-normalized on a timer to pick up transcript-only state. */
@@ -11,7 +14,10 @@ export function shouldPollHookTranscript(
   event: AgentHookEventPayload
 ): boolean {
   if (source === 'codex') {
-    return hasCodexTranscriptSubagents(state, event.paneKey)
+    return (
+      hasCodexTranscriptSubagents(state, event.paneKey) ||
+      codexLeadTurnAwaitsTranscriptEnd(state, event.paneKey)
+    )
   }
   if (source === 'muse') {
     // Why: Muse's question tool fires no hook, so only its session log shows the wait and its answer.
@@ -34,6 +40,10 @@ export function transcriptPollUpdate<T extends AgentHookEventPayload>(
     return changed
       ? { ...polled, hasExplicitPrompt: undefined, hookEventName: undefined }
       : undefined
+  }
+  if (polled.payload.mainAgent?.state === 'done' && original.payload.mainAgent?.state !== 'done') {
+    // Why: a root turn that ended in the rollout is published as its Stop, so every host version settles it.
+    return { ...polled, hasExplicitPrompt: undefined, hookEventName: 'Stop' }
   }
   const subagentsChanged =
     JSON.stringify(polled.payload.subagents) !== JSON.stringify(original.payload.subagents)
