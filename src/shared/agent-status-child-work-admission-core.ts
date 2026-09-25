@@ -14,6 +14,7 @@ import {
   type AgentChildWorkRecord
 } from './agent-status-child-work'
 import { parseAgentChildWorkInput } from './agent-status-child-work-codec'
+import { isControlCharCode } from './agent-status-child-work-value-guards'
 import { agentChildWorkAllowsOperation } from './agent-status-child-work-legality'
 import { normalizeOptionalField } from './agent-status-field-normalization'
 import {
@@ -103,6 +104,20 @@ export function agentChildWorkSettledAt(
     : request.observedAt
 }
 
+/** The status-row preview can keep a control character or end its cut on a space, and the codec
+ *  drops such a field outright; this folds both so raw provider text always lands. */
+function childWorkPreview(value: string | undefined, maxLength: number): string | undefined {
+  const preview = normalizeOptionalField(value, maxLength)
+  if (preview === undefined) {
+    return undefined
+  }
+  let printable = ''
+  for (let index = 0; index < preview.length; index += 1) {
+    printable += isControlCharCode(preview.charCodeAt(index)) ? ' ' : preview[index]
+  }
+  return printable.trim() || undefined
+}
+
 function admittedOperation(
   request: AgentChildWorkObservationFields,
   firstObservedAt: number
@@ -111,8 +126,8 @@ function admittedOperation(
   if (!operation || !agentChildWorkAllowsOperation(request.membership, request.state)) {
     return undefined
   }
-  const toolName = normalizeOptionalField(operation.toolName, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
-  const input = normalizeOptionalField(operation.input, AGENT_STATUS_TOOL_INPUT_MAX_LENGTH)
+  const toolName = childWorkPreview(operation.toolName, AGENT_STATUS_TOOL_NAME_MAX_LENGTH)
+  const input = childWorkPreview(operation.input, AGENT_STATUS_TOOL_INPUT_MAX_LENGTH)
   return toolName
     ? {
         toolName,
@@ -147,7 +162,7 @@ function retainedFacts(
   const sameInvocation =
     prior !== undefined && agentChildWorkFencesEqual(prior.invocation, invocation)
   const lastMessage =
-    normalizeOptionalField(request.lastMessage, AGENT_CHILD_WORK_LAST_MESSAGE_MAX_LENGTH) ??
+    childWorkPreview(request.lastMessage, AGENT_CHILD_WORK_LAST_MESSAGE_MAX_LENGTH) ??
     (sameInvocation ? prior.lastMessage : undefined)
   const outcome =
     request.outcome === undefined || request.outcome === 'unknown'

@@ -16,6 +16,11 @@ export function hasOnlyKeys(
   )
 }
 
+/** A C0 control or DEL: never part of a record's one-line text. */
+export function isControlCharCode(code: number): boolean {
+  return code <= 0x1f || code === 0x7f
+}
+
 /** Nonempty, trimmed, single-line text within `maxLength`. */
 export function isBoundedString(
   value: unknown,
@@ -30,8 +35,7 @@ export function isBoundedString(
     return false
   }
   for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code <= 0x1f || code === 0x7f) {
+    if (isControlCharCode(value.charCodeAt(index))) {
       return false
     }
   }

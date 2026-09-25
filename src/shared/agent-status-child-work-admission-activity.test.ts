@@ -70,6 +70,33 @@ describe('child-work admission of what a child is doing', () => {
     expect(child?.lastMessage).toBe('Line one Line two')
   })
 
+  it('keeps a preview whose cut lands on a space or whose text carries control characters', () => {
+    const { store, admission } = setup()
+    admission.announce(
+      observation({
+        operation: {
+          toolName: 'Bash',
+          input: `${'x'.repeat(159)} --tail`,
+          basis: 'open',
+          observedAt: 10
+        },
+        lastMessage: `${'y'.repeat(511)} more`
+      })
+    )
+    expect(store.getChild('child-1')?.operation?.input).toBe('x'.repeat(159))
+    expect(store.getChild('child-1')?.lastMessage).toBe('y'.repeat(511))
+
+    admission.announce(
+      observation({
+        observedAt: 11,
+        operation: { toolName: 'Bash', input: "cut -d'\t' -f1", basis: 'open', observedAt: 11 },
+        lastMessage: 'col1\tcol2 \u001b[31mred'
+      })
+    )
+    expect(store.getChild('child-1')?.operation?.input).toBe("cut -d' ' -f1")
+    expect(store.getChild('child-1')?.lastMessage).toBe('col1 col2  [31mred')
+  })
+
   it('clamps an operation stamped in another clock into the child evidence window', () => {
     const { store, admission } = setup()
     admission.announce(
