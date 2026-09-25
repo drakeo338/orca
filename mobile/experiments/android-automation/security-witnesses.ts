@@ -12,10 +12,15 @@ export function assertShellMutation(value: unknown): void {
   assert.equal(value.result.value, 'shell-owned', 'Shell mutation witness missing')
 }
 
-export function assertUnrelatedDenial(value: unknown, socket: string, appUid: number): void {
+function uid(value: unknown): asserts value is number {
+  assert(typeof value === 'number' && Number.isInteger(value) && value >= 0)
+}
+
+export function assertUnrelatedDenial(value: unknown, socket: string, appUid: unknown): void {
   record(value)
   assert.equal(value.socket, socket, 'Unrelated UID probed a different socket')
-  assert(typeof value.uid === 'number' && Number.isInteger(value.uid) && value.uid > 0)
+  uid(value.uid)
+  uid(appUid)
   assert.notEqual(value.uid, appUid)
   assert.equal(value.connected, false, 'Expected denial at socket connect')
   assert.equal(value.response, undefined, 'Unrelated UID received discovery data')

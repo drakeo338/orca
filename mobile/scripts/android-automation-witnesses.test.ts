@@ -29,6 +29,31 @@ describe('Android automation security witnesses', () => {
     expect(() => assertUnrelatedDenial(denial, denial.socket, 10214)).not.toThrow()
   })
   it.each([
+    undefined,
+    null,
+    '10215',
+    '10214',
+    -1,
+    1.5,
+    Number.NaN,
+    Infinity,
+    -Infinity,
+    {},
+    [],
+    true
+  ])('rejects malformed UIDs on either side: %j', (uid) => {
+    expect(() => assertUnrelatedDenial(denial, denial.socket, uid)).toThrow()
+    expect(() => assertUnrelatedDenial({ ...denial, uid }, denial.socket, 10214)).toThrow()
+  })
+  it('rejects the same valid app UID', () => {
+    expect(() => assertUnrelatedDenial(denial, denial.socket, denial.uid)).toThrow()
+  })
+  it('accepts zero as a valid distinct UID on either side', () => {
+    expect(() => assertUnrelatedDenial(denial, denial.socket, 0)).not.toThrow()
+    expect(() => assertUnrelatedDenial({ ...denial, uid: 0 }, denial.socket, 10214)).not.toThrow()
+    expect(() => assertUnrelatedDenial({ ...denial, uid: 0 }, denial.socket, 0)).toThrow()
+  })
+  it.each([
     { socket: 'review-no-such-socket' },
     { socket: 'review-no-such-socket', rejected: 'java.io.IOException: Connection refused' },
     { rejected: 'java.io.IOException: Connection refused' },
