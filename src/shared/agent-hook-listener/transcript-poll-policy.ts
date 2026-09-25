@@ -41,11 +41,16 @@ export function transcriptPollUpdate<T extends AgentHookEventPayload>(
       ? { ...polled, hasExplicitPrompt: undefined, hookEventName: undefined }
       : undefined
   }
-  if (polled.payload.mainAgent?.state === 'done' && original.payload.mainAgent?.state !== 'done') {
-    // Why: a root turn that ended in the rollout is published as its Stop, so every host version settles it.
-    return { ...polled, hasExplicitPrompt: undefined, hookEventName: 'Stop' }
-  }
-  const subagentsChanged =
+  const rootEnded = polled.payload.mainAgent?.state === 'done'
+  const changed =
+    (rootEnded && original.payload.mainAgent?.state !== 'done') ||
     JSON.stringify(polled.payload.subagents) !== JSON.stringify(original.payload.subagents)
-  return subagentsChanged ? polled : undefined
+  if (!changed) {
+    return undefined
+  }
+  // Why: a root hook re-read after its turn ended in the rollout restates that turn's Stop, so
+  // every host version keeps the root done, including on later child-only updates.
+  return rootEnded && !polled.toolAgentId
+    ? { ...polled, hasExplicitPrompt: undefined, hookEventName: 'Stop' }
+    : polled
 }

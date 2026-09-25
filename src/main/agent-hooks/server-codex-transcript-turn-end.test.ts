@@ -245,4 +245,75 @@ describe('AgentHookServer settles a Codex turn from its rollout', () => {
       { timeout: 3_000, interval: 50 }
     )
   })
+
+  // A hook-reported child keeps posting its own hooks while the root turn fails, so the root fires none after.
+  it('settles the root turn when a child hook, not a root hook, is the latest event', async () => {
+    const rig = await startRig()
+    await startFailingTurn(rig, 'turn-1')
+    const childRollout = join(rig.dir, 'rollout-child.jsonl')
+    writeFileSync(childRollout, '')
+    const child = {
+      agent_id: 'child-1',
+      agent_type: 'worker',
+      turn_id: 'child-turn',
+      transcript_path: childRollout
+    }
+    await rig.post({ hook_event_name: 'SubagentStart', ...child })
+    await rig.post({ hook_event_name: 'PostToolUse', tool_name: 'Bash', ...child })
+
+    appendFileSync(rig.rollout, taskComplete('turn-1', true))
+    await vi.waitFor(
+      () => {
+        expect(rig.row()).toMatchObject({
+          state: 'working',
+          mainAgent: { state: 'done', outcome: 'failure' }
+        })
+      },
+      { timeout: 3_000, interval: 50 }
+    )
+
+    await rig.post({ hook_event_name: 'SubagentStop', ...child })
+    expect(rig.row()).toMatchObject({
+      state: 'done',
+      mainAgent: { state: 'done', outcome: 'failure' }
+    })
+  })
+
+  it('settles the root turn when a finished child’s SubagentStop is the latest event', async () => {
+    const rig = await startRig()
+    await startFailingTurn(rig, 'turn-1')
+    const child = { agent_id: 'child-1', agent_type: 'worker', turn_id: 'child-turn' }
+    await rig.post({ hook_event_name: 'SubagentStart', ...child })
+    await rig.post({ hook_event_name: 'SubagentStop', ...child })
+
+    appendFileSync(rig.rollout, taskComplete('turn-1', true))
+    await vi.waitFor(
+      () => {
+        expect(rig.row()).toMatchObject({
+          state: 'done',
+          mainAgent: { state: 'done', outcome: 'failure' }
+        })
+      },
+      { timeout: 3_000, interval: 50 }
+    )
+  })
+
+  // Codex fires SessionStart(compact) mid-turn with no turn_id, then the turn can fail with no further hook.
+  it('settles a turn that failed after a mid-turn compaction', async () => {
+    const rig = await startRig()
+    await startFailingTurn(rig, 'turn-1')
+    await rig.post({ hook_event_name: 'SessionStart', source: 'compact', model: 'gpt-5.5' })
+
+    appendFileSync(rig.rollout, taskComplete('turn-1', true))
+
+    await vi.waitFor(
+      () => {
+        expect(rig.row()).toMatchObject({
+          state: 'done',
+          mainAgent: { state: 'done', outcome: 'failure' }
+        })
+      },
+      { timeout: 3_000, interval: 50 }
+    )
+  })
 })

@@ -47,14 +47,14 @@ export function hasCodexTranscriptSubagents(state: HookListenerState, paneKey: s
   return hasTrackedCodexTranscriptSubagents(state.codexSubagentTranscriptByPaneKey.get(paneKey))
 }
 
-/** Whether the root turn is still open with a rollout that can record its end. */
+/** Whether the root turn is still open, with the id and rollout needed to find its end. */
 export function codexLeadTurnAwaitsTranscriptEnd(
   state: HookListenerState,
   paneKey: string
 ): boolean {
   const lead = state.codexLeadStateByPaneKey.get(paneKey)
   return (
-    lead !== undefined &&
+    lead?.turnId !== undefined &&
     lead.state !== 'done' &&
     state.codexSubagentTranscriptByPaneKey.get(paneKey)?.parent.filePath !== undefined
   )
@@ -73,7 +73,8 @@ export function setCodexMainAgentTurnState(
     state: next.state,
     ...(continued.outcome ? { outcome: continued.outcome } : {}),
     stateStartedAt: continued.stateStartedAt,
-    model: next.model
+    model: next.model,
+    ...(next.turnId ? { turnId: next.turnId } : {})
   }
   state.codexLeadStateByPaneKey.set(paneKey, record)
   return record
@@ -213,6 +214,15 @@ export function reconcileRemoteCodexState(
   if (agentId) {
     if (eventName === 'SubagentStop') {
       finishCodexSubagent(roster, agentId)
+    }
+    // Why: the relay alone reads the rollout, and a child hook can carry the root turn's end.
+    const lead = state.codexLeadStateByPaneKey.get(paneKey)
+    if (payload.mainAgent?.state === 'done' && lead && lead.state !== 'done') {
+      setCodexMainAgentTurnState(state, paneKey, {
+        state: 'done',
+        ...(payload.mainAgent.outcome ? { outcome: payload.mainAgent.outcome } : {}),
+        model: lead.model
+      })
     }
   } else {
     const leadState = codexLeadStateForHookEvent(eventName, payload.state)
