@@ -558,7 +558,7 @@ describe('a structured Claude session over agentSession.*', () => {
   })
 
   it('restarts an open chat after a Claude crash whose descendants could not be verified', async () => {
-    await ok<{ fence: number }>('agentSession.create', createIntentParams())
+    const created = await ok<{ fence: number }>('agentSession.create', createIntentParams())
     // The open chat surface is what asks the host to bring Claude back.
     await getStructuredAgentSessionHost()?.hold(SESSION, 'desktop-chat:open')
     const connection = claude.live()
@@ -567,13 +567,35 @@ describe('a structured Claude session over agentSession.*', () => {
       connection.closed = true
       return false
     }
+    // Claude takes the message but crashes before echoing it.
+    connection.send = async (message) => {
+      connection.sent.push(message)
+    }
+    const body = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'in flight' }] }
+    const inFlight = ok<{ submission: { dispatchState: string; reason: string | null } }>(
+      'agentSession.send',
+      { envelope: envelope('agentSession.send', { body }, created.fence), body }
+    )
+    await vi.waitFor(() => expect(connection.sent).toHaveLength(1))
     connection.handlers.onExit?.(new Error('claude stream-json exited (code 1): crashed'))
 
+    expect((await inFlight).submission).toMatchObject({
+      dispatchState: 'unknown',
+      reason: 'provider_exited_before_acknowledgement'
+    })
     // Held back, sends failed with the crash until the idle clock stopped the chat.
     await waitForStructuredAgentSessionRecovery()
     expect(claude.connections).toHaveLength(2)
     expect(claude.live().launch.options).toMatchObject({ resume: PROVIDER_SESSION })
-    expect(leaseOf(SESSION)).toMatchObject({ claimStatus: 'live', handoffStage: null })
+    const lease = leaseOf(SESSION)
+    expect(lease).toMatchObject({ claimStatus: 'live', handoffStage: null })
+    const next = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'after' }] }
+    const sent = await ok<{ submission: { dispatchState: string } }>('agentSession.send', {
+      envelope: envelope('agentSession.send', { body: next }, lease.runtimeFence),
+      body: next
+    })
+    expect(sent.submission.dispatchState).toBe('accepted')
+    expect(claude.live().sent).toHaveLength(1)
   })
 
   it('creates, sends, streams, approves, interrupts, and resumes from the chain head', async () => {
