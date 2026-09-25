@@ -151,23 +151,75 @@ export function parseAgentSessionTabTable(
   if (!Array.isArray(file.visibleSessionIds)) {
     return { valid: !strict, table: null }
   }
-  const table = new AgentSessionTabTable()
-  for (const sessionId of file.visibleSessionIds) {
-    if (!isAgentSessionId(sessionId)) {
-      continue
-    }
-    const record = records.get(sessionId)
-    const recorded = record && 'surfaceTabId' in record ? record.surfaceTabId : undefined
-    const derived = structuredAgentSessionTabId(sessionId)
-    const tabId = [recorded, derived].find(
-      (candidate): candidate is string =>
-        isAgentSessionSurfaceTabId(candidate) && table.sessionIdFor(candidate) === undefined
-    )
-    if (tabId !== undefined) {
-      table.show(sessionId, tabId)
+  return { valid: true, table: seedFromVisibleSessions(file.visibleSessionIds, records) }
+}
+
+/**
+ * A cleared chat's tab was opened for the first conversation of its /clear chain and kept that id
+ * through every clear, so the chat now showing the chain's latest conversation seeds under the
+ * first one's id, as a /clear on this build would have left it. Those chats seed first: a cleared
+ * conversation reopened from history is the later tab, and takes a fresh id if its own is held.
+ */
+function seedFromVisibleSessions(
+  visible: readonly unknown[],
+  records: ReadonlyMap<string, AgentSessionRecord>
+): AgentSessionTabTable {
+  const sessionIds = [...new Set(visible.filter(isAgentSessionId))]
+  const clearedFrom = new Map<string, string>()
+  for (const record of records.values()) {
+    const command = record.conversationCommand
+    if (
+      command?.command === 'clear' &&
+      command.phase === 'committed' &&
+      command.replacementSessionId &&
+      !clearedFrom.has(command.replacementSessionId)
+    ) {
+      clearedFrom.set(command.replacementSessionId, record.sessionId)
     }
   }
-  return { valid: true, table }
+  const clearedTo = new Set(clearedFrom.values())
+  const chainRoot = (sessionId: string): string => {
+    const seen = new Set([sessionId])
+    let current = sessionId
+    let prior = clearedFrom.get(current)
+    while (prior !== undefined && !seen.has(prior)) {
+      seen.add(prior)
+      current = prior
+      prior = clearedFrom.get(current)
+    }
+    return current
+  }
+  const recordedOrDerived = (sessionId: string): string[] => {
+    const record = records.get(sessionId)
+    const recorded = record && 'surfaceTabId' in record ? record.surfaceTabId : undefined
+    return [recorded, structuredAgentSessionTabId(sessionId)].filter(isAgentSessionSurfaceTabId)
+  }
+  const tabIds = new Map<string, string>()
+  const taken = new Set<string>()
+  const assign = (sessionId: string, candidates: readonly string[]): void => {
+    const fallback = `${structuredAgentSessionTabId(sessionId)}-reopened`
+    let tabId = candidates.find((candidate) => !taken.has(candidate)) ?? fallback
+    for (let suffix = 2; taken.has(tabId); suffix++) {
+      tabId = `${fallback}-${suffix}`
+    }
+    taken.add(tabId)
+    tabIds.set(sessionId, tabId)
+  }
+  const holdsChainTab = (sessionId: string): boolean =>
+    !clearedTo.has(sessionId) && chainRoot(sessionId) !== sessionId
+  for (const sessionId of sessionIds.filter(holdsChainTab)) {
+    assign(sessionId, [...recordedOrDerived(chainRoot(sessionId)), ...recordedOrDerived(sessionId)])
+  }
+  for (const sessionId of sessionIds.filter((sessionId) => !holdsChainTab(sessionId))) {
+    assign(sessionId, recordedOrDerived(sessionId))
+  }
+  // In the visible list's order, which is the order older builds restored tabs in.
+  return new AgentSessionTabTable(
+    sessionIds.flatMap((sessionId) => {
+      const tabId = tabIds.get(sessionId)
+      return tabId === undefined ? [] : [[tabId, sessionId] as const]
+    })
+  )
 }
 
 function parsePersistedTabs(

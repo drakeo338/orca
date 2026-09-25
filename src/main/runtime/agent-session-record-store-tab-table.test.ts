@@ -171,6 +171,47 @@ describe('chat tab table', () => {
     expect(persisted.records['session-alpha'].surfaceTabId).toBe('tab-alpha')
   })
 
+  it('seeds a chat cleared before the upgrade under the id its tab opened with', async () => {
+    const first = await open()
+    for (const [index, sessionId] of ['session-alpha', 'clear-one', 'clear-two'].entries()) {
+      await first.reserveOwner(
+        reserveRequest({
+          sessionId,
+          operation: {
+            callerKey: 'client-1',
+            operationId: operationId(),
+            fingerprint: `fp-chain-${index}`
+          }
+        })
+      )
+    }
+    // An older build after two clears, with the first conversation reopened from history.
+    const raw = await readFileJson()
+    const cleared = (replacementSessionId: string) => ({
+      command: 'clear',
+      state: 'completed',
+      phase: 'committed',
+      operationId: operationId(),
+      callerKey: 'client-1',
+      replacementSessionId
+    })
+    raw.records['session-alpha'].conversationCommand = cleared('clear-one')
+    raw.records['clear-one'].conversationCommand = cleared('clear-two')
+    raw.records['clear-two'].surfaceTabId = 'structured-agent-session-clear-two'
+    delete raw.sessionTabs
+    raw.visibleSessionIds = ['session-alpha', 'clear-two']
+    await writeFile(filePath(), JSON.stringify(raw))
+
+    const reopened = await open()
+    expect(reopened.getSessionTabId('clear-two')).toBe(LEGACY_TAB_ID)
+    const reopenedTab = reopened.getSessionTabId('session-alpha')
+    expect(reopenedTab).not.toBe(LEGACY_TAB_ID)
+    expect(reopenedTab).not.toContain(':')
+    expect(reopened.listVisibleSessionIds()).toEqual(['session-alpha', 'clear-two'])
+    // Seeding is part of reading, so it must give the same ids on every read of the same bytes.
+    expect((await open()).getSessionTabId('session-alpha')).toBe(reopenedTab)
+  })
+
   it('reads the table, never the record field, once the table is on disk', async () => {
     const first = await open()
     await first.reserveOwner(reserveRequest())
