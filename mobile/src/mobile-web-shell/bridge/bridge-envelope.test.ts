@@ -365,6 +365,28 @@ describe('host messages', () => {
     })
   }
 
+  it("keeps the host's stored name identity, which the page's title rule reads", () => {
+    const host = {
+      id: 'host-a',
+      name: 'm4airs-Air',
+      lastKnownMachineName: 'm4airs-Air',
+      lastKnownHostPlatform: 'darwin',
+      endpoint: 'ws://host-a',
+      lastConnected: 0
+    }
+    const read = readHost(
+      client({
+        type: 'init',
+        sessionId: 's1',
+        buildId: 'b1',
+        connection: CONNECTION,
+        grants: GRANTS,
+        host
+      })
+    )
+    expect(read.ok && read.message.type === 'init' ? read.message.host : null).toEqual(host)
+  })
+
   const refused = [
     [
       'an init without a build id',

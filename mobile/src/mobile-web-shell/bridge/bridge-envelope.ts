@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NODE_PLATFORM_NAMES } from '../../transport/mobile-runtime-host-platform'
 import { isRpcResponse } from '../../transport/rpc-response-shape'
 import type { RpcResponse } from '../../transport/types'
 import { BridgeErrorCaptureSchema } from './bridge-error-capture'
@@ -90,6 +91,11 @@ export { BridgeInitRouteSchema, type BridgeInitRoute }
 export const BridgeInitHostSchema = z.object({
   id: z.string().min(1).max(BRIDGE_MAX_HOST_FIELD_CHARS),
   name: z.string().min(1).max(BRIDGE_MAX_HOST_FIELD_CHARS),
+  // Why: `name` alone cannot say whether it is the phone's override or the desktop's name.
+  // Optional and additive: an older shell sends none and the page falls back to classifying `name`.
+  personalName: z.string().min(1).max(BRIDGE_MAX_HOST_FIELD_CHARS).optional(),
+  lastKnownMachineName: z.string().min(1).max(BRIDGE_MAX_HOST_FIELD_CHARS).optional(),
+  lastKnownHostPlatform: z.enum(NODE_PLATFORM_NAMES).optional(),
   endpoint: z.string().min(1).max(BRIDGE_MAX_HOST_FIELD_CHARS),
   lastConnected: z.number().finite()
 })

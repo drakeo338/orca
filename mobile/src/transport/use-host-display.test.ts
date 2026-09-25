@@ -42,4 +42,16 @@ describe('useHostDisplay', () => {
     recordHostDescriptor('desk', { machineName: 'm4airs-Air', platform: 'darwin' })
     expect(renderDisplay({ id: 'desk', name: 'Host 2' })?.title).toBe('m4airs-Air')
   })
+
+  it('follows a desktop rename past a stored machine name that arrives with its identity fields', () => {
+    recordHostDescriptor('desk', { machineName: 'Brennans-M4', platform: 'darwin' })
+    expect(
+      renderDisplay({
+        id: 'desk',
+        name: 'm4airs-Air',
+        lastKnownMachineName: 'm4airs-Air',
+        lastKnownHostPlatform: 'darwin'
+      })
+    ).toEqual({ title: 'Brennans-M4', descriptorLine: 'macOS', lastKnown: false })
+  })
 })

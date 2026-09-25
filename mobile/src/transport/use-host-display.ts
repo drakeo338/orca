@@ -25,7 +25,7 @@ export function useHostDisplay(
   connected: boolean
 ): HostDisplayResolution {
   const live = useHostDescriptor(host?.id)
-  // Why: a source without identity fields (the web page's projection) holds a label, not a default.
+  // Why: a source without identity fields (a page handed its host by an older shell) holds a label.
   const identity = host ? classifyLegacyHostName(host) : null
   return resolveHostDisplay({
     name: identity?.personalName ?? live?.machineName ?? identity?.name ?? '',
