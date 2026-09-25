@@ -14,6 +14,10 @@ import type { ClaudePendingPrompt, ClaudePromptRegistry } from './claude-structu
 import { cancelProcessAcquisition } from '../../shared/child-process/cancel-process-acquisition'
 import { randomUUID } from 'node:crypto'
 import type {
+  AgentModelCatalogSessionAccess,
+  AgentModelCatalogStore
+} from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import type {
   AgentSessionBackgroundTaskState,
   AgentSessionFastModeState
 } from '../../shared/agent-session-wire'
@@ -108,6 +112,8 @@ export type ClaudeStructuredSessionAdapterDeps = {
     leafUuid: string
     fence: number
   }) => Promise<void>
+  /** Host model catalog; sessions write their listings through. */
+  modelCatalog?: AgentModelCatalogStore
 }
 
 export type ClaudeDispatchWaiter = {
@@ -155,6 +161,8 @@ export type ClaudeSession = {
   /** Options whose recorded value the provider reported, not merely accepted. */
   confirmedOptions: Set<string>
   restoreSkippedOptions: Set<string>
+  /** Absent when the adapter runs without a host catalog store (tests). */
+  catalogAccess?: AgentModelCatalogSessionAccess
   /** CLI-advertised protocol capabilities from init; gates interrupt-receipt handling. */
   capabilities: readonly string[]
   backgroundTasks: ClaudeBackgroundTaskTracker

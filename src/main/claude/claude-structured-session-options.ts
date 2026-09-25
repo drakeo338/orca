@@ -197,6 +197,33 @@ export function claudeCatalogAdmitsModel(models: readonly ListedModel[], modelId
   )
 }
 
+function wireClaudeModels(models: readonly ListedModel[]): AgentSessionOptionsResult['models'] {
+  return models.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    ...(entry.description ? { description: entry.description } : {}),
+    isDefault: entry.isDefault,
+    efforts: entry.efforts,
+    ...(entry.supportsFastMode !== undefined ? { supportsFastMode: entry.supportsFastMode } : {})
+  }))
+}
+
+/** Write a provider-listed catalog through to the host store. Account-level
+ *  facts only: this session's disabled reason and its unlisted current model
+ *  stay out, so another surface never inherits session state as a catalog. */
+function writeClaudeCatalogThrough(session: ClaudeSession, discovered: ListedModel[]): void {
+  if (discovered.length === 0 || !session.catalogAccess) {
+    return
+  }
+  const support = claudeFastModeSupport(discovered, undefined)
+  session.catalogAccess.store.recordSuccess(session.catalogAccess.fingerprint, 'claude', {
+    models: wireClaudeModels(discovered),
+    ...(support ? { fastModeSupport: support } : {}),
+    fastModeTierByModel: new Map(),
+    origin: 'live-session'
+  })
+}
+
 export async function readClaudeStructuredSessionOptions(
   session: ClaudeSession,
   timeoutMs: number | undefined
@@ -249,6 +276,7 @@ export function claudeStructuredSessionOptionsFrom(
   readMutationSequence = session.optionMutationSequence
 ): AgentSessionOptionsResult {
   const discovered = listedModels(catalog ? { models: catalog } : null)
+  writeClaudeCatalogThrough(session, discovered)
   const models = discovered.length > 0 ? discovered : seedModels()
   const current = readClaudeCurrentModel(session)
   const model = currentModelId(models, current.id)
@@ -286,14 +314,7 @@ export function claudeStructuredSessionOptionsFrom(
       : [])
   ]
   return {
-    models: models.map((entry) => ({
-      id: entry.id,
-      label: entry.label,
-      ...(entry.description ? { description: entry.description } : {}),
-      isDefault: entry.isDefault,
-      efforts: entry.efforts,
-      ...(entry.supportsFastMode !== undefined ? { supportsFastMode: entry.supportsFastMode } : {})
-    })),
+    models: wireClaudeModels(models),
     ...(support ? { fastModeSupport: support } : {}),
     current: {
       model,

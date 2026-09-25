@@ -1,4 +1,6 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
+import { useAppStore } from '../../store'
+import { resolveStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
@@ -49,6 +51,16 @@ export function useStructuredAgentSession(args: {
   })
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
+  // The selection create seeds, read from the same settings record. A paired
+  // host seeds from its own settings, which this client does not hold.
+  const persistedSessionOptions = useAppStore((store) => store.settings?.nativeChatSessionOptions)
+  const launchSeedOptions = useMemo(
+    () =>
+      target.kind === 'local'
+        ? resolveStructuredLaunchSeedOptions(persistedSessionOptions, agent)
+        : undefined,
+    [agent, persistedSessionOptions, target.kind]
+  )
   const {
     conversationCommands,
     optionSnapshot,
@@ -65,7 +77,8 @@ export function useStructuredAgentSession(args: {
     fence: state.fence,
     turnId: transportState.turnId,
     unloadedTurnRevisions: state.unloadedTurnRevisions,
-    mutate
+    mutate,
+    ...(launchSeedOptions ? { launchSeedOptions } : {})
   })
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
