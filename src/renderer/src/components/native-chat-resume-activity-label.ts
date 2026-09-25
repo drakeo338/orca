@@ -47,7 +47,9 @@ export function resumeActivityLabel(
     )
   }
   const agents = activity.tasks.filter((task) => task.kind === 'agent')
-  const watches = activity.tasks.filter((task) => task.kind !== 'agent')
+  // Monitoring speaks only for an idle lead, as in the sidebar: a reply's own command is in the roster too.
+  const watches =
+    activity.state === 'working' ? [] : activity.tasks.filter((task) => task.kind !== 'agent')
   const [onlyAgent] = agents
   const [onlyWatch] = watches
   if (agents.length === 1 && onlyAgent) {

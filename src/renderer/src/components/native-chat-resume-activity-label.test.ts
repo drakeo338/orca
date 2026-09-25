@@ -65,6 +65,17 @@ describe('resumeActivityLabel', () => {
     ).toBe('2 subagents running · Monitoring 2 background tasks')
   })
 
+  // The roster also lists the foreground command a reply is running; that is not monitoring.
+  it('does not call a mid-reply command monitoring, but keeps it in the detail', () => {
+    expect(
+      resumeActivityLabel({
+        state: 'working',
+        prompts: [],
+        tasks: [{ kind: 'command', label: 'Count .plist files' }]
+      })
+    ).toEqual({ summary: 'Was mid-reply', detail: 'Count .plist files' })
+  })
+
   it('returns null for a settled lead with nothing running', () => {
     expect(resumeActivityLabel({ state: 'done', prompts: [], tasks: [] })).toBeNull()
   })
