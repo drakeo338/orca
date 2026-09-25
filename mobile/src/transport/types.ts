@@ -131,7 +131,7 @@ export type HostCatalogEntry = Omit<HostProfile, 'deviceToken'> & {
 // Why: salvaged so a value this build cannot read (a newer build's platform, an empty string)
 // drops only that field; a failed record parse would drop the whole paired host on the next write.
 // The outer `.optional()` keeps the inferred key optional rather than required `T | undefined`.
-const hostNameIdentityShape = {
+const hostNameIdentityFields = {
   personalName: salvagedOptional('personalName', z.string().min(1)).optional(),
   lastKnownMachineName: salvagedOptional('lastKnownMachineName', z.string().min(1)).optional(),
   lastKnownHostPlatform: salvagedOptional(
@@ -143,7 +143,7 @@ const hostNameIdentityShape = {
 export const HostProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  ...hostNameIdentityShape,
+  ...hostNameIdentityFields,
   endpoint: z.string().min(1),
   deviceToken: z.string().min(1),
   publicKeyB64: z.string().min(1),
@@ -162,7 +162,7 @@ export const HostProfileSchema = z.object({
 export const StoredHostProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  ...hostNameIdentityShape,
+  ...hostNameIdentityFields,
   endpoint: z.string().min(1),
   publicKeyB64: z.string().min(1),
   lastConnected: z.number().finite()
