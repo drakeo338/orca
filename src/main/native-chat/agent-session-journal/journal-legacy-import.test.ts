@@ -20,7 +20,9 @@ import { openAgentSessionJournal } from './journal-store-factory'
 import type { AgentSessionJournal } from './journal-store'
 
 // No shipped decoder emits a subagent roster, so the roster bounds are reached by standing one in.
-const decodedClaudeOverride = vi.hoisted(() => ({ message: null as NativeChatMessage | null }))
+const decodedClaudeOverride = vi.hoisted((): { message: NativeChatMessage | null } => ({
+  message: null
+}))
 
 vi.mock('../transcript-line-decoders', async (importOriginal) => {
   const actual = await importOriginal<typeof TranscriptLineDecoders>()
