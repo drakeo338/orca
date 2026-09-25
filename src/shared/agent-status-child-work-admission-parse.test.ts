@@ -152,25 +152,25 @@ const GOOD = {
 } as const
 
 // One row per descriptive fact: the record holds a good value and the request carries a bad one.
-const ERASURE: [keyof typeof GOOD, unknown][] = [
-  ['name', ' \t '],
-  ['description', '\r\n'],
-  ['agentType', '\u2028'],
-  ['model', ''],
-  ['totalTokens', -1],
-  ['totalTokens', 1.5],
-  ['totalTokens', Number.NaN],
-  ['providerTiming', { startedAt: -1 }],
-  ['providerTiming', { startedAt: 3, extra: 1 }],
-  ['parentChildWorkId', ''],
-  ['parentChildWorkId', 'child-1'],
-  ['parentChildWorkId', 'x'.repeat(257)],
-  ['residency', 'detached'],
-  ['lastMessage', '\u0085 \u2029']
+const ERASURE: [keyof typeof GOOD, string, unknown][] = [
+  ['name', 'whitespace only', ' \t '],
+  ['description', 'a bare line break', '\r\n'],
+  ['agentType', 'a line separator only', '\u2028'],
+  ['model', 'an empty string', ''],
+  ['totalTokens', 'a negative count', -1],
+  ['totalTokens', 'a fractional count', 1.5],
+  ['totalTokens', 'NaN', Number.NaN],
+  ['providerTiming', 'a negative time', { startedAt: -1 }],
+  ['providerTiming', 'an unknown key', { startedAt: 3, extra: 1 }],
+  ['parentChildWorkId', 'an empty id', ''],
+  ['parentChildWorkId', 'its own id', 'child-1'],
+  ['parentChildWorkId', 'an id over 256 characters', 'x'.repeat(257)],
+  ['residency', 'an unknown residency', 'detached'],
+  ['lastMessage', 'line breakers only', '\u0085 \u2029']
 ]
 
 describe('a malformed fact never erases what the record knows', () => {
-  it.each(ERASURE)('keeps %s through a request carrying %j', (field, bad) => {
+  it.each(ERASURE)('keeps %s through a request carrying %s', (field, _case, bad) => {
     const { store, admission } = setup()
     expect(admission.announce(observation(GOOD))).toMatchObject({ accepted: true })
     expect(admission.announce(carrying(field, bad))).toMatchObject({
