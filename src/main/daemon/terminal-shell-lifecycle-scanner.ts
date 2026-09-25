@@ -128,6 +128,9 @@ export class TerminalShellLifecycleScanner {
           this.commandEnteredAlternateScreen = false
           continue
         }
+        if (marker === 'A' || marker === 'D') {
+          this.inputModes.markPromptBoundary()
+        }
         if (marker !== 'D') {
           continue
         }

@@ -16,7 +16,11 @@ const KITTY_STACK_LIMIT = 16
 export class TerminalArmedInputModes {
   private readonly armed = new Set<number>()
   private readonly shellOwned = new Set<number>()
-  // What was armed at the last OSC 133;C: the shell's or host's (ConPTY arms ?1004h).
+  // Armed outside a command (before any marker, or at a prompt): the shell's or host's,
+  // e.g. ConPTY's ?1004h. A mode a program leaked past its exit never lands here.
+  private readonly hostArmed = new Set<number>()
+  private inCommand = false
+  // The host-armed modes still on at the last OSC 133;C; the ground re-asserts them.
   private baselinePrivateModes: number[] = []
   private baselineKittyFlags = 0
   // Mirrors xterm.js's kitty state: current flags, the other screen's flags, and a stack per screen.
@@ -101,8 +105,17 @@ export class TerminalArmedInputModes {
     for (const mode of this.armed) {
       this.shellOwned.add(mode)
     }
-    this.baselinePrivateModes = [...this.armed].filter((mode) => mode >= 0)
-    this.baselineKittyFlags = this.onAlternateScreen ? 0 : this.kittyFlags
+    this.baselinePrivateModes = [...this.armed].filter(
+      (mode) => mode >= 0 && this.hostArmed.has(mode)
+    )
+    this.baselineKittyFlags =
+      !this.onAlternateScreen && this.hostArmed.has(KITTY_MAIN) ? this.kittyFlags : 0
+    this.inCommand = true
+  }
+
+  /** OSC 133;A or D: enables from here to the next C are the shell's. */
+  markPromptBoundary(): void {
+    this.inCommand = false
   }
 
   /** After a ground: re-arms the 133;C baseline as shell-owned and returns the bytes that do it. */
@@ -126,6 +139,8 @@ export class TerminalArmedInputModes {
   reset(): void {
     this.armed.clear()
     this.shellOwned.clear()
+    this.hostArmed.clear()
+    this.inCommand = false
     this.baselinePrivateModes = []
     this.baselineKittyFlags = 0
     this.kittyFlags = 0
@@ -144,10 +159,16 @@ export class TerminalArmedInputModes {
     if (!armed) {
       this.armed.delete(mode)
       this.shellOwned.delete(mode)
+      this.hostArmed.delete(mode)
       return false
     }
     // Why: an enable while a command runs hands the mode to that command.
     this.shellOwned.delete(mode)
+    if (this.inCommand) {
+      this.hostArmed.delete(mode)
+    } else {
+      this.hostArmed.add(mode)
+    }
     if (this.armed.has(mode)) {
       return false
     }

@@ -9,6 +9,7 @@ import type { SubprocessHandle } from './session-subprocess-handle'
 
 const COMMAND_START = '\x1b]133;C\x07'
 const COMMAND_DONE = '\x1b]133;D;1\x07'
+const PROMPT_START = '\x1b]133;A\x07'
 
 function triggers(scanner: TerminalShellLifecycleScanner, chunk: string): boolean {
   return scanner.scan(chunk).uncleanDeathTriggerEnd !== undefined
@@ -190,7 +191,7 @@ describe('Session grounds a proven normal-buffer death', () => {
       shellReadySupported: false
     })
     sub.emit(
-      `\x1b[?1004h\x1b]133;A\x07PS> ${COMMAND_START}\x1b[?1003hPROGRAM\r\n${COMMAND_DONE}PS> `
+      `\x1b[?1004h${PROMPT_START}PS> ${COMMAND_START}\x1b[?1003hPROGRAM\r\n${COMMAND_DONE}PS> `
     )
     await vi.waitFor(() => expect(sub.confirmShellForeground).toHaveBeenCalledTimes(1))
     await session.settleShellOwnershipConfirmation()
@@ -207,6 +208,41 @@ describe('Session grounds a proven normal-buffer death', () => {
     expect(snapshot?.modes.mouseTrackingMode).toBe('none')
     expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
     expect(snapshot?.terminalOwner).toBe('shell')
+  })
+
+  it('turns off a mode a program leaked past a refuted proof instead of re-arming it', async () => {
+    let confirmed = false
+    const sub = createSubprocess(true)
+    sub.confirmShellForeground.mockImplementation(async () => confirmed)
+    const session = new Session({
+      sessionId: 'leaked-baseline',
+      cols: 80,
+      rows: 24,
+      subprocess: sub.handle,
+      shellReadySupported: false
+    })
+    sub.emit(`\x1b[?1004h${PROMPT_START}PS> ${COMMAND_START}\x1b[?1003hTUI\r\n${COMMAND_DONE}`)
+    await vi.waitFor(() => expect(sub.confirmShellForeground).toHaveBeenCalledTimes(1))
+    await session.settleShellOwnershipConfirmation()
+    confirmed = true
+    // Why a fresh arm: the one-shot trigger re-arms only on a new enable.
+    sub.emit(`${PROMPT_START}PS> ${COMMAND_START}\x1b[?1000hRUN\r\n${COMMAND_DONE}PS> `)
+    await vi.waitFor(() => expect(sub.confirmShellForeground).toHaveBeenCalledTimes(2))
+    await session.settleShellOwnershipConfirmation()
+    const snapshot = session.getSnapshot()
+    const records = session.takePendingOutput(false)?.records ?? []
+    session.dispose()
+
+    expect(
+      records.some(
+        (record) =>
+          record.kind === 'output' &&
+          record.data.includes(`${PROCESS_BOUNDARY_GROUND}\x1b[?1004h`) &&
+          !record.data.includes('\x1b[?1004;1003h')
+      )
+    ).toBe(true)
+    expect(snapshot?.modes.mouseTrackingMode).toBe('none')
+    expect(snapshot?.snapshotAnsi).toContain('\x1b[?1004h')
   })
 
   it('flushes without the ground when the proof is refuted', async () => {

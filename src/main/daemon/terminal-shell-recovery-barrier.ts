@@ -284,8 +284,8 @@ export class TerminalShellRecoveryBarrier {
         // Scanned before release so alt-state stays honest; the reset bytes are
         // deliberately inert for ownership (no OSC 133, no TUI mode enables).
         this.scanner.scan(PROCESS_BOUNDARY_GROUND)
-        // Why re-assert: the ground only owes the dead program's modes; ones on at
-        // OSC 133;C belong to the shell or host (ConPTY's ?1004h) and must survive.
+        // Why re-assert: the ground only owes the dead program's modes; ones the shell
+        // or host armed outside a command (ConPTY's ?1004h) must survive.
         const ground = `${PROCESS_BOUNDARY_GROUND}${this.scanner.reassertCommandBaseline()}`
         try {
           this.releaseDownstream({
