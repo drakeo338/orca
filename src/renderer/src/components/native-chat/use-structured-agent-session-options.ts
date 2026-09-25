@@ -37,7 +37,6 @@ export function useStructuredAgentSessionOptions(args: {
   sessionId: string
   target: RuntimeClientTarget
   transportEnabled: boolean
-  /** The pane is on screen; a hidden retained tab must not warm the catalog at startup. */
   isVisible: boolean
   providerVisible: boolean
   fence: number | null
@@ -46,14 +45,11 @@ export function useStructuredAgentSessionOptions(args: {
   mutate: StructuredAgentSessionMutate
   /** The encoded selection a launch seeds, shown until the host names the model. */
   launchSeedOptions?: Readonly<Record<string, string>>
-  /** A launch runs the CLI default when nothing is seeded; a reopened session may not. */
   launching?: boolean
 }) {
   const {
     agent,
     fence,
-    isVisible,
-    launching = false,
     launchSeedOptions,
     mutate,
     providerVisible,
@@ -115,8 +111,8 @@ export function useStructuredAgentSessionOptions(args: {
     sessionId,
     target,
     optionCatalog,
-    enabled: isVisible,
-    namesDefault: launching,
+    enabled: args.isVisible,
+    namesDefault: args.launching ?? false,
     fence,
     activeOptionRecordRef,
     updateOptionState
@@ -302,21 +298,14 @@ export function useStructuredAgentSessionOptions(args: {
     [setOption, optionSnapshot]
   )
 
+  const support =
+    transportEnabled && conversationSupport?.sessionId === sessionId ? conversationSupport : null
   return {
-    conversationCommands:
-      transportEnabled && conversationSupport?.sessionId === sessionId
-        ? conversationSupport.commands
-        : [],
+    conversationCommands: support?.commands ?? [],
     /** Absent unless this host and session can change the goal. */
-    threadGoal:
-      transportEnabled && conversationSupport?.sessionId === sessionId
-        ? conversationSupport.threadGoal
-        : undefined,
+    threadGoal: support?.threadGoal,
     /** Absent from a host that predates it or a session that writes no context facts. */
-    contextUsage:
-      transportEnabled && conversationSupport?.sessionId === sessionId
-        ? conversationSupport.contextUsage
-        : undefined,
+    contextUsage: support?.contextUsage,
     optionSnapshot,
     optionSurface,
     setStructuredOption

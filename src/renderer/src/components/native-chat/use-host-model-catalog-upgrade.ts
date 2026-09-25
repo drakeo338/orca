@@ -22,7 +22,9 @@ export function useHostModelCatalogUpgrade(args: {
   sessionId: string
   target: RuntimeClientTarget
   optionCatalog: AgentSessionOptionCatalog | null
+  /** The pane is on screen: a read can start a listing process, so hidden restored tabs must not. */
   enabled: boolean
+  /** A launch runs the CLI default when nothing is seeded; a reopened session may not. */
   namesDefault: boolean
   fence: number | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
