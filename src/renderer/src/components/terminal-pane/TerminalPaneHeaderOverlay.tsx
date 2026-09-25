@@ -28,6 +28,7 @@ type TerminalPaneHeaderOverlayProps = {
   showAlwaysOnHeaders: boolean
   /** Used by ephemeral one-off command terminals that omit the header affordance. */
   showSplitButton?: boolean
+  isTabPinned: boolean
   paneCount: number
   activePaneId: number | null | undefined
   panes: readonly ManagedPane[]
@@ -73,6 +74,7 @@ export default function TerminalPaneHeaderOverlay({
   cwd,
   showAlwaysOnHeaders,
   showSplitButton = true,
+  isTabPinned,
   paneCount,
   activePaneId,
   panes,
@@ -126,6 +128,13 @@ export default function TerminalPaneHeaderOverlay({
         const isActivePane = activePaneId === pane.id
         const isChromeless = showAlwaysOnHeaders && !title && !isEditing
         const showHeader = overlayRect && (showAlwaysOnHeaders || Boolean(title) || isEditing)
+        const closeLabel =
+          paneCount > 1
+            ? translate(
+                'auto.components.terminal.pane.TerminalContextMenu.8c17d6786d',
+                'Close Pane'
+              )
+            : translate('auto.components.tab.bar.SortableTab.95db5f2f7d', 'Close tab')
         if (!showHeader || !overlayRect) {
           return null
         }
@@ -368,7 +377,8 @@ export default function TerminalPaneHeaderOverlay({
                         )}
                       </TooltipContent>
                     </Tooltip>
-                  ) : paneCount > 1 && showAlwaysOnHeaders ? (
+                  ) : showAlwaysOnHeaders &&
+                    (paneCount > 1 || (showSplitButton && !isTabPinned)) ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -380,19 +390,13 @@ export default function TerminalPaneHeaderOverlay({
                             event.stopPropagation()
                             onClosePane(pane.id)
                           }}
-                          aria-label={translate(
-                            'auto.components.terminal.pane.TerminalContextMenu.8c17d6786d',
-                            'Close Pane'
-                          )}
+                          aria-label={closeLabel}
                         >
                           <X className="size-3" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" sideOffset={4}>
-                        {translate(
-                          'auto.components.terminal.pane.TerminalContextMenu.8c17d6786d',
-                          'Close Pane'
-                        )}
+                        {closeLabel}
                       </TooltipContent>
                     </Tooltip>
                   ) : null}
