@@ -505,6 +505,26 @@ describe('a structured Claude session over agentSession.*', () => {
     claude.setSelfExit(null)
   })
 
+  it('reopens a chat whose stop saw the Claude root exit but not its descendants', async () => {
+    await ok('agentSession.create', createIntentParams())
+    const first = claude.live()
+    first.exitVerdict = { root: 'exited', tree: 'unverifiable' }
+    first.close = async () => {
+      first.closed = true
+      return false
+    }
+    const host = getStructuredAgentSessionHost()
+    // The idle release clock's eviction: the lease follows the root, so the host lets go.
+    await host?.close(SESSION)
+    expect(host?.hasSession(SESSION)).toBe(false)
+
+    // What the chat surface's `agentSession.hold` does when the user comes back to it.
+    await host?.hold(SESSION, 'desktop-chat:reopen')
+
+    expect(claude.connections).toHaveLength(2)
+    expect(host?.hasSession(SESSION)).toBe(true)
+  })
+
   it('routes a published Claude first-hand exit through fenced host reconciliation', async () => {
     await ok<{ fence: number }>('agentSession.create', createIntentParams())
     const connection = claude.live()
