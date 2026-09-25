@@ -75,7 +75,7 @@ export function resolveBareOrchestrationRecipient(params: {
     return refused(params.handle, session)
   }
   // One session, one identity: mail is addressed where that session's `check` reads — a structured
-  // worker's own handle mailbox, a chat's conversation actor — whichever spelling the sender used.
+  // worker's own handle mailbox, a chat's conversation address — whichever spelling the sender used.
   const identity = session
     ? sessionOrchestrationIdentity(session.sessionId, db, sessionStore)
     : null

@@ -111,7 +111,7 @@ export async function resolveOrchestrationSessionCaller(
   const record = await readSessionRecord(runtime, sessionId)
   assertSessionCanAct(sessionId, record)
   const db = runtime.getOrchestrationDb()
-  // A cleared chat acts as its conversation (the lineage root's actor), never as its own new id.
+  // A cleared chat acts as its conversation (the lineage root's Orca session id), never its own new id.
   const identity = sessionOrchestrationIdentity(sessionId, db, readAgentSessionRecordStore())
   if (hasLostStructuredWorkerIdentity(identity, db)) {
     // Why: acting handle-less would split one worker into two identities, and bind like a chat.
@@ -212,7 +212,7 @@ function bindDeclaredCaller(
   const names: unknown[] = [
     ...addressSpellingsOf(caller),
     caller.sessionId,
-    formatOrchestrationActor({ kind: 'session', id: caller.sessionId })
+    formatOrcaSessionAddress(caller.sessionId)
   ]
   if (declared !== undefined && !names.includes(declared)) {
     throw consumerFenced(caller, String(declared))
