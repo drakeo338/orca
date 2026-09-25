@@ -271,11 +271,14 @@ export class StructuredAgentSessionHost {
 
   async handoffStatus(sessionId: string): Promise<SessionWire.AgentSessionHandoffStatus> {
     this.requireSession(sessionId)
-    const record = this.deps.store.getRecord(sessionId)
-    if (!record) {
-      throw new Error('agent_session_identity_required')
-    }
-    return structuredAgentSessionOwnerStatus(record)
+    // Queued behind an in-flight attach, so a starting chat answers with its settled owner.
+    return this.serialize(sessionId, async () => {
+      const record = this.deps.store.getRecord(sessionId)
+      if (!record) {
+        throw new Error('agent_session_identity_required')
+      }
+      return structuredAgentSessionOwnerStatus(record)
+    })
   }
 
   history: StructuredAgentSessionBackgroundTaskChannel['history'] = (request) =>

@@ -639,6 +639,31 @@ describe('restart', () => {
     })
   })
 
+  it('answers the owner status of a starting chat once its start settles', async () => {
+    await attach()
+    await reboot(async () => ({ outcome: 'pid-absent' }))
+    await host.restoreReadableSessions()
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const settled = acquire.getMockImplementation()
+    if (!settled) {
+      throw new Error('missing acquire implementation')
+    }
+    acquire.mockImplementationOnce(async (input) => {
+      started.resolve()
+      await release.promise
+      return settled(input)
+    })
+
+    const hold = host.hold(SESSION, 'surface-1')
+    await started.promise
+    const status = host.handoffStatus(SESSION)
+    release.resolve()
+    await hold
+
+    await expect(status).resolves.toMatchObject({ owner: 'native', stage: null })
+  })
+
   it("keeps a session whose owner cannot be probed out of a live writer's hands", async () => {
     await attach()
     const held = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
