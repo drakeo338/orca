@@ -139,6 +139,20 @@ describe('agent model catalog store', () => {
     )
   })
 
+  it('rewrites the file only when a listing changes, while still refreshing its age', () => {
+    let at = 1_000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const save = vi.fn()
+    void store.attachPersistence({ load: async () => [], save })
+    store.recordSuccess('fp', 'claude', success('opus'))
+    at += AGENT_MODEL_CATALOG_FRESH_MS
+    store.recordSuccess('fp', 'claude', success('opus'))
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(store.shouldRefresh('fp')).toBe(false)
+    store.recordSuccess('fp', 'claude', success('opus', 'sonnet'))
+    expect(save).toHaveBeenCalledTimes(2)
+  })
+
   it('persists successes only and hydrates them across a restart', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'agent-model-catalog-'))
     const store = new AgentModelCatalogStore()

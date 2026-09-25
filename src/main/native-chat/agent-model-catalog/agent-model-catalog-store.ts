@@ -53,6 +53,15 @@ function tierRecord(tiers: ReadonlyMap<string, string>): Record<string, string> 
   return Object.fromEntries(tiers.entries())
 }
 
+function listingKey(entry: AgentModelCatalogEntry): string {
+  return JSON.stringify([
+    entry.origin,
+    entry.models,
+    entry.fastModeSupport ?? null,
+    entry.fastModeTierByModel
+  ])
+}
+
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures = new Map<string, CatalogFailure>()
@@ -131,11 +140,15 @@ export class AgentModelCatalogStore {
       origin: success.origin,
       fetchedAt: this.now()
     }
+    const previous = this.entries.get(fingerprint)
     this.entries.delete(fingerprint)
     this.entries.set(fingerprint, entry)
     this.failures.delete(fingerprint)
     this.evictOverCap()
-    this.persistence?.save([...this.entries.values()])
+    // Live sessions re-list every turn; an unchanged listing only refreshes the in-memory age.
+    if (!previous || listingKey(previous) !== listingKey(entry)) {
+      this.persistence?.save([...this.entries.values()])
+    }
     return entry
   }
 
