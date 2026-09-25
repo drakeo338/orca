@@ -2672,7 +2672,7 @@
           "title": "Start a chat with {{value0}}"
         },
         "error": {
-          "subtitle": "The transcript could not be read. Toggle back to the terminal to keep working.",
+          "subtitle": "The transcript could not be read. Orca keeps trying to load it.",
           "title": "Could not load conversation"
         },
         "loading": {

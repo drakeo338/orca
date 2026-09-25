@@ -17,7 +17,7 @@ export const NATIVE_CHAT_EMPTY_STATE_COPY = {
   },
   error: {
     title: 'Could not load conversation',
-    subtitle: 'The transcript could not be read. Toggle back to the terminal to keep working.'
+    subtitle: 'The transcript could not be read. Orca keeps trying to load it.'
   },
   notAgent: {
     title: 'No conversation here',

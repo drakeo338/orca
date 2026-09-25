@@ -48,7 +48,7 @@ describe('mobileNativeChatEmptyState', () => {
   it('prefers the provided error message over the default subtitle', () => {
     expect(mobileNativeChatEmptyState('error', 'claude', 'boom')?.subtitle).toBe('boom')
     expect(mobileNativeChatEmptyState('error', 'claude')?.subtitle).toBe(
-      'The transcript could not be read. Toggle back to the terminal to keep working.'
+      'The transcript could not be read. Orca keeps trying to load it.'
     )
   })
 
