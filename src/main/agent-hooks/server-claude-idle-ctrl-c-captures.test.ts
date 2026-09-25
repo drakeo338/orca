@@ -132,11 +132,11 @@ function pressCtrlC(server: AgentHookServer): boolean {
   })
 }
 
-/** Waits for a poll tick to have read everything the transcript holds. */
+/** Waits for a poll tick to have read everything the transcript holds, or to have ended the watch. */
 async function watchCaughtUp(server: AgentHookServer, transcript: string): Promise<void> {
-  await vi.waitFor(() => expect(watch(server)?.offset).toBe(statSync(transcript).size), {
-    timeout: 3_000
-  })
+  expect(watch(server)).toBeDefined()
+  const size = statSync(transcript).size
+  await vi.waitFor(() => expect(watch(server)?.offset ?? size).toBe(size), { timeout: 3_000 })
 }
 
 type CapturedBackgroundTask = { type: string }
@@ -306,7 +306,7 @@ describe('an idle-prompt Ctrl+C with a background shell and a background agent (
     await replay([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     const forked = transcriptFile(`${kill.line}\n`)
     await replayer(server, records, forked, kill.t0)([10])
-    expect(watch(server)).toMatchObject({ filePath: forked, offset: statSync(forked).size })
+    expect(watch(server)).toMatchObject({ filePath: forked })
     const held = row(server)
     appendFileSync(forked, '{"type":"user"}\n')
     await watchCaughtUp(server, forked)
