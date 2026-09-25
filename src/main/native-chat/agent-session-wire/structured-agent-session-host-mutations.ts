@@ -224,7 +224,6 @@ export async function settleStructuredAgentSessionLateDispatch(
           fence: session.fence
         }
   )
-  context.publish(input.sessionId, session.journal)
 }
 
 /**
@@ -240,7 +239,7 @@ export async function settleStructuredAgentSessionLateDispatch(
  * it never makes a send re-deliverable, because the provider may well have run it.
  */
 export async function releaseStructuredAgentSessionUnansweredDispatches(
-  context: Pick<StructuredAgentSessionMutationContext, 'sessions' | 'publish'>,
+  context: Pick<StructuredAgentSessionMutationContext, 'sessions'>,
   input: { sessionId: string; reason: string }
 ): Promise<void> {
   const session = context.sessions.get(input.sessionId)
@@ -263,7 +262,6 @@ export async function releaseStructuredAgentSessionUnansweredDispatches(
       recovered: true
     })
   }
-  context.publish(input.sessionId, session.journal)
 }
 
 /** The host's thin mutation surface. Each call re-reads the context, so a session

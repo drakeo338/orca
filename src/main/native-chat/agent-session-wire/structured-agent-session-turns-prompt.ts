@@ -73,7 +73,6 @@ export async function performPrompt(
             fence: ctx.fence
           }
         )
-        ctx.publish()
       }
     })
   } catch (error) {
@@ -93,7 +92,6 @@ export async function performPrompt(
       },
       { fence: ctx.fence }
     )
-    ctx.publish()
   }
   const appended = committed.item
   if (!appended) {
