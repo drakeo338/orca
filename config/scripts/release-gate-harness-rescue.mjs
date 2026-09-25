@@ -48,7 +48,8 @@ export function collectPlaywrightTests(report, repoDir) {
           suiteFile: spec.file,
           titlePath: [...describePath, spec.title],
           projectName: test.projectName ?? '',
-          status: test.status
+          status: test.status,
+          expectedStatus: test.expectedStatus
         })
       }
     }
@@ -60,6 +61,13 @@ export function collectPlaywrightTests(report, repoDir) {
     walk(fileSuite, [])
   }
   return tests
+}
+
+// Why: a serial suite skips the tests after a failure without running them; only a declared skip is not owed a run.
+function didNotPass(test) {
+  return (
+    test.status === 'unexpected' || (test.status === 'skipped' && test.expectedStatus !== 'skipped')
+  )
 }
 
 function testKey(test) {
@@ -74,9 +82,7 @@ export function planHarnessRescue(report, { repoDir, rescuableFiles = RESCUABLE_
   if ((report.errors ?? []).length > 0) {
     return { rescuable: false, reason: 'the tag run failed outside any test (setup or load error)' }
   }
-  const failedTests = collectPlaywrightTests(report, repoDir).filter(
-    (test) => test.status === 'unexpected'
-  )
+  const failedTests = collectPlaywrightTests(report, repoDir).filter(didNotPass)
   if (failedTests.length === 0) {
     return { rescuable: false, reason: 'the tag run failed without a failed test to attribute' }
   }

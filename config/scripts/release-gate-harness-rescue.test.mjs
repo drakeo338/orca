@@ -59,6 +59,29 @@ describe('planHarnessRescue', () => {
     expect(plan.files).toEqual([SPEC])
   })
 
+  it('re-runs tests a failure left unrun, but not declared skips', () => {
+    const report = playwrightReport(repoDir, {
+      'golden-worktree-create-switch.spec.ts': [
+        ['switches back', 'unexpected'],
+        ['then reopens', 'skipped'],
+        ['skipped on this platform', 'skipped']
+      ]
+    })
+    // Shapes from Playwright 1.59: serial mode reports an unrun test as skipped but still expected to pass.
+    const [failed, unrun, declared] = report.suites[0].specs
+    failed.tests[0].expectedStatus = 'passed'
+    unrun.tests[0].expectedStatus = 'passed'
+    declared.tests[0].expectedStatus = 'skipped'
+
+    const plan = planHarnessRescue(report, { repoDir })
+
+    expect(plan.rescuable).toBe(true)
+    expect(plan.failedTests.map((test) => test.titlePath[0])).toEqual([
+      'switches back',
+      'then reopens'
+    ])
+  })
+
   it('refuses when any failure is outside the vetted harness specs', () => {
     const plan = planHarnessRescue(
       playwrightReport(repoDir, {
