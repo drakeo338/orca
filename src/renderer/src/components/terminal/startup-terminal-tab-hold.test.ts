@@ -19,7 +19,12 @@ import {
   revealActivationDeferredTabs,
   shouldMountBackgroundWorktreeTab
 } from './background-terminal-worktree-mount'
-import { holdTerminalTabsForStartup } from './startup-terminal-tab-hold'
+import {
+  holdTerminalTabsForStartup,
+  releaseStartupTerminalTabHold,
+  selectParkedEquivalentMountTabIds,
+  type StartupTerminalTabHold
+} from './startup-terminal-tab-hold'
 import type { TabGroup, TabGroupLayoutNode } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { TerminalParkingFoundation } from '../use-terminal-parking-foundation'
@@ -67,6 +72,7 @@ function useStartupHoldHarness(props: HarnessProps) {
   const backgroundMountTabIdsByWorktreeRef = useRef(new Map<string, ReadonlySet<string>>())
   const activationDeferredMountTabIdsByWorktreeRef = useRef(new Map<string, ReadonlySet<string>>())
   const lastActivationWorktreeIdRef = useRef<string | null>(null)
+  const startupTerminalTabHoldRef = useRef<StartupTerminalTabHold | null>(null)
   const mountedWorktreeIdsRef = useRef(new Set<string>())
   const activationDeferralPlanRevisionRef = useRef(0)
   const [backgroundMountRevision, setBackgroundMountRevision] = useState(0)
@@ -91,6 +97,7 @@ function useStartupHoldHarness(props: HarnessProps) {
     pendingStartupByTabId: {},
     renderedActiveWorktreeId: props.worktreeId,
     setBackgroundMountRevision,
+    startupTerminalTabHoldRef,
     startupWorktreeRefreshCompleted: props.gateOpen,
     tabsByWorktree: useAppStore.getState().tabsByWorktree,
     terminalParkingEnabled: true,
@@ -105,7 +112,8 @@ function useStartupHoldHarness(props: HarnessProps) {
     activationDeferredMountTabIdsByWorktreeRef,
     anyMountedWorktreeHasLayout: coldActivation.anyMountedWorktreeHasLayout,
     backgroundMountTabIdsByWorktreeRef,
-    mountedWorktreeIdsRef
+    mountedWorktreeIdsRef,
+    startupTerminalTabHold: coldActivation.startupTerminalTabHold
   }
 }
 
@@ -157,6 +165,11 @@ describe('startup terminal tab hold', () => {
     expect(result.current.activationDeferredMountTabIdsByWorktreeRef.current.has(WORKTREE_ID)).toBe(
       false
     )
+    // Held tabs stay parked-equivalent, so watchers own their bells, titles, and completions.
+    expect(result.current.startupTerminalTabHold).toEqual({
+      worktreeId: WORKTREE_ID,
+      heldTabIds: new Set([TAB_1, TAB_2])
+    })
     act(() => {
       vi.advanceTimersByTime(1_000)
     })
@@ -167,6 +180,7 @@ describe('startup terminal tab hold', () => {
     expect(result.current.mountedWorktreeIdsRef.current.has(WORKTREE_ID)).toBe(true)
     expect(admits(restrictions, WORKTREE_ID, TAB_1)).toBe(true)
     expect(admits(restrictions, WORKTREE_ID, TAB_2)).toBe(true)
+    expect(result.current.startupTerminalTabHold).toBeNull()
   })
 
   it('returns a workspace switched away from mid-startup to the unmounted world', () => {
@@ -186,6 +200,42 @@ describe('startup terminal tab hold', () => {
     expect(admits(restrictions, OTHER_WORKTREE_ID, TAB_1)).toBe(true)
   })
 
+  it('returns a workspace left for no workspace mid-startup to the unmounted world', () => {
+    const initialProps: HarnessProps = { worktreeId: WORKTREE_ID, gateOpen: false }
+    const { result, rerender } = renderHook(useStartupHoldHarness, { initialProps })
+    expect(result.current.mountedWorktreeIdsRef.current.has(WORKTREE_ID)).toBe(true)
+
+    rerender({ worktreeId: null, gateOpen: false })
+    expect(result.current.mountedWorktreeIdsRef.current.has(WORKTREE_ID)).toBe(false)
+    expect(result.current.backgroundMountTabIdsByWorktreeRef.current.has(WORKTREE_ID)).toBe(false)
+    expect(result.current.startupTerminalTabHold).toBeNull()
+
+    rerender({ worktreeId: null, gateOpen: true })
+    expect(result.current.mountedWorktreeIdsRef.current.size).toBe(0)
+  })
+
+  it('keeps holding a widened hold whose targeted tab closed', () => {
+    const { result, rerender } = renderHook(useStartupHoldHarness, {
+      initialProps: { worktreeId: WORKTREE_ID, gateOpen: false }
+    })
+    const restrictions = result.current.backgroundMountTabIdsByWorktreeRef.current
+    // A targeted background mount widens the hold to its tab.
+    restrictions.set(WORKTREE_ID, new Set([TAB_1]))
+    act(() => {
+      useAppStore.setState({
+        tabsByWorktree: {
+          ...useAppStore.getState().tabsByWorktree,
+          [WORKTREE_ID]: [terminalTab(TAB_2, WORKTREE_ID)]
+        }
+      })
+    })
+    rerender({ worktreeId: WORKTREE_ID, gateOpen: false })
+
+    expect(result.current.mountedWorktreeIdsRef.current.has(WORKTREE_ID)).toBe(true)
+    expect(admits(restrictions, WORKTREE_ID, TAB_2)).toBe(false)
+    expect(result.current.startupTerminalTabHold?.heldTabIds).toEqual(new Set([TAB_2]))
+  })
+
   it('does not mount a surface with no active workspace', () => {
     const { result } = renderHook(useStartupHoldHarness, {
       initialProps: { worktreeId: null, gateOpen: false }
@@ -197,37 +247,53 @@ describe('startup terminal tab hold', () => {
 
 describe('holdTerminalTabsForStartup', () => {
   it('admits no terminal tab of a worktree that has not mounted yet', () => {
+    const hold: { current: StartupTerminalTabHold | null } = { current: null }
     const restrictions = new Map<string, ReadonlySet<string>>()
-    const deferred = new Map<string, ReadonlySet<string>>()
     const mounted = new Set<string>()
 
-    holdTerminalTabsForStartup(restrictions, deferred, mounted, 'wt-active')
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-active', ['tab-1'])
 
     expect(restrictions.get('wt-active')).toEqual(new Set())
+    expect(mounted.has('wt-active')).toBe(true)
     expect(shouldMountBackgroundWorktreeTab(restrictions.get('wt-active') ?? null, 'tab-1')).toBe(
       false
     )
-    expect(deferred.has('wt-active')).toBe(false)
+    expect(hold.current).toEqual({ worktreeId: 'wt-active', heldTabIds: new Set(['tab-1']) })
   })
 
   it('keeps a targeted background mount that landed first and never narrows a full mount', () => {
+    const hold: { current: StartupTerminalTabHold | null } = { current: null }
     const restrictions = new Map<string, ReadonlySet<string>>([['wt-active', new Set(['tab-1'])]])
-    const deferred = new Map<string, ReadonlySet<string>>()
     const mounted = new Set<string>(['wt-full'])
 
-    holdTerminalTabsForStartup(restrictions, deferred, mounted, 'wt-active')
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-active', ['tab-1', 'tab-2'])
     expect(restrictions.get('wt-active')).toEqual(new Set(['tab-1']))
+    expect(hold.current?.heldTabIds).toEqual(new Set(['tab-2']))
 
-    holdTerminalTabsForStartup(restrictions, deferred, mounted, 'wt-full')
+    releaseStartupTerminalTabHold(hold, restrictions, mounted, 'wt-full')
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-full', ['tab-1'])
     expect(restrictions.has('wt-full')).toBe(false)
+    expect(hold.current?.heldTabIds).toEqual(new Set())
+  })
+
+  it('keeps the held set identity while the hold is unchanged', () => {
+    const hold: { current: StartupTerminalTabHold | null } = { current: null }
+    const restrictions = new Map<string, ReadonlySet<string>>()
+    const mounted = new Set<string>()
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-active', ['tab-1'])
+    const first = hold.current
+
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-active', ['tab-1'])
+
+    expect(hold.current).toBe(first)
   })
 
   it('survives prune and reveal passes untouched', () => {
+    const hold: { current: StartupTerminalTabHold | null } = { current: null }
     const restrictions = new Map<string, ReadonlySet<string>>()
     const deferred = new Map<string, ReadonlySet<string>>()
     const mounted = new Set<string>()
-    holdTerminalTabsForStartup(restrictions, deferred, mounted, 'wt-active')
-    mounted.add('wt-active')
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-active', ['tab-1'])
 
     expect(
       pruneClosedBackgroundMountTabs(
@@ -248,25 +314,36 @@ describe('holdTerminalTabsForStartup', () => {
     expect(mounted.has('wt-active')).toBe(true)
   })
 
-  it('releases holds on other worktrees but leaves targeted and activation restrictions alone', () => {
-    const restrictions = new Map<string, ReadonlySet<string>>([
-      ['wt-previous', new Set()],
-      ['wt-targeted', new Set(['tab-wake'])],
-      ['wt-activation', new Set()]
-    ])
-    const deferred = new Map<string, ReadonlySet<string>>([
-      ['wt-activation', new Set(['tab-deferred'])]
-    ])
-    const mounted = new Set<string>(['wt-previous', 'wt-targeted', 'wt-activation'])
+  it('releases an unwidened hold and leaves a widened one as a targeted restriction', () => {
+    const hold: { current: StartupTerminalTabHold | null } = { current: null }
+    const restrictions = new Map<string, ReadonlySet<string>>()
+    const mounted = new Set<string>()
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-previous', ['tab-1'])
 
-    holdTerminalTabsForStartup(restrictions, deferred, mounted, 'wt-active')
+    releaseStartupTerminalTabHold(hold, restrictions, mounted, 'wt-previous')
+    expect(hold.current?.worktreeId).toBe('wt-previous')
 
+    releaseStartupTerminalTabHold(hold, restrictions, mounted, null)
     expect(restrictions.has('wt-previous')).toBe(false)
     expect(mounted.has('wt-previous')).toBe(false)
+    expect(hold.current).toBeNull()
+
+    holdTerminalTabsForStartup(hold, restrictions, mounted, 'wt-targeted', ['tab-wake', 'tab-2'])
+    restrictions.set('wt-targeted', new Set(['tab-wake']))
+    releaseStartupTerminalTabHold(hold, restrictions, mounted, 'wt-active')
     expect(restrictions.get('wt-targeted')).toEqual(new Set(['tab-wake']))
-    expect(restrictions.get('wt-activation')).toEqual(new Set())
     expect(mounted.has('wt-targeted')).toBe(true)
-    expect(mounted.has('wt-activation')).toBe(true)
-    expect(restrictions.get('wt-active')).toEqual(new Set())
+  })
+})
+
+describe('selectParkedEquivalentMountTabIds', () => {
+  const hold: StartupTerminalTabHold = { worktreeId: 'wt-held', heldTabIds: new Set(['tab-1']) }
+
+  it('prefers the activation deferral, then the hold, for the held worktree only', () => {
+    const deferred = new Set(['tab-deferred'])
+    expect(selectParkedEquivalentMountTabIds(deferred, hold, 'wt-held')).toBe(deferred)
+    expect(selectParkedEquivalentMountTabIds(undefined, hold, 'wt-held')).toBe(hold.heldTabIds)
+    expect(selectParkedEquivalentMountTabIds(undefined, hold, 'wt-other')).toBeNull()
+    expect(selectParkedEquivalentMountTabIds(undefined, null, 'wt-held')).toBeNull()
   })
 })

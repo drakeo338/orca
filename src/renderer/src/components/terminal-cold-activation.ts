@@ -6,7 +6,10 @@ import {
   pruneClosedBackgroundMountTabs,
   revealActivationDeferredTabs
 } from './terminal/background-terminal-worktree-mount'
-import { holdTerminalTabsForStartup } from './terminal/startup-terminal-tab-hold'
+import {
+  holdTerminalTabsForStartup,
+  releaseStartupTerminalTabHold
+} from './terminal/startup-terminal-tab-hold'
 import { hasRegisteredRuntimeTerminalTab } from '../runtime/sync-runtime-graph'
 import { anyMountedWorktreeHasLayout as computeAnyMountedWorktreeHasLayout } from './terminal/split-group-mount'
 import { isParkRestorableTerminalPty } from './terminal-pane/terminal-hidden-view-parking'
@@ -33,6 +36,7 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
     pairedRuntimeParkingEnvironmentIds,
     pendingStartupByTabId,
     renderedActiveWorktreeId,
+    startupTerminalTabHoldRef,
     startupWorktreeRefreshCompleted,
     tabsByWorktree,
     terminalParkingEnabled,
@@ -45,23 +49,24 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
   // everything the tab strip and the chat, browser, and editor panes need. Only terminal
   // panes wait, held below, for startup restoration to publish PTY ownership — gating the
   // whole surface on that chain left a restored session blank until its last step.
-  if (
+  const startupHeldWorktreeId =
     renderedActiveWorktreeId &&
     !canAdmitTerminalTabsForStartup({
       workspaceSessionReady,
       hydrationSucceeded,
       startupWorktreeRefreshCompleted
     })
-  ) {
+      ? renderedActiveWorktreeId
+      : null
+  releaseStartupTerminalTabHold(
+    startupTerminalTabHoldRef,
+    backgroundMountTabIdsByWorktreeRef.current,
+    mountedWorktreeIdsRef.current,
+    startupHeldWorktreeId
+  )
+  if (startupHeldWorktreeId) {
     // Why null: the gate opening must run the activation plan, which replaces the hold.
     lastActivationWorktreeIdRef.current = null
-    holdTerminalTabsForStartup(
-      backgroundMountTabIdsByWorktreeRef.current,
-      activationDeferredMountTabIdsByWorktreeRef.current,
-      mountedWorktreeIdsRef.current,
-      renderedActiveWorktreeId
-    )
-    mountedWorktreeIdsRef.current.add(renderedActiveWorktreeId)
   } else if (renderedActiveWorktreeId) {
     const worktreeTabs = tabsByWorktree[renderedActiveWorktreeId] ?? []
     const coldActivationDeferralEnabled =
@@ -172,6 +177,15 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
     tabsByWorktree,
     activationDeferredMountTabIdsByWorktreeRef.current
   )
+  if (startupHeldWorktreeId) {
+    holdTerminalTabsForStartup(
+      startupTerminalTabHoldRef,
+      backgroundMountTabIdsByWorktreeRef.current,
+      mountedWorktreeIdsRef.current,
+      startupHeldWorktreeId,
+      (tabsByWorktree[startupHeldWorktreeId] ?? []).map((tab) => tab.id)
+    )
+  }
   for (const id of mountedWorktreeIdsRef.current) {
     if (!workspaceSurfaceIdSet.has(id)) {
       mountedWorktreeIdsRef.current.delete(id)
@@ -188,7 +202,8 @@ export function applyTerminalColdActivation(controller: TerminalParkingFoundatio
   )
   return {
     anyMountedWorktreeHasLayout,
-    activationDeferralPlanRevision: activationDeferralPlanRevisionRef.current
+    activationDeferralPlanRevision: activationDeferralPlanRevisionRef.current,
+    startupTerminalTabHold: startupTerminalTabHoldRef.current
   }
 }
 
