@@ -100,19 +100,9 @@ export function RuntimeServerRow({
   const hostDisplay = resolveHostDisplay({
     name: environment.name,
     machineName: descriptorStatus?.machineName,
-    platform: descriptorStatus?.hostPlatform,
-    // Same verdict as the dot, so a reachable host is never labelled "Last known".
-    live: entryReachable
+    platform: descriptorStatus?.hostPlatform
   })
   const hostDescriptorText = hostDisplay.descriptorLine
-    ? hostDisplay.lastKnown
-      ? translate(
-          'auto.components.settings.RuntimeServerRow.lastKnownDescriptor',
-          'Last known · {{descriptor}}',
-          { descriptor: hostDisplay.descriptorLine }
-        )
-      : hostDisplay.descriptorLine
-    : null
 
   return (
     <div data-settings-section={environment.id} className="flex items-center gap-3 px-4 py-3">

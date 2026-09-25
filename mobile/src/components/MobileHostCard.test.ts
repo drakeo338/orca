@@ -191,7 +191,7 @@ describe('MobileHostCard', () => {
     expect(texts).not.toContain('Studio')
   })
 
-  it('shows the stored descriptor as last known when the host is offline, as after a restart', async () => {
+  it('shows the stored descriptor when the host is offline, as after a restart', async () => {
     // No live descriptor is recorded: the row has only what the stored profile carries.
     const consoleError = suppressRendererDeprecation()
     await act(async () => {
@@ -220,7 +220,7 @@ describe('MobileHostCard', () => {
     consoleError.mockRestore()
 
     expect(renderer.root.findAllByType('Text').map((node) => node.children.join(''))).toContain(
-      'Last known · macOS · m4airs-Air'
+      'macOS · m4airs-Air'
     )
   })
 

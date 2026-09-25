@@ -69,8 +69,7 @@ export function useHostScreenController({
   const hostDisplay = useHostDisplay(
     hostId && state.hostName
       ? { id: hostId, name: state.hostName, ...state.hostStoredDescriptor }
-      : null,
-    connState === 'connected'
+      : null
   )
 
   useHostScreenIdentity({ client, hostId, state })

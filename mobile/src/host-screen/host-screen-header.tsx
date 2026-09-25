@@ -70,7 +70,7 @@ export function HostScreenHeader({ controller }: { controller: HostScreenControl
                 </View>
                 {hostDisplay.descriptorLine ? (
                   <Text style={styles.hostPlatformText} numberOfLines={1}>
-                    {`${hostDisplay.lastKnown ? 'Last known · ' : ''}${hostDisplay.descriptorLine}`}
+                    {hostDisplay.descriptorLine}
                   </Text>
                 ) : null}
               </View>

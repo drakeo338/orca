@@ -5,8 +5,6 @@ export type HostDisplayResolutionInput = {
   name: string
   machineName?: string | null
   platform?: NodeJS.Platform | null
-  /** Whether the descriptor comes from a live connection rather than a stored copy. */
-  live: boolean
 }
 
 export type HostDisplayResolution = {
@@ -16,8 +14,6 @@ export type HostDisplayResolution = {
    * matches (the OS is always shown when known), or null when the host reported neither.
    */
   descriptorLine: string | null
-  /** True when a descriptor is shown from storage rather than a live host ("Last known"). */
-  lastKnown: boolean
 }
 
 /**
@@ -32,11 +28,7 @@ export function resolveHostDisplay(input: HostDisplayResolutionInput): HostDispl
     [hostPlatformDisplayName(input.platform ?? null), machineName === title ? null : machineName]
       .filter(Boolean)
       .join(' · ') || null
-  return {
-    title,
-    descriptorLine,
-    lastKnown: descriptorLine !== null && !input.live
-  }
+  return { title, descriptorLine }
 }
 
 function normalize(value: string | null | undefined): string | null {

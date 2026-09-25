@@ -39,10 +39,8 @@ export function MobileHostCard(props: {
       ? { kind: 'warning', label: statusLabel }
       : props.verdict
   const worktreeSummary = homeHostWorktreeSummary(props.worktreeInfo)
-  const display = useHostDisplay(props.host, connected)
+  const display = useHostDisplay(props.host)
   const descriptorText = display.descriptorLine
-    ? `${display.lastKnown ? 'Last known · ' : ''}${display.descriptorLine}`
-    : null
   const connectionPathLabel =
     !credentialMissing && !credentialUnavailable && connected
       ? mobileConnectionPathLabel(props.path)

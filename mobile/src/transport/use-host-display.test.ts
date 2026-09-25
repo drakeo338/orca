@@ -8,7 +8,7 @@ import { useHostDisplay, type HostDisplaySource } from './use-host-display'
 function renderDisplay(host: HostDisplaySource): HostDisplayResolution | null {
   let display: HostDisplayResolution | null = null
   function Probe(): null {
-    display = useHostDisplay(host, true)
+    display = useHostDisplay(host)
     return null
   }
   const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -33,8 +33,7 @@ describe('useHostDisplay', () => {
     recordHostDescriptor('desk', { machineName: 'm4airs-Air', platform: 'darwin' })
     expect(renderDisplay({ id: 'desk', name: 'Windows-Low Spec' })).toEqual({
       title: 'Windows-Low Spec',
-      descriptorLine: 'macOS · m4airs-Air',
-      lastKnown: false
+      descriptorLine: 'macOS · m4airs-Air'
     })
   })
 
@@ -52,6 +51,6 @@ describe('useHostDisplay', () => {
         lastKnownMachineName: 'm4airs-Air',
         lastKnownHostPlatform: 'darwin'
       })
-    ).toEqual({ title: 'Brennans-M4', descriptorLine: 'macOS', lastKnown: false })
+    ).toEqual({ title: 'Brennans-M4', descriptorLine: 'macOS' })
   })
 })
