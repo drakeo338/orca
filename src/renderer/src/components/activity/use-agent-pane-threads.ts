@@ -128,7 +128,11 @@ export function useAgentPaneThreads(args: {
   const threadReuseCacheRef = useRef<ReturnType<typeof createAgentPaneThreadReuseCache>>(undefined!)
   threadReuseCacheRef.current ??= createAgentPaneThreadReuseCache()
 
-  const { events: allEvents, liveAgentByPaneKey } = useMemo(
+  const {
+    events: allEvents,
+    liveAgentByPaneKey,
+    paneEntryByPaneKey
+  } = useMemo(
     () =>
       buildActivityEvents(
         {
@@ -159,11 +163,12 @@ export function useAgentPaneThreads(args: {
         {
           events: allEvents,
           liveAgentByPaneKey,
+          paneEntryByPaneKey,
           generatedTitlesEnabled: storeData.generatedTitlesEnabled
         },
         threadReuseCacheRef.current
       ),
-    [allEvents, liveAgentByPaneKey, storeData.generatedTitlesEnabled]
+    [allEvents, liveAgentByPaneKey, paneEntryByPaneKey, storeData.generatedTitlesEnabled]
   )
 
   const selectedPaneKeyIsLive =
