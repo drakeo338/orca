@@ -1,21 +1,22 @@
 // The delay between "nothing holds this session and nothing has happened in it" and "stop its
 // provider child".
 //
-// TWO reasons it is not immediate. A surface that reconnects — a mobile socket dropping on a
-// network switch, a renderer remounting a tab — releases and re-holds within a second, and killing
-// an app-server in that window costs the user a respawn plus a resume for nothing. And work the
-// session is doing must finish: a turn mid-answer, and the subagents, commands and monitors it
-// left running, all die with the child.
+// It is an IDLE window, not a short grace. A surface that reconnects — a mobile socket dropping on
+// a network switch, a renderer remounting a tab, a worktree switch hiding the pane — releases and
+// re-holds, and a send to a chat nobody is looking at restarts its owner; stopping the child soon
+// after either costs the user a respawn plus a resume on the next message. And a turn the user
+// already asked for must finish: stopping the child mid-answer strands the open turn marker.
 //
-// So the clock arms when the last holder leaves, and a tick that finds the session still working
-// RE-ARMS instead of evicting. That is what makes the wait start at the later of the two events
-// rather than at whichever came first.
+// So the clock arms when the last holder leaves, every journal write while it is armed starts it
+// again, and a tick that finds a turn, prompt, or live background task still owed re-arms instead
+// of evicting. A submission with no turn is settled by the eviction itself, so it does not keep a
+// child alive forever. Quit still stops every child at once.
 
 export const STRUCTURED_AGENT_SESSION_RELEASE_GRACE_MS = 30 * 60_000
 
 export type StructuredAgentSessionReleaseClockDeps = {
-  /** Never evict a session that shows as working; a true answer re-arms the clock instead. */
-  isWorking: (sessionId: string) => boolean
+  /** Never evict while work is owed; a true answer re-arms the clock instead. */
+  hasOwedWork: (sessionId: string) => boolean
   /** Re-checked at fire time: a holder may have arrived while the timer ran. */
   isHeld: (sessionId: string) => boolean
   evict: (sessionId: string) => Promise<void>
@@ -72,7 +73,7 @@ export class StructuredAgentSessionReleaseClock {
     if (this.deps.isHeld(sessionId)) {
       return
     }
-    if (this.deps.isWorking(sessionId)) {
+    if (this.deps.hasOwedWork(sessionId)) {
       this.arm(sessionId)
       return
     }

@@ -77,6 +77,7 @@ function mutate<TValue>(
       prepareSession,
       publish: (journal) => context.publish(envelope.sessionId, journal),
       flushStreamedEvents: context.flushStreamedEvents,
+      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.providerChildPhase,
       now: () => context.now()
     })
   )

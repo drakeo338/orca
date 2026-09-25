@@ -64,6 +64,7 @@ export type AgentSessionMutationRequest<TValue> = {
   ) => Promise<AgentSessionMutationSessionPreparation>
   publish: (journal: AgentSessionJournal) => void
   flushStreamedEvents: (sessionId: string) => Promise<void>
+  providerChildPhase?: AgentSessionTurnContext['providerChildPhase']
   now: () => number
 }
 
@@ -188,6 +189,7 @@ function turnContext<TValue>(
     resolvedBy: request.callerKey,
     publish: () => request.publish(journal),
     flushStreamedEvents: () => request.flushStreamedEvents(request.envelope.sessionId),
+    ...(request.providerChildPhase ? { providerChildPhase: request.providerChildPhase } : {}),
     now: () => request.now()
   }
 }

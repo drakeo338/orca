@@ -25,13 +25,13 @@ function keyedSerialize() {
 }
 
 function clock(deps: {
-  isWorking?: () => boolean
+  hasOwedWork?: () => boolean
   isHeld?: () => boolean
   evict: (sessionId: string) => Promise<void>
   onError?: (input: { sessionId: string; error: unknown }) => void
 }): StructuredAgentSessionReleaseClock {
   const created = new StructuredAgentSessionReleaseClock({
-    isWorking: deps.isWorking ?? (() => false),
+    hasOwedWork: deps.hasOwedWork ?? (() => false),
     isHeld: deps.isHeld ?? (() => false),
     evict: deps.evict,
     ...(deps.onError ? { onError: deps.onError } : {}),
@@ -97,7 +97,7 @@ describe('the release clock', () => {
   it('waits out a running turn instead of evicting into it', async () => {
     const evict = vi.fn(async () => {})
     let turnRunning = true
-    const releasing = clock({ isWorking: () => turnRunning, evict })
+    const releasing = clock({ hasOwedWork: () => turnRunning, evict })
 
     releasing.arm('session-1')
     await new Promise((resolve) => setTimeout(resolve, 30))
@@ -184,7 +184,7 @@ describe('holds', () => {
       resume,
       serialize: keyedSerialize(),
       hasProviderChild: () => child,
-      isWorking: () => false,
+      hasOwedWork: () => false,
       evict: async () => {},
       graceMs: 1
     })
@@ -262,7 +262,7 @@ describe('holds', () => {
       resume: async () => ({ ok: true as const }),
       serialize: keyedSerialize(),
       hasProviderChild: () => false,
-      isWorking: () => false,
+      hasOwedWork: () => false,
       evict,
       graceMs: 1
     })
@@ -281,7 +281,7 @@ describe('holds', () => {
       resume: async () => ({ ok: true as const }),
       serialize: keyedSerialize(),
       hasProviderChild: () => false,
-      isWorking: () => false,
+      hasOwedWork: () => false,
       evict: async () => {},
       graceMs: 1
     })

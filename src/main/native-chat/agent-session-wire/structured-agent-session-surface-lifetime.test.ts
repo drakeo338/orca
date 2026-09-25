@@ -17,7 +17,6 @@ import type {
 } from '../../../shared/agent-session-wire'
 import { AGENT_SESSION_UNATTACHED_REFUSAL_CODE } from '../../../shared/structured-agent-session-read-refusal'
 import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
-import type { AgentSessionBackgroundTask } from '../../../shared/agent-session-background-task-wire'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
@@ -432,24 +431,15 @@ describe('a session with a turn in flight', () => {
 
     await waitForEviction()
   })
-  // Its subagents, commands and monitors die with the child, and the sidebar shows them as work.
-  it('is not evicted while background work it started still runs, and is once it ends', async () => {
-    let tasks: AgentSessionBackgroundTask[] = [
-      { id: 'task-a', kind: 'agent', description: 'Review loop 4', state: 'working' }
-    ]
-    host.deps.adapter.backgroundTaskState = () => ({ state: 'monitoring', tasks })
+
+  // Codex settles an admitted send only on its echo, which may never come; eviction retires it.
+  it('is evicted with an admitted send outstanding once no turn runs', async () => {
     await attach()
     await host.hold(SESSION, SURFACE)
-    emitTurnLifecycle('completed', 1)
-    await host.flushStreamedEvents(SESSION)
+    await sendPending('admitted, never echoed')
 
     host.release(SESSION, SURFACE)
-    await waitOutSeveralGraceWindows()
 
-    expect(closeSession).not.toHaveBeenCalled()
-    expect(host.hasSession(SESSION)).toBe(true)
-
-    tasks = []
     await waitForEviction()
   })
 })

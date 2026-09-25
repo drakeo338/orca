@@ -5,7 +5,6 @@
 // bookkeeping that decides when to run it than buried among the twenty other things a session can
 // do.
 
-import { structuredAgentSessionShowsWork } from './structured-agent-session-shown-work'
 import {
   evictStructuredAgentSession,
   STRUCTURED_AGENT_SESSION_EVICTION_STEPS,
@@ -22,6 +21,7 @@ import { releaseStoredStructuredAgentSessionOwner } from './structured-agent-ses
 import { resumeHeldStructuredAgentSession } from './structured-agent-session-hold-resume'
 import type { StructuredAgentSessionAttachContext } from './structured-agent-session-attach-context'
 import { settleStructuredAgentSessionDeadGeneration } from './structured-agent-session-dead-generation-settlement'
+import { structuredAgentSessionHasOwedWork } from './structured-agent-session-shown-work'
 
 export type StructuredAgentSessionLifetimeContext = {
   deps: StructuredAgentSessionHostDeps
@@ -30,8 +30,7 @@ export type StructuredAgentSessionLifetimeContext = {
   now: () => number
   /** Drops the session's row from the agent-status store; see `forgetStructuredAgentSession`. */
   forgetStatus: (sessionId: string) => void
-  /** Quit only: the session's work is snapshotted right before its child stops, and kept once the
-   *  stop is proven. */
+  /** Quit-only snapshot taken immediately before the provider child is stopped. */
   restartWitness?: {
     beforeStop: (sessionId: string) => void
     stopped: (sessionId: string) => void
@@ -197,10 +196,10 @@ export function createStructuredAgentSessionHolds(
     },
     evict: close,
     hasProviderChild: (sessionId) => hasProviderChild(context, sessionId),
-    isWorking: (sessionId) => {
+    hasOwedWork: (sessionId) => {
       const session = context.sessions.get(sessionId)
       return session
-        ? structuredAgentSessionShowsWork(
+        ? structuredAgentSessionHasOwedWork(
             session.journal.snapshot(),
             context.deps.adapter.backgroundTaskState?.(sessionId)?.tasks,
             session.fence
