@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,8 +11,7 @@ import {
   TerminalStreamOpcode
 } from '../../src/shared/terminal-stream-protocol'
 import type { RpcBinaryChannelOptions } from '../../mobile/src/transport/rpc-binary-channel'
-import { DirectRpcClient } from '../../mobile/src/transport/direct-rpc-client'
-import { MobileBrowserTunnelConnection } from '../../mobile/src/transport/mobile-browser-tunnel-connection'
+import { DirectRpcClient, MobileBrowserTunnelConnection } from './mobile-browser-tunnel-clients'
 import { BrowserNetworkTunnelDuplex } from '../../src/main/browser/browser-network-tunnel-duplex'
 import { BrowserNetworkTunnelOutboundMemoryBudgetRegistry } from '../../src/main/browser/browser-network-tunnel-outbound-memory-budget'
 import { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
@@ -21,8 +19,6 @@ import { OrcaRuntimeRpcServer } from '../../src/main/runtime/runtime-rpc'
 import { ALL_RPC_METHODS } from '../../src/main/runtime/rpc/methods'
 import { PairedRuntimeBrowserHostLease } from '../../src/main/browser/paired-runtime-browser-host-lease'
 import { parsePairingCode } from '../../src/shared/pairing'
-
-vi.mock('../../mobile/node_modules/expo-crypto', () => ({ getRandomBytes: randomBytes }))
 
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {

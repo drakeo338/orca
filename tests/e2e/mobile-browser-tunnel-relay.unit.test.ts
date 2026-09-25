@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,15 +12,16 @@ import { BrowserNetworkTunnelSession } from '../../src/main/browser/browser-netw
 import { BrowserNetworkTunnelDuplex } from '../../src/main/browser/browser-network-tunnel-duplex'
 import { BrowserNetworkTunnelOutboundMemoryBudgetRegistry } from '../../src/main/browser/browser-network-tunnel-outbound-memory-budget'
 import { deriveRelayHostId } from '../../src/main/runtime/relay/relay-http-client'
-import { connectMobileRelayRpcSession } from '../../mobile/src/transport/mobile-relay-rpc-session'
-import { MobileBrowserTunnelConnection } from '../../mobile/src/transport/mobile-browser-tunnel-connection'
+import {
+  connectMobileRelayRpcSession,
+  MobileBrowserTunnelConnection
+} from './mobile-browser-tunnel-clients'
 import { browserRelaySplice } from './mobile-browser-relay-splice'
 import {
   encodeTerminalStreamFrame,
   TerminalStreamOpcode
 } from '../../src/shared/terminal-stream-protocol'
 
-vi.mock('../../mobile/node_modules/expo-crypto', () => ({ getRandomBytes: randomBytes }))
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) {
