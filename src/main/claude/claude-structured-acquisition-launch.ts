@@ -50,7 +50,15 @@ export async function resolveClaudeAcquisitionLaunch(args: {
       const firstProof = retainedExit.closePromise ? await retainedExit.closePromise : false
       const proven = firstProof || (await retainedExit.connection.close().catch(() => false))
       if (!proven) {
-        throw claudeAcquisitionCleanupError(retainedExit.connection, retainedExit.error)
+        const cleanupError = claudeAcquisitionCleanupError(
+          retainedExit.connection,
+          retainedExit.error
+        )
+        // A proven root exit is what released the lease, so it cannot also refuse the next root;
+        // only an exit this host cannot vouch for still blocks the start.
+        if (cleanupError instanceof AgentSessionAcquisitionExitUnprovenError) {
+          throw cleanupError
+        }
       }
       // The superseded child must settle before its durable resume identity is reused.
       await callbacks.settleExit(sessionId, retainedExit)

@@ -688,6 +688,20 @@ describe('ClaudeStructuredSessionAdapter acquisition cleanup', () => {
     )
   })
 
+  it('starts the chat again after a crash whose root exited but whose descendants went unverified', async () => {
+    const claude = fakeClaude()
+    const adapter = await acquired(claude)
+    const first = claude.connections[0]
+    first.exitVerdict = { root: 'exited', tree: 'unverifiable' }
+    first.close = vi.fn<FakeConnection['close']>().mockResolvedValue(false)
+    first.handlers.onExit?.(new Error('claude stream-json exited (code 1): crashed'))
+    await adapter.drainObservedExits()
+
+    await adapter.acquire({ identity: identityFor(), fence: 8, spawnToken: 'spawn-10' })
+
+    expect(claude.connections).toHaveLength(2)
+  })
+
   it('does not report a second release as successful while retained exit evidence is unproven', async () => {
     const claude = fakeClaude({ unprovenCloseVerdict: { root: 'exited', tree: 'unverifiable' } })
     const adapter = await acquired(claude)
