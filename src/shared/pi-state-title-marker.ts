@@ -69,6 +69,14 @@ export function getPiStateTitleStatus(title: string): AgentStatus | null {
   return match ? PI_STATE_MARKER_STATUS[match.marker] : null
 }
 
+/** Legacy Pi idle title prefix, from before the state-marker protocol. */
+const PI_LEGACY_IDLE_PREFIX = '\u03c0 - '
+
+/** Idle in either Pi/OMP title protocol: legacy `π - label` or state-marker `π > label`. */
+export function isPiIdleTitle(title: string): boolean {
+  return title.startsWith(PI_LEGACY_IDLE_PREFIX) || getPiStateTitleStatus(title) === 'idle'
+}
+
 /**
  * Rewrite a working marker to the idle marker so a title left behind by an agent that
  * stopped emitting stops reporting working. Returns null when there is nothing to clear —
