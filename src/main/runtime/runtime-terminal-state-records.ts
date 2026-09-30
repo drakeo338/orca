@@ -42,6 +42,8 @@ export type RuntimeLeafRecord = RuntimeSyncedLeaf &
     lastAgentStatusObservedLive: boolean
     lastOscTitle: string | null
     lastOscTitleAt: number | null
+    /** The title came from main's 3s stale-working timer, not from the agent. */
+    lastOscTitleStaleCleared?: boolean
     paneTitleUpdatedAt: number | null
   }
 
@@ -87,6 +89,7 @@ export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   lastOscTitle: string | null
   lastOscTitleAt: number | null
   lastOscTitleEpochMs: number | null
+  lastOscTitleStaleCleared?: boolean
   managementTitle: string | null
   managementTitleAt: number | null
   controllerTitle: string | null

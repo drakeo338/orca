@@ -5,6 +5,7 @@ import {
 } from '../../shared/agent-status-freshness'
 import type { AgentStatusState } from '../../shared/agent-status-types'
 import type { RuntimeTerminalWaitBlockedReason } from '../../shared/runtime-types'
+import { getPiStateTitleStatus } from '../../shared/pi-state-title-marker'
 import { getSyntheticAgentTerminalTitle } from '../../shared/synthetic-agent-title'
 import { resolveExplicitTerminalTitleAgentType } from '../../shared/terminal-title-agent-type'
 import type { TuiAgent } from '../../shared/tui-agent'
@@ -59,6 +60,7 @@ export type TuiIdleEvidenceRecord = {
   lastAgentStatus: AgentStatus | null
   lastOutputAt: number | null
   lastOscTitle?: string | null
+  lastOscTitleStaleCleared?: boolean
 }
 
 export type FirstPartyAgentStatus = {
@@ -77,6 +79,11 @@ export function hasExplicitIdleTitle(
   // one dropped an explicit `Codex ready` to the tier-3 lane and delayed it by the
   // whole quiescence window.
   for (const title of [rendererTitle, record.lastOscTitle]) {
+    // Why: main's 3s stale timer rewrites OMP's static `π : dir` to `π > dir` mid-turn; only a
+    // `π > dir` the agent emitted itself is idle evidence.
+    if (record.lastOscTitleStaleCleared && title && getPiStateTitleStatus(title) === 'idle') {
+      continue
+    }
     if (title && detectExplicitIdleStatusFromTitle(title) === 'idle') {
       return true
     }
