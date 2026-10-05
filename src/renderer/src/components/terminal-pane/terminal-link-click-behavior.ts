@@ -15,8 +15,5 @@ export function terminalLinkClickBehaviorFor(
   if (settings?.terminalLinkClickBehavior === 'none') {
     return 'none'
   }
-  if (settings?.terminalLinkClickBehavior === 'actions') {
-    return 'actions'
-  }
   return settings?.terminalLinkActionPopoverEnabled === false ? 'none' : 'actions'
 }
