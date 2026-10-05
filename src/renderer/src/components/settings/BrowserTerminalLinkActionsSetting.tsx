@@ -97,7 +97,7 @@ export function BrowserTerminalLinkActionsSetting({
                     updateSettings({
                       terminalLinkClickBehavior: value,
                       // Why: profiles that once disabled the popover keep the legacy flag false, and
-                      // terminalLinkClickBehaviorFor still consults it for 'actions'. Clear it so the
+                      // terminalLinkClickBehaviorFor still consults it for 'actions'. Re-enable it so the
                       // control does not snap back to "Leave to terminal".
                       ...(value === 'actions' ? { terminalLinkActionPopoverEnabled: true } : {})
                     })
