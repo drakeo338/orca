@@ -93,3 +93,19 @@ describe('legacy terminal link popover flag', () => {
     expect(terminalLinkClickBehaviorFor(normalized)).toBe('none')
   })
 })
+
+describe('chat appearance settings', () => {
+  it('normalizes old and malformed profiles on load', () => {
+    expect(normalizeLegacyProfile({}).nativeChatAppearance).toBeUndefined()
+    expect(
+      normalizeLegacyProfile({
+        nativeChatAppearance: { fontSize: 40, codeFontSize: 1, width: 'wide' }
+      }).nativeChatAppearance
+    ).toEqual({ fontSize: 20, codeFontSize: 10, width: 'wide' })
+    expect(
+      normalizeLegacyProfile({
+        nativeChatAppearance: { fontSize: 14, codeFontSize: 12, width: 'comfortable' }
+      }).nativeChatAppearance
+    ).toBeUndefined()
+  })
+})
